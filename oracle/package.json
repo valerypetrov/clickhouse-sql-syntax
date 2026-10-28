@@ -5,6 +5,12 @@
   "description": "Compares check() with the real ClickHouse parser on the ClickHouse test corpus",
   "license": "Apache-2.0",
   "type": "module",
+  "scripts": {
+    "corpus": "tsx src/build-corpus.ts",
+    "oracle": "tsx src/oracle.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && tsx --test \"test/**/*.test.ts\""
+  },
   "dependencies": {
     "clickhouse-sql-syntax": "0.1.0"
   }

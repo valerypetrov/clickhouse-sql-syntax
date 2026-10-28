@@ -1,0 +1,66 @@
+# Oracle
+
+This workspace measures how close `check()` is to the real ClickHouse parser. It runs `check()` on
+statements from ClickHouse's own tests, each labelled valid or invalid by a ClickHouse binary, and
+reports where the two disagree.
+
+## Run it
+
+```sh
+npm run build -w packages/core   # the oracle imports the built library
+npm run oracle                   # compares check() with fixtures/corpus.jsonl.gz
+```
+
+This needs no ClickHouse. It prints a confusion matrix, the share of errors reported at the same
+position as ClickHouse, the most common false positives and false negatives grouped by statement
+and by error, and writes everything, with file and line of each case, to `out/report.json`.
+
+To compare with every statement of a ClickHouse checkout instead of the committed sample:
+
+```sh
+npm run oracle -w oracle -- --clickhouse /path/to/clickhouse --corpus /path/to/ClickHouse/tests/queries/0_stateless
+```
+
+`npm run oracle -w oracle -- --help` lists the other options.
+
+## The corpus
+
+`fixtures/corpus.jsonl.gz` is gzipped JSON lines: a header with the ClickHouse version that labelled
+it, then one entry per statement:
+
+```json
+{"sql": "SELECT (1", "file": "00001_x.sql", "line": 3, "valid": false, "position": 10, "message": "Unmatched parentheses: ..."}
+```
+
+`position` is ClickHouse's "failed at position N", a 1-based UTF-8 byte offset. Entries with
+`mutation` are copies of a valid statement with one change (a dropped bracket, two keywords swapped,
+a cut, a typo, ...), labelled by ClickHouse like the others.
+
+The statements come from the tests of [ClickHouse](https://github.com/ClickHouse/ClickHouse),
+Copyright ClickHouse, Inc., licensed under the Apache License 2.0.
+
+Rebuild it with:
+
+```sh
+npm run corpus -w oracle -- --clickhouse /path/to/clickhouse --corpus /path/to/ClickHouse/tests/queries/0_stateless
+```
+
+This splits every test file the way `clickhouse-client` does: at `;`, with the inline data of an
+`INSERT` kept whole (VALUES data runs to a `;` outside brackets, other data to the first empty
+line). It skips files in other dialects (Kusto, PRQL, ...), removes duplicates, and labels each
+statement:
+
+1. In bulk, with `formatQueryOrNull()` in one `clickhouse local --implicit_select=0` process per
+   5,000 statements.
+2. Each rejected statement then goes through `clickhouse format`, which must exit with code 62
+   (`SYNTAX_ERROR`), for its position and message. A sample of accepted ones is confirmed too.
+
+At most 4 ClickHouse processes run at a time, and the verdicts are cached in `.cache/` per
+ClickHouse build, so a rebuild only asks about new statements. The corpus keeps every invalid
+statement, then valid ones up to `--limit` (20,000 by default) in a fixed hash order, then adds
+`--mutations` mutated copies (5,000 by default).
+
+## Thresholds
+
+`npm test` runs the comparison on the committed corpus and fails when a rate falls below the value
+in `thresholds.json`. Raise the values when `check()` gets better, so it cannot slide back.
