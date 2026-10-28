@@ -1,0 +1,32 @@
+{
+  "name": "clickhouse-sql",
+  "displayName": "ClickHouse SQL",
+  "description": "Syntax highlighting and syntax checking for ClickHouse SQL",
+  "version": "0.1.0",
+  "publisher": "valerypetrov",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/valerypetrov/clickhouse-sql-syntax.git",
+    "directory": "packages/vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "dependencies": {
+    "clickhouse-sql-syntax": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "clickhouse-sql-syntax",
+  "version": "0.1.0",
+  "description": "Tokenizer, syntax highlighter and syntax checker for ClickHouse SQL",
+  "keywords": [
+    "clickhouse",
+    "sql",
+    "parser",
+    "lexer",
+    "syntax-highlighting",
+    "linter"
+  ],
+  "license": "Apache-2.0",
+  "author": "Valery Petrov <valerypetrov@icloud.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/valerypetrov/clickhouse-sql-syntax.git",
+    "directory": "packages/core"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && tsx --test \"test/**/*.test.ts\""
+  }
+}
