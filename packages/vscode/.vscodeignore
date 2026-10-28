@@ -1,0 +1,7 @@
+**
+!dist/extension.js
+!syntaxes/clickhouse-sql.tmLanguage.json
+!language-configuration.json
+!README.md
+!CHANGELOG.md
+!LICENSE

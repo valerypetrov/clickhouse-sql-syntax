@@ -6,11 +6,23 @@
   "publisher": "valerypetrov",
   "private": true,
   "license": "Apache-2.0",
+  "author": "Valery Petrov <valerypetrov@icloud.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/valerypetrov/clickhouse-sql-syntax.git",
     "directory": "packages/vscode"
   },
+  "homepage": "https://github.com/valerypetrov/clickhouse-sql-syntax/tree/main/packages/vscode#readme",
+  "bugs": {
+    "url": "https://github.com/valerypetrov/clickhouse-sql-syntax/issues"
+  },
+  "keywords": [
+    "clickhouse",
+    "sql",
+    "syntax",
+    "highlighting",
+    "linter"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -18,14 +30,54 @@
     "Programming Languages",
     "Linters"
   ],
-  "dependencies": {
-    "clickhouse-sql-syntax": "0.1.0"
+  "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "clickhouse-sql",
+        "aliases": [
+          "ClickHouse SQL",
+          "clickhouse-sql"
+        ],
+        "extensions": [
+          ".chsql",
+          ".clickhouse.sql"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "clickhouse-sql",
+        "scopeName": "source.clickhouse-sql",
+        "path": "./syntaxes/clickhouse-sql.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "generate": "tsx scripts/generate-grammar.ts",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\"",
+    "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build -- --minify"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.1.0",
+    "clickhouse-sql-syntax": "0.1.0",
     "esbuild": "^0.28.2",
+    "mocha": "^12.0.3",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
   }

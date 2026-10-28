@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node", "vscode", "mocha"],
+    "noEmit": true
+  },
+  "include": ["src", "scripts", "test"]
+}

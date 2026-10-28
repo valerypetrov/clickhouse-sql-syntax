@@ -1,0 +1,29 @@
+-- Page views per country, with a query parameter for the first day.
+CREATE TABLE IF NOT EXISTS hits
+(
+    event_time DateTime64(3, 'UTC'),
+    user_id UInt64,
+    page String,
+    country LowCardinality(String),
+    labels Array(String),
+    duration Nullable(Float64) DEFAULT NULL
+)
+ENGINE = MergeTree
+ORDER BY (country, event_time);
+
+/* Totals by country. */
+SELECT
+    country,
+    toStartOfDay(event_time) AS day,
+    count() AS views,
+    uniqExact(user_id) AS users,
+    round(avg(duration), 2) AS avg_duration
+FROM hits
+WHERE event_time >= {start:DateTime} AND page LIKE '%/docs/%'
+GROUP BY country, day
+ORDER BY views DESC
+LIMIT 10;
+
+SELECT $$it's a heredoc$$, 0x1F + 1_000 * 1.5e-3, labels[1], (1, 2).2, x'4142'::String
+FROM hits
+SETTINGS max_threads = 4;
