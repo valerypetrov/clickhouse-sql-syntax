@@ -1,0 +1,2900 @@
+[
+  {
+    "source": "tests/queries/0_stateless/00031_parser_number.sql:1",
+    "sql": "SELECT 0 AS x1, 1 AS x2, -1 AS x3, 128 AS x4, -127 AS x5, -128 AS x6, 0xFF AS x7, -0x80 AS x8, 0377 AS x9, -0177 AS x10, 0xFFFF AS x11, 0xFFFFFFFF AS x12, 123e2 AS x13, 0x123p4 AS x14, -0. AS x15, -.0 AS x16, 0. AS x17, 0xFFFFFFFFFFFFFFFF AS x18, 0x123456789ABCDEF01 AS x19, -0xFFFFFFFFFFFFFFFF AS x20, -0x7FFFFFFFFFFFFFFF AS x21, -0x1P1023 AS x22, -0x1p-1022 AS x23, inf AS x24, -INF AS x25, nan AS x26, 0 / 0 AS x27, 0.01e-300 AS x28, toTypeName(x1), toTypeName(x2), toTypeName(x3), toTypeName(x4), toTypeName(x5), toTypeName(x6), toTypeName(x7), toTypeName(x8), toTypeName(x9), toTypeName(x10), toTypeName(x11), toTypeName(x12), toTypeName(x13), toTypeName(x14), toTypeName(x15), toTypeName(x16), toTypeName(x17), toTypeName(x18), toTypeName(x19), toTypeName(x20), toTypeName(x21), toTypeName(x22), toTypeName(x23), toTypeName(x24), toTypeName(x25), toTypeName(x26), toTypeName(x27), toTypeName(x28);\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Whitespace",8,9],
+      ["BareWord",9,11],
+      ["Whitespace",11,12],
+      ["BareWord",12,14],
+      ["Comma",14,15],
+      ["Whitespace",15,16],
+      ["Number",16,17],
+      ["Whitespace",17,18],
+      ["BareWord",18,20],
+      ["Whitespace",20,21],
+      ["BareWord",21,23],
+      ["Comma",23,24],
+      ["Whitespace",24,25],
+      ["Minus",25,26],
+      ["Number",26,27],
+      ["Whitespace",27,28],
+      ["BareWord",28,30],
+      ["Whitespace",30,31],
+      ["BareWord",31,33],
+      ["Comma",33,34],
+      ["Whitespace",34,35],
+      ["Number",35,38],
+      ["Whitespace",38,39],
+      ["BareWord",39,41],
+      ["Whitespace",41,42],
+      ["BareWord",42,44],
+      ["Comma",44,45],
+      ["Whitespace",45,46],
+      ["Minus",46,47],
+      ["Number",47,50],
+      ["Whitespace",50,51],
+      ["BareWord",51,53],
+      ["Whitespace",53,54],
+      ["BareWord",54,56],
+      ["Comma",56,57],
+      ["Whitespace",57,58],
+      ["Minus",58,59],
+      ["Number",59,62],
+      ["Whitespace",62,63],
+      ["BareWord",63,65],
+      ["Whitespace",65,66],
+      ["BareWord",66,68],
+      ["Comma",68,69],
+      ["Whitespace",69,70],
+      ["Number",70,74],
+      ["Whitespace",74,75],
+      ["BareWord",75,77],
+      ["Whitespace",77,78],
+      ["BareWord",78,80],
+      ["Comma",80,81],
+      ["Whitespace",81,82],
+      ["Minus",82,83],
+      ["Number",83,87],
+      ["Whitespace",87,88],
+      ["BareWord",88,90],
+      ["Whitespace",90,91],
+      ["BareWord",91,93],
+      ["Comma",93,94],
+      ["Whitespace",94,95],
+      ["Number",95,99],
+      ["Whitespace",99,100],
+      ["BareWord",100,102],
+      ["Whitespace",102,103],
+      ["BareWord",103,105],
+      ["Comma",105,106],
+      ["Whitespace",106,107],
+      ["Minus",107,108],
+      ["Number",108,112],
+      ["Whitespace",112,113],
+      ["BareWord",113,115],
+      ["Whitespace",115,116],
+      ["BareWord",116,119],
+      ["Comma",119,120],
+      ["Whitespace",120,121],
+      ["Number",121,127],
+      ["Whitespace",127,128],
+      ["BareWord",128,130],
+      ["Whitespace",130,131],
+      ["BareWord",131,134],
+      ["Comma",134,135],
+      ["Whitespace",135,136],
+      ["Number",136,146],
+      ["Whitespace",146,147],
+      ["BareWord",147,149],
+      ["Whitespace",149,150],
+      ["BareWord",150,153],
+      ["Comma",153,154],
+      ["Whitespace",154,155],
+      ["Number",155,160],
+      ["Whitespace",160,161],
+      ["BareWord",161,163],
+      ["Whitespace",163,164],
+      ["BareWord",164,167],
+      ["Comma",167,168],
+      ["Whitespace",168,169],
+      ["Number",169,176],
+      ["Whitespace",176,177],
+      ["BareWord",177,179],
+      ["Whitespace",179,180],
+      ["BareWord",180,183],
+      ["Comma",183,184],
+      ["Whitespace",184,185],
+      ["Minus",185,186],
+      ["Number",186,188],
+      ["Whitespace",188,189],
+      ["BareWord",189,191],
+      ["Whitespace",191,192],
+      ["BareWord",192,195],
+      ["Comma",195,196],
+      ["Whitespace",196,197],
+      ["Minus",197,198],
+      ["Number",198,200],
+      ["Whitespace",200,201],
+      ["BareWord",201,203],
+      ["Whitespace",203,204],
+      ["BareWord",204,207],
+      ["Comma",207,208],
+      ["Whitespace",208,209],
+      ["Number",209,211],
+      ["Whitespace",211,212],
+      ["BareWord",212,214],
+      ["Whitespace",214,215],
+      ["BareWord",215,218],
+      ["Comma",218,219],
+      ["Whitespace",219,220],
+      ["Number",220,238],
+      ["Whitespace",238,239],
+      ["BareWord",239,241],
+      ["Whitespace",241,242],
+      ["BareWord",242,245],
+      ["Comma",245,246],
+      ["Whitespace",246,247],
+      ["Number",247,266],
+      ["Whitespace",266,267],
+      ["BareWord",267,269],
+      ["Whitespace",269,270],
+      ["BareWord",270,273],
+      ["Comma",273,274],
+      ["Whitespace",274,275],
+      ["Minus",275,276],
+      ["Number",276,294],
+      ["Whitespace",294,295],
+      ["BareWord",295,297],
+      ["Whitespace",297,298],
+      ["BareWord",298,301],
+      ["Comma",301,302],
+      ["Whitespace",302,303],
+      ["Minus",303,304],
+      ["Number",304,322],
+      ["Whitespace",322,323],
+      ["BareWord",323,325],
+      ["Whitespace",325,326],
+      ["BareWord",326,329],
+      ["Comma",329,330],
+      ["Whitespace",330,331],
+      ["Minus",331,332],
+      ["Number",332,340],
+      ["Whitespace",340,341],
+      ["BareWord",341,343],
+      ["Whitespace",343,344],
+      ["BareWord",344,347],
+      ["Comma",347,348],
+      ["Whitespace",348,349],
+      ["Minus",349,350],
+      ["Number",350,359],
+      ["Whitespace",359,360],
+      ["BareWord",360,362],
+      ["Whitespace",362,363],
+      ["BareWord",363,366],
+      ["Comma",366,367],
+      ["Whitespace",367,368],
+      ["BareWord",368,371],
+      ["Whitespace",371,372],
+      ["BareWord",372,374],
+      ["Whitespace",374,375],
+      ["BareWord",375,378],
+      ["Comma",378,379],
+      ["Whitespace",379,380],
+      ["Minus",380,381],
+      ["BareWord",381,384],
+      ["Whitespace",384,385],
+      ["BareWord",385,387],
+      ["Whitespace",387,388],
+      ["BareWord",388,391],
+      ["Comma",391,392],
+      ["Whitespace",392,393],
+      ["BareWord",393,396],
+      ["Whitespace",396,397],
+      ["BareWord",397,399],
+      ["Whitespace",399,400],
+      ["BareWord",400,403],
+      ["Comma",403,404],
+      ["Whitespace",404,405],
+      ["Number",405,406],
+      ["Whitespace",406,407],
+      ["Slash",407,408],
+      ["Whitespace",408,409],
+      ["Number",409,410],
+      ["Whitespace",410,411],
+      ["BareWord",411,413],
+      ["Whitespace",413,414],
+      ["BareWord",414,417],
+      ["Comma",417,418],
+      ["Whitespace",418,419],
+      ["Number",419,428],
+      ["Whitespace",428,429],
+      ["BareWord",429,431],
+      ["Whitespace",431,432],
+      ["BareWord",432,435],
+      ["Comma",435,436],
+      ["Whitespace",436,437],
+      ["BareWord",437,447],
+      ["OpeningRoundBracket",447,448],
+      ["BareWord",448,450],
+      ["ClosingRoundBracket",450,451],
+      ["Comma",451,452],
+      ["Whitespace",452,453],
+      ["BareWord",453,463],
+      ["OpeningRoundBracket",463,464],
+      ["BareWord",464,466],
+      ["ClosingRoundBracket",466,467],
+      ["Comma",467,468],
+      ["Whitespace",468,469],
+      ["BareWord",469,479],
+      ["OpeningRoundBracket",479,480],
+      ["BareWord",480,482],
+      ["ClosingRoundBracket",482,483],
+      ["Comma",483,484],
+      ["Whitespace",484,485],
+      ["BareWord",485,495],
+      ["OpeningRoundBracket",495,496],
+      ["BareWord",496,498],
+      ["ClosingRoundBracket",498,499],
+      ["Comma",499,500],
+      ["Whitespace",500,501],
+      ["BareWord",501,511],
+      ["OpeningRoundBracket",511,512],
+      ["BareWord",512,514],
+      ["ClosingRoundBracket",514,515],
+      ["Comma",515,516],
+      ["Whitespace",516,517],
+      ["BareWord",517,527],
+      ["OpeningRoundBracket",527,528],
+      ["BareWord",528,530],
+      ["ClosingRoundBracket",530,531],
+      ["Comma",531,532],
+      ["Whitespace",532,533],
+      ["BareWord",533,543],
+      ["OpeningRoundBracket",543,544],
+      ["BareWord",544,546],
+      ["ClosingRoundBracket",546,547],
+      ["Comma",547,548],
+      ["Whitespace",548,549],
+      ["BareWord",549,559],
+      ["OpeningRoundBracket",559,560],
+      ["BareWord",560,562],
+      ["ClosingRoundBracket",562,563],
+      ["Comma",563,564],
+      ["Whitespace",564,565],
+      ["BareWord",565,575],
+      ["OpeningRoundBracket",575,576],
+      ["BareWord",576,578],
+      ["ClosingRoundBracket",578,579],
+      ["Comma",579,580],
+      ["Whitespace",580,581],
+      ["BareWord",581,591],
+      ["OpeningRoundBracket",591,592],
+      ["BareWord",592,595],
+      ["ClosingRoundBracket",595,596],
+      ["Comma",596,597],
+      ["Whitespace",597,598],
+      ["BareWord",598,608],
+      ["OpeningRoundBracket",608,609],
+      ["BareWord",609,612],
+      ["ClosingRoundBracket",612,613],
+      ["Comma",613,614],
+      ["Whitespace",614,615],
+      ["BareWord",615,625],
+      ["OpeningRoundBracket",625,626],
+      ["BareWord",626,629],
+      ["ClosingRoundBracket",629,630],
+      ["Comma",630,631],
+      ["Whitespace",631,632],
+      ["BareWord",632,642],
+      ["OpeningRoundBracket",642,643],
+      ["BareWord",643,646],
+      ["ClosingRoundBracket",646,647],
+      ["Comma",647,648],
+      ["Whitespace",648,649],
+      ["BareWord",649,659],
+      ["OpeningRoundBracket",659,660],
+      ["BareWord",660,663],
+      ["ClosingRoundBracket",663,664],
+      ["Comma",664,665],
+      ["Whitespace",665,666],
+      ["BareWord",666,676],
+      ["OpeningRoundBracket",676,677],
+      ["BareWord",677,680],
+      ["ClosingRoundBracket",680,681],
+      ["Comma",681,682],
+      ["Whitespace",682,683],
+      ["BareWord",683,693],
+      ["OpeningRoundBracket",693,694],
+      ["BareWord",694,697],
+      ["ClosingRoundBracket",697,698],
+      ["Comma",698,699],
+      ["Whitespace",699,700],
+      ["BareWord",700,710],
+      ["OpeningRoundBracket",710,711],
+      ["BareWord",711,714],
+      ["ClosingRoundBracket",714,715],
+      ["Comma",715,716],
+      ["Whitespace",716,717],
+      ["BareWord",717,727],
+      ["OpeningRoundBracket",727,728],
+      ["BareWord",728,731],
+      ["ClosingRoundBracket",731,732],
+      ["Comma",732,733],
+      ["Whitespace",733,734],
+      ["BareWord",734,744],
+      ["OpeningRoundBracket",744,745],
+      ["BareWord",745,748],
+      ["ClosingRoundBracket",748,749],
+      ["Comma",749,750],
+      ["Whitespace",750,751],
+      ["BareWord",751,761],
+      ["OpeningRoundBracket",761,762],
+      ["BareWord",762,765],
+      ["ClosingRoundBracket",765,766],
+      ["Comma",766,767],
+      ["Whitespace",767,768],
+      ["BareWord",768,778],
+      ["OpeningRoundBracket",778,779],
+      ["BareWord",779,782],
+      ["ClosingRoundBracket",782,783],
+      ["Comma",783,784],
+      ["Whitespace",784,785],
+      ["BareWord",785,795],
+      ["OpeningRoundBracket",795,796],
+      ["BareWord",796,799],
+      ["ClosingRoundBracket",799,800],
+      ["Comma",800,801],
+      ["Whitespace",801,802],
+      ["BareWord",802,812],
+      ["OpeningRoundBracket",812,813],
+      ["BareWord",813,816],
+      ["ClosingRoundBracket",816,817],
+      ["Comma",817,818],
+      ["Whitespace",818,819],
+      ["BareWord",819,829],
+      ["OpeningRoundBracket",829,830],
+      ["BareWord",830,833],
+      ["ClosingRoundBracket",833,834],
+      ["Comma",834,835],
+      ["Whitespace",835,836],
+      ["BareWord",836,846],
+      ["OpeningRoundBracket",846,847],
+      ["BareWord",847,850],
+      ["ClosingRoundBracket",850,851],
+      ["Comma",851,852],
+      ["Whitespace",852,853],
+      ["BareWord",853,863],
+      ["OpeningRoundBracket",863,864],
+      ["BareWord",864,867],
+      ["ClosingRoundBracket",867,868],
+      ["Comma",868,869],
+      ["Whitespace",869,870],
+      ["BareWord",870,880],
+      ["OpeningRoundBracket",880,881],
+      ["BareWord",881,884],
+      ["ClosingRoundBracket",884,885],
+      ["Comma",885,886],
+      ["Whitespace",886,887],
+      ["BareWord",887,897],
+      ["OpeningRoundBracket",897,898],
+      ["BareWord",898,901],
+      ["ClosingRoundBracket",901,902],
+      ["Semicolon",902,903],
+      ["Whitespace",903,904]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/00280_hex_escape_sequence.sql",
+    "sql": "SELECT '\\x30 \\xD0\\xA0';\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["StringLiteral",7,22],
+      ["Semicolon",22,23],
+      ["Whitespace",23,24]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/00292_parser_tuple_element.sql",
+    "sql": "SELECT ('a', 'b').2\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["OpeningRoundBracket",7,8],
+      ["StringLiteral",8,11],
+      ["Comma",11,12],
+      ["Whitespace",12,13],
+      ["StringLiteral",13,16],
+      ["ClosingRoundBracket",16,17],
+      ["Dot",17,18],
+      ["Number",18,19],
+      ["Whitespace",19,20]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/00466_comments_in_keyword.sql",
+    "sql": "SELECT 1 AS x ORDER/* hello */BY x;\n\nSELECT 1 AS x GROUP -- hello\nBY x;\n\nSELECT 1 AS x\nUNION/**/ALL\nSELECT 1;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Whitespace",8,9],
+      ["BareWord",9,11],
+      ["Whitespace",11,12],
+      ["BareWord",12,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,19],
+      ["Comment",19,30],
+      ["BareWord",30,32],
+      ["Whitespace",32,33],
+      ["BareWord",33,34],
+      ["Semicolon",34,35],
+      ["Whitespace",35,37],
+      ["BareWord",37,43],
+      ["Whitespace",43,44],
+      ["Number",44,45],
+      ["Whitespace",45,46],
+      ["BareWord",46,48],
+      ["Whitespace",48,49],
+      ["BareWord",49,50],
+      ["Whitespace",50,51],
+      ["BareWord",51,56],
+      ["Whitespace",56,57],
+      ["Comment",57,65],
+      ["Whitespace",65,66],
+      ["BareWord",66,68],
+      ["Whitespace",68,69],
+      ["BareWord",69,70],
+      ["Semicolon",70,71],
+      ["Whitespace",71,73],
+      ["BareWord",73,79],
+      ["Whitespace",79,80],
+      ["Number",80,81],
+      ["Whitespace",81,82],
+      ["BareWord",82,84],
+      ["Whitespace",84,85],
+      ["BareWord",85,86],
+      ["Whitespace",86,87],
+      ["BareWord",87,92],
+      ["Comment",92,96],
+      ["BareWord",96,99],
+      ["Whitespace",99,100],
+      ["BareWord",100,106],
+      ["Whitespace",106,107],
+      ["Number",107,108],
+      ["Semicolon",108,109],
+      ["Whitespace",109,110]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/00470_identifiers_in_double_quotes.sql",
+    "sql": "SELECT \"numbers\".\"number\" FROM \"system\".\"numbers\" LIMIT 1;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["QuotedIdentifier",7,16],
+      ["Dot",16,17],
+      ["QuotedIdentifier",17,25],
+      ["Whitespace",25,26],
+      ["BareWord",26,30],
+      ["Whitespace",30,31],
+      ["QuotedIdentifier",31,39],
+      ["Dot",39,40],
+      ["QuotedIdentifier",40,49],
+      ["Whitespace",49,50],
+      ["BareWord",50,55],
+      ["Whitespace",55,56],
+      ["Number",56,57],
+      ["Semicolon",57,58],
+      ["Whitespace",58,59]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/01280_unicode_whitespaces_lexer.sql",
+    "sql": "SELECT﻿1;\nSELECT 2;\n    SELECT   1　᠎​+‌‍2⁠﻿;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Semicolon",8,9],
+      ["Whitespace",9,10],
+      ["BareWord",10,16],
+      ["Whitespace",16,17],
+      ["Number",17,18],
+      ["Semicolon",18,19],
+      ["Whitespace",19,20],
+      ["Whitespace",20,25],
+      ["BareWord",25,31],
+      ["Whitespace",31,34],
+      ["Number",34,35],
+      ["Whitespace",35,38],
+      ["Plus",38,39],
+      ["Whitespace",39,41],
+      ["Number",41,42],
+      ["Whitespace",42,44],
+      ["Semicolon",44,45],
+      ["Whitespace",45,46]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/01337_mysql_global_variables.sql:3-9",
+    "sql": "SELECT @@test;\nSELECT @@max_allowed_packet FORMAT CSVWithNames;\nSELECT @@MAX_ALLOWED_PACKET FORMAT CSVWithNames;\nSELECT @@max_allowed_packet, number FROM system.numbers LIMIT 3 FORMAT CSVWithNames;\nSELECT @@session.auto_increment_increment FORMAT CSVWithNames;\nSELECT @@session.auto_increment_increment AS auto_increment_increment FORMAT CSVWithNames;\nSELECT @@Version FORMAT CSVWithNames;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["DoubleAt",7,9],
+      ["BareWord",9,13],
+      ["Semicolon",13,14],
+      ["Whitespace",14,15],
+      ["BareWord",15,21],
+      ["Whitespace",21,22],
+      ["DoubleAt",22,24],
+      ["BareWord",24,42],
+      ["Whitespace",42,43],
+      ["BareWord",43,49],
+      ["Whitespace",49,50],
+      ["BareWord",50,62],
+      ["Semicolon",62,63],
+      ["Whitespace",63,64],
+      ["BareWord",64,70],
+      ["Whitespace",70,71],
+      ["DoubleAt",71,73],
+      ["BareWord",73,91],
+      ["Whitespace",91,92],
+      ["BareWord",92,98],
+      ["Whitespace",98,99],
+      ["BareWord",99,111],
+      ["Semicolon",111,112],
+      ["Whitespace",112,113],
+      ["BareWord",113,119],
+      ["Whitespace",119,120],
+      ["DoubleAt",120,122],
+      ["BareWord",122,140],
+      ["Comma",140,141],
+      ["Whitespace",141,142],
+      ["BareWord",142,148],
+      ["Whitespace",148,149],
+      ["BareWord",149,153],
+      ["Whitespace",153,154],
+      ["BareWord",154,160],
+      ["Dot",160,161],
+      ["BareWord",161,168],
+      ["Whitespace",168,169],
+      ["BareWord",169,174],
+      ["Whitespace",174,175],
+      ["Number",175,176],
+      ["Whitespace",176,177],
+      ["BareWord",177,183],
+      ["Whitespace",183,184],
+      ["BareWord",184,196],
+      ["Semicolon",196,197],
+      ["Whitespace",197,198],
+      ["BareWord",198,204],
+      ["Whitespace",204,205],
+      ["DoubleAt",205,207],
+      ["BareWord",207,214],
+      ["Dot",214,215],
+      ["BareWord",215,239],
+      ["Whitespace",239,240],
+      ["BareWord",240,246],
+      ["Whitespace",246,247],
+      ["BareWord",247,259],
+      ["Semicolon",259,260],
+      ["Whitespace",260,261],
+      ["BareWord",261,267],
+      ["Whitespace",267,268],
+      ["DoubleAt",268,270],
+      ["BareWord",270,277],
+      ["Dot",277,278],
+      ["BareWord",278,302],
+      ["Whitespace",302,303],
+      ["BareWord",303,305],
+      ["Whitespace",305,306],
+      ["BareWord",306,330],
+      ["Whitespace",330,331],
+      ["BareWord",331,337],
+      ["Whitespace",337,338],
+      ["BareWord",338,350],
+      ["Semicolon",350,351],
+      ["Whitespace",351,352],
+      ["BareWord",352,358],
+      ["Whitespace",358,359],
+      ["DoubleAt",359,361],
+      ["BareWord",361,368],
+      ["Whitespace",368,369],
+      ["BareWord",369,375],
+      ["Whitespace",375,376],
+      ["BareWord",376,388],
+      ["Semicolon",388,389],
+      ["Whitespace",389,390]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/01460_allow_dollar_and_number_in_identifier.sql",
+    "sql": "SELECT 1 AS $alias$name$ FORMAT TSVWithNames;\nSELECT 1 AS 1alias1name1 FORMAT TSVWithNames;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Whitespace",8,9],
+      ["BareWord",9,11],
+      ["Whitespace",11,12],
+      ["BareWord",12,24],
+      ["Whitespace",24,25],
+      ["BareWord",25,31],
+      ["Whitespace",31,32],
+      ["BareWord",32,44],
+      ["Semicolon",44,45],
+      ["Whitespace",45,46],
+      ["BareWord",46,52],
+      ["Whitespace",52,53],
+      ["Number",53,54],
+      ["Whitespace",54,55],
+      ["BareWord",55,57],
+      ["Whitespace",57,58],
+      ["BareWord",58,70],
+      ["Whitespace",70,71],
+      ["BareWord",71,77],
+      ["Whitespace",77,78],
+      ["BareWord",78,90],
+      ["Semicolon",90,91],
+      ["Whitespace",91,92]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/01491_nested_multiline_comments.sql",
+    "sql": "SELECT /*/**/*/ 1;\nSELECT /*a/*b*/c*/ 1;\nSELECT /*ab/*cd*/ef*/ 1;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Comment",7,15],
+      ["Whitespace",15,16],
+      ["Number",16,17],
+      ["Semicolon",17,18],
+      ["Whitespace",18,19],
+      ["BareWord",19,25],
+      ["Whitespace",25,26],
+      ["Comment",26,37],
+      ["Whitespace",37,38],
+      ["Number",38,39],
+      ["Semicolon",39,40],
+      ["Whitespace",40,41],
+      ["BareWord",41,47],
+      ["Whitespace",47,48],
+      ["Comment",48,62],
+      ["Whitespace",62,63],
+      ["Number",63,64],
+      ["Semicolon",64,65],
+      ["Whitespace",65,66]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/01948_heredoc.sql",
+    "sql": "SELECT $$$$;\nSELECT $$VALUE$$;\nSELECT $doc$$doc$;\nSELECT $doc$VALUE$doc$;\nSELECT $doc$'VALUE'$doc$;\nSELECT $doc$$do$ $ doc$ $doc $ $doco$$doc$;\nSELECT $doc$$do$ $ doc$ $doc $ $doco$$doc$, $doc$$do$ $ doc$ $doc $ $doco$$doc$;\n\nSELECT $doc$ТЕСТ$doc$;\nSELECT $doc$该类型的引擎$doc$;\n\nSELECT $$\nvalue1\nvalue2\nvalue3\n$$;\n\nSELECT $doc$'\\xc3\\x28'$doc$;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["HereDoc",7,11],
+      ["Semicolon",11,12],
+      ["Whitespace",12,13],
+      ["BareWord",13,19],
+      ["Whitespace",19,20],
+      ["HereDoc",20,29],
+      ["Semicolon",29,30],
+      ["Whitespace",30,31],
+      ["BareWord",31,37],
+      ["Whitespace",37,38],
+      ["HereDoc",38,48],
+      ["Semicolon",48,49],
+      ["Whitespace",49,50],
+      ["BareWord",50,56],
+      ["Whitespace",56,57],
+      ["HereDoc",57,72],
+      ["Semicolon",72,73],
+      ["Whitespace",73,74],
+      ["BareWord",74,80],
+      ["Whitespace",80,81],
+      ["HereDoc",81,98],
+      ["Semicolon",98,99],
+      ["Whitespace",99,100],
+      ["BareWord",100,106],
+      ["Whitespace",106,107],
+      ["HereDoc",107,142],
+      ["Semicolon",142,143],
+      ["Whitespace",143,144],
+      ["BareWord",144,150],
+      ["Whitespace",150,151],
+      ["HereDoc",151,186],
+      ["Comma",186,187],
+      ["Whitespace",187,188],
+      ["HereDoc",188,223],
+      ["Semicolon",223,224],
+      ["Whitespace",224,226],
+      ["BareWord",226,232],
+      ["Whitespace",232,233],
+      ["HereDoc",233,247],
+      ["Semicolon",247,248],
+      ["Whitespace",248,249],
+      ["BareWord",249,255],
+      ["Whitespace",255,256],
+      ["HereDoc",256,272],
+      ["Semicolon",272,273],
+      ["Whitespace",273,275],
+      ["BareWord",275,281],
+      ["Whitespace",281,282],
+      ["HereDoc",282,308],
+      ["Semicolon",308,309],
+      ["Whitespace",309,311],
+      ["BareWord",311,317],
+      ["Whitespace",317,318],
+      ["HereDoc",318,338],
+      ["Semicolon",338,339],
+      ["Whitespace",339,340]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02192_comment.sql",
+    "sql": "# comment\n#! comment2\nselect 1;\n# comment3\n#! comment4\nselect 2; # another one comemnt\n# \n#!\nselect 3;\n\nselect 1; #!\nSELECT # hello\n1;\nSELECT /* # hello */ 1;\nSELECT '\n# hello', 1;\n",
+    "tokens": [
+      ["Comment",0,9],
+      ["Whitespace",9,10],
+      ["Comment",10,21],
+      ["Whitespace",21,22],
+      ["BareWord",22,28],
+      ["Whitespace",28,29],
+      ["Number",29,30],
+      ["Semicolon",30,31],
+      ["Whitespace",31,32],
+      ["Comment",32,42],
+      ["Whitespace",42,43],
+      ["Comment",43,54],
+      ["Whitespace",54,55],
+      ["BareWord",55,61],
+      ["Whitespace",61,62],
+      ["Number",62,63],
+      ["Semicolon",63,64],
+      ["Whitespace",64,65],
+      ["Comment",65,86],
+      ["Whitespace",86,87],
+      ["Comment",87,89],
+      ["Whitespace",89,90],
+      ["Comment",90,92],
+      ["Whitespace",92,93],
+      ["BareWord",93,99],
+      ["Whitespace",99,100],
+      ["Number",100,101],
+      ["Semicolon",101,102],
+      ["Whitespace",102,104],
+      ["BareWord",104,110],
+      ["Whitespace",110,111],
+      ["Number",111,112],
+      ["Semicolon",112,113],
+      ["Whitespace",113,114],
+      ["Comment",114,116],
+      ["Whitespace",116,117],
+      ["BareWord",117,123],
+      ["Whitespace",123,124],
+      ["Comment",124,131],
+      ["Whitespace",131,132],
+      ["Number",132,133],
+      ["Semicolon",133,134],
+      ["Whitespace",134,135],
+      ["BareWord",135,141],
+      ["Whitespace",141,142],
+      ["Comment",142,155],
+      ["Whitespace",155,156],
+      ["Number",156,157],
+      ["Semicolon",157,158],
+      ["Whitespace",158,159],
+      ["BareWord",159,165],
+      ["Whitespace",165,166],
+      ["StringLiteral",166,176],
+      ["Comma",176,177],
+      ["Whitespace",177,178],
+      ["Number",178,179],
+      ["Semicolon",179,180],
+      ["Whitespace",180,181]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02286_tuple_numeric_identifier.sql:11-13",
+    "sql": "SELECT * FROM t_tuple_numeric FORMAT JSONEachRow;\nSELECT `t`.`1`.`2`, `t`.`1`.`3`, `t`.`4` FROM t_tuple_numeric;\nSELECT t.1.1, t.1.2, t.2 FROM t_tuple_numeric;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Asterisk",7,8],
+      ["Whitespace",8,9],
+      ["BareWord",9,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,29],
+      ["Whitespace",29,30],
+      ["BareWord",30,36],
+      ["Whitespace",36,37],
+      ["BareWord",37,48],
+      ["Semicolon",48,49],
+      ["Whitespace",49,50],
+      ["BareWord",50,56],
+      ["Whitespace",56,57],
+      ["QuotedIdentifier",57,60],
+      ["Dot",60,61],
+      ["QuotedIdentifier",61,64],
+      ["Dot",64,65],
+      ["QuotedIdentifier",65,68],
+      ["Comma",68,69],
+      ["Whitespace",69,70],
+      ["QuotedIdentifier",70,73],
+      ["Dot",73,74],
+      ["QuotedIdentifier",74,77],
+      ["Dot",77,78],
+      ["QuotedIdentifier",78,81],
+      ["Comma",81,82],
+      ["Whitespace",82,83],
+      ["QuotedIdentifier",83,86],
+      ["Dot",86,87],
+      ["QuotedIdentifier",87,90],
+      ["Whitespace",90,91],
+      ["BareWord",91,95],
+      ["Whitespace",95,96],
+      ["BareWord",96,111],
+      ["Semicolon",111,112],
+      ["Whitespace",112,113],
+      ["BareWord",113,119],
+      ["Whitespace",119,120],
+      ["BareWord",120,121],
+      ["Dot",121,122],
+      ["Number",122,123],
+      ["Dot",123,124],
+      ["Number",124,125],
+      ["Comma",125,126],
+      ["Whitespace",126,127],
+      ["BareWord",127,128],
+      ["Dot",128,129],
+      ["Number",129,130],
+      ["Dot",130,131],
+      ["Number",131,132],
+      ["Comma",132,133],
+      ["Whitespace",133,134],
+      ["BareWord",134,135],
+      ["Dot",135,136],
+      ["Number",136,137],
+      ["Whitespace",137,138],
+      ["BareWord",138,142],
+      ["Whitespace",142,143],
+      ["BareWord",143,158],
+      ["Semicolon",158,159],
+      ["Whitespace",159,160]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02354_numeric_literals_with_underscores.sql",
+    "sql": "select 1_000;\nselect 1.00_00_01;\nselect 1.000_0001e2;\nselect 0x12_34_56_78;\nselect 0x12_34_56_78p1;\nselect 0b0010_0100_0111;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,12],
+      ["Semicolon",12,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,20],
+      ["Whitespace",20,21],
+      ["Number",21,31],
+      ["Semicolon",31,32],
+      ["Whitespace",32,33],
+      ["BareWord",33,39],
+      ["Whitespace",39,40],
+      ["Number",40,52],
+      ["Semicolon",52,53],
+      ["Whitespace",53,54],
+      ["BareWord",54,60],
+      ["Whitespace",60,61],
+      ["Number",61,74],
+      ["Semicolon",74,75],
+      ["Whitespace",75,76],
+      ["BareWord",76,82],
+      ["Whitespace",82,83],
+      ["Number",83,98],
+      ["Semicolon",98,99],
+      ["Whitespace",99,100],
+      ["BareWord",100,106],
+      ["Whitespace",106,107],
+      ["Number",107,123],
+      ["Semicolon",123,124],
+      ["Whitespace",124,125]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02476_query_parameters_without_serialisation.sql:5",
+    "sql": "SELECT {num:UInt64}, {str:String}, {date:DateTime}, {map:Map(UUID, Array(Float32))};\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["OpeningCurlyBrace",7,8],
+      ["BareWord",8,11],
+      ["Colon",11,12],
+      ["BareWord",12,18],
+      ["ClosingCurlyBrace",18,19],
+      ["Comma",19,20],
+      ["Whitespace",20,21],
+      ["OpeningCurlyBrace",21,22],
+      ["BareWord",22,25],
+      ["Colon",25,26],
+      ["BareWord",26,32],
+      ["ClosingCurlyBrace",32,33],
+      ["Comma",33,34],
+      ["Whitespace",34,35],
+      ["OpeningCurlyBrace",35,36],
+      ["BareWord",36,40],
+      ["Colon",40,41],
+      ["BareWord",41,49],
+      ["ClosingCurlyBrace",49,50],
+      ["Comma",50,51],
+      ["Whitespace",51,52],
+      ["OpeningCurlyBrace",52,53],
+      ["BareWord",53,56],
+      ["Colon",56,57],
+      ["BareWord",57,60],
+      ["OpeningRoundBracket",60,61],
+      ["BareWord",61,65],
+      ["Comma",65,66],
+      ["Whitespace",66,67],
+      ["BareWord",67,72],
+      ["OpeningRoundBracket",72,73],
+      ["BareWord",73,80],
+      ["ClosingRoundBracket",80,81],
+      ["ClosingRoundBracket",81,82],
+      ["ClosingCurlyBrace",82,83],
+      ["Semicolon",83,84],
+      ["Whitespace",84,85]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02476_query_parameters_without_serialisation.sql:20",
+    "sql": "SELECT {col:Identifier} FROM {db:Identifier}.{tbl:Identifier} LIMIT 1 OFFSET 5;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["OpeningCurlyBrace",7,8],
+      ["BareWord",8,11],
+      ["Colon",11,12],
+      ["BareWord",12,22],
+      ["ClosingCurlyBrace",22,23],
+      ["Whitespace",23,24],
+      ["BareWord",24,28],
+      ["Whitespace",28,29],
+      ["OpeningCurlyBrace",29,30],
+      ["BareWord",30,32],
+      ["Colon",32,33],
+      ["BareWord",33,43],
+      ["ClosingCurlyBrace",43,44],
+      ["Dot",44,45],
+      ["OpeningCurlyBrace",45,46],
+      ["BareWord",46,49],
+      ["Colon",49,50],
+      ["BareWord",50,60],
+      ["ClosingCurlyBrace",60,61],
+      ["Whitespace",61,62],
+      ["BareWord",62,67],
+      ["Whitespace",67,68],
+      ["Number",68,69],
+      ["Whitespace",69,70],
+      ["BareWord",70,76],
+      ["Whitespace",76,77],
+      ["Number",77,78],
+      ["Semicolon",78,79],
+      ["Whitespace",79,80]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02494_parser_string_binary_literal.sql",
+    "sql": "select b'';\nselect b'0' == '\\0';\nselect b'00110000'; -- 0\nselect b'0011000100110000'; -- 10\nselect b'111001101011010110001011111010001010111110010101' == '测试';\n\nselect B'';\nselect B'0' == '\\0';\nselect B'00110000'; -- 0\nselect B'0011000100110000'; -- 10\nselect B'111001101011010110001011111010001010111110010101' == '测试';\n\nselect x'';\nselect x'0' == '\\0';\nselect x'30'; -- 0\nselect x'3130'; -- 10\nselect x'e6b58be8af95' == '测试';\n\nselect X'';\nselect X'0' == '\\0';\nselect X'30'; -- 0\nselect X'3130'; -- 10\nselect X'e6b58be8af95' == '测试';\n\n\nselect x'' == b'';\nselect x'0' == b'0';\nselect X'' == X'';\nselect X'0' == X'0';\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["StringLiteral",7,10],
+      ["Semicolon",10,11],
+      ["Whitespace",11,12],
+      ["BareWord",12,18],
+      ["Whitespace",18,19],
+      ["StringLiteral",19,23],
+      ["Whitespace",23,24],
+      ["Equals",24,26],
+      ["Whitespace",26,27],
+      ["StringLiteral",27,31],
+      ["Semicolon",31,32],
+      ["Whitespace",32,33],
+      ["BareWord",33,39],
+      ["Whitespace",39,40],
+      ["StringLiteral",40,51],
+      ["Semicolon",51,52],
+      ["Whitespace",52,53],
+      ["Comment",53,57],
+      ["Whitespace",57,58],
+      ["BareWord",58,64],
+      ["Whitespace",64,65],
+      ["StringLiteral",65,84],
+      ["Semicolon",84,85],
+      ["Whitespace",85,86],
+      ["Comment",86,91],
+      ["Whitespace",91,92],
+      ["BareWord",92,98],
+      ["Whitespace",98,99],
+      ["StringLiteral",99,150],
+      ["Whitespace",150,151],
+      ["Equals",151,153],
+      ["Whitespace",153,154],
+      ["StringLiteral",154,158],
+      ["Semicolon",158,159],
+      ["Whitespace",159,161],
+      ["BareWord",161,167],
+      ["Whitespace",167,168],
+      ["StringLiteral",168,171],
+      ["Semicolon",171,172],
+      ["Whitespace",172,173],
+      ["BareWord",173,179],
+      ["Whitespace",179,180],
+      ["StringLiteral",180,184],
+      ["Whitespace",184,185],
+      ["Equals",185,187],
+      ["Whitespace",187,188],
+      ["StringLiteral",188,192],
+      ["Semicolon",192,193],
+      ["Whitespace",193,194],
+      ["BareWord",194,200],
+      ["Whitespace",200,201],
+      ["StringLiteral",201,212],
+      ["Semicolon",212,213],
+      ["Whitespace",213,214],
+      ["Comment",214,218],
+      ["Whitespace",218,219],
+      ["BareWord",219,225],
+      ["Whitespace",225,226],
+      ["StringLiteral",226,245],
+      ["Semicolon",245,246],
+      ["Whitespace",246,247],
+      ["Comment",247,252],
+      ["Whitespace",252,253],
+      ["BareWord",253,259],
+      ["Whitespace",259,260],
+      ["StringLiteral",260,311],
+      ["Whitespace",311,312],
+      ["Equals",312,314],
+      ["Whitespace",314,315],
+      ["StringLiteral",315,319],
+      ["Semicolon",319,320],
+      ["Whitespace",320,322],
+      ["BareWord",322,328],
+      ["Whitespace",328,329],
+      ["StringLiteral",329,332],
+      ["Semicolon",332,333],
+      ["Whitespace",333,334],
+      ["BareWord",334,340],
+      ["Whitespace",340,341],
+      ["StringLiteral",341,345],
+      ["Whitespace",345,346],
+      ["Equals",346,348],
+      ["Whitespace",348,349],
+      ["StringLiteral",349,353],
+      ["Semicolon",353,354],
+      ["Whitespace",354,355],
+      ["BareWord",355,361],
+      ["Whitespace",361,362],
+      ["StringLiteral",362,367],
+      ["Semicolon",367,368],
+      ["Whitespace",368,369],
+      ["Comment",369,373],
+      ["Whitespace",373,374],
+      ["BareWord",374,380],
+      ["Whitespace",380,381],
+      ["StringLiteral",381,388],
+      ["Semicolon",388,389],
+      ["Whitespace",389,390],
+      ["Comment",390,395],
+      ["Whitespace",395,396],
+      ["BareWord",396,402],
+      ["Whitespace",402,403],
+      ["StringLiteral",403,418],
+      ["Whitespace",418,419],
+      ["Equals",419,421],
+      ["Whitespace",421,422],
+      ["StringLiteral",422,426],
+      ["Semicolon",426,427],
+      ["Whitespace",427,429],
+      ["BareWord",429,435],
+      ["Whitespace",435,436],
+      ["StringLiteral",436,439],
+      ["Semicolon",439,440],
+      ["Whitespace",440,441],
+      ["BareWord",441,447],
+      ["Whitespace",447,448],
+      ["StringLiteral",448,452],
+      ["Whitespace",452,453],
+      ["Equals",453,455],
+      ["Whitespace",455,456],
+      ["StringLiteral",456,460],
+      ["Semicolon",460,461],
+      ["Whitespace",461,462],
+      ["BareWord",462,468],
+      ["Whitespace",468,469],
+      ["StringLiteral",469,474],
+      ["Semicolon",474,475],
+      ["Whitespace",475,476],
+      ["Comment",476,480],
+      ["Whitespace",480,481],
+      ["BareWord",481,487],
+      ["Whitespace",487,488],
+      ["StringLiteral",488,495],
+      ["Semicolon",495,496],
+      ["Whitespace",496,497],
+      ["Comment",497,502],
+      ["Whitespace",502,503],
+      ["BareWord",503,509],
+      ["Whitespace",509,510],
+      ["StringLiteral",510,525],
+      ["Whitespace",525,526],
+      ["Equals",526,528],
+      ["Whitespace",528,529],
+      ["StringLiteral",529,533],
+      ["Semicolon",533,534],
+      ["Whitespace",534,537],
+      ["BareWord",537,543],
+      ["Whitespace",543,544],
+      ["StringLiteral",544,547],
+      ["Whitespace",547,548],
+      ["Equals",548,550],
+      ["Whitespace",550,551],
+      ["StringLiteral",551,554],
+      ["Semicolon",554,555],
+      ["Whitespace",555,556],
+      ["BareWord",556,562],
+      ["Whitespace",562,563],
+      ["StringLiteral",563,567],
+      ["Whitespace",567,568],
+      ["Equals",568,570],
+      ["Whitespace",570,571],
+      ["StringLiteral",571,575],
+      ["Semicolon",575,576],
+      ["Whitespace",576,577],
+      ["BareWord",577,583],
+      ["Whitespace",583,584],
+      ["StringLiteral",584,587],
+      ["Whitespace",587,588],
+      ["Equals",588,590],
+      ["Whitespace",590,591],
+      ["StringLiteral",591,594],
+      ["Semicolon",594,595],
+      ["Whitespace",595,596],
+      ["BareWord",596,602],
+      ["Whitespace",602,603],
+      ["StringLiteral",603,607],
+      ["Whitespace",607,608],
+      ["Equals",608,610],
+      ["Whitespace",610,611],
+      ["StringLiteral",611,615],
+      ["Semicolon",615,616],
+      ["Whitespace",616,617]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02868_operator_is_not_distinct_from_priority.sql:29",
+    "sql": "EXPLAIN AST SELECT 1 <=> 1 == 1;\n",
+    "tokens": [
+      ["BareWord",0,7],
+      ["Whitespace",7,8],
+      ["BareWord",8,11],
+      ["Whitespace",11,12],
+      ["BareWord",12,18],
+      ["Whitespace",18,19],
+      ["Number",19,20],
+      ["Whitespace",20,21],
+      ["Spaceship",21,24],
+      ["Whitespace",24,25],
+      ["Number",25,26],
+      ["Whitespace",26,27],
+      ["Equals",27,29],
+      ["Whitespace",29,30],
+      ["Number",30,31],
+      ["Semicolon",31,32],
+      ["Whitespace",32,33]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/02869_unicode_minus.sql",
+    "sql": "SELECT 1 − 2;\nSELECT −1;\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Whitespace",8,9],
+      ["Minus",9,10],
+      ["Whitespace",10,11],
+      ["Number",11,12],
+      ["Semicolon",12,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,20],
+      ["Whitespace",20,21],
+      ["Minus",21,22],
+      ["Number",22,23],
+      ["Semicolon",23,24],
+      ["Whitespace",24,25]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/03145_unicode_quotes.sql",
+    "sql": "-- They work:\nSELECT ‘This is an example of using English-style Unicode single quotes.’ AS “curly”;\n\n-- It is unspecified which escaping rules apply inside the literal in Unicode quotes, and currently none apply (similarly to heredocs)\n-- This could be changed.\n\nSELECT ‘This is \\an \\\\example ‘of using English-style Unicode single quotes.\\’ AS “\\c\\\\u\\\\\\r\\\\\\\\l\\\\\\\\\\y\\\\\\\\\\\\” FORMAT Vertical;\n\nSELECT ‘’ = '' AS “1” FORMAT JSONLines;\n",
+    "tokens": [
+      ["Comment",0,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,20],
+      ["Whitespace",20,21],
+      ["StringLiteral",21,87],
+      ["Whitespace",87,88],
+      ["BareWord",88,90],
+      ["Whitespace",90,91],
+      ["QuotedIdentifier",91,98],
+      ["Semicolon",98,99],
+      ["Whitespace",99,101],
+      ["Comment",101,235],
+      ["Whitespace",235,236],
+      ["Comment",236,261],
+      ["Whitespace",261,263],
+      ["BareWord",263,269],
+      ["Whitespace",269,270],
+      ["StringLiteral",270,341],
+      ["Whitespace",341,342],
+      ["BareWord",342,344],
+      ["Whitespace",344,345],
+      ["QuotedIdentifier",345,373],
+      ["Whitespace",373,374],
+      ["BareWord",374,380],
+      ["Whitespace",380,381],
+      ["BareWord",381,389],
+      ["Semicolon",389,390],
+      ["Whitespace",390,392],
+      ["BareWord",392,398],
+      ["Whitespace",398,399],
+      ["StringLiteral",399,401],
+      ["Whitespace",401,402],
+      ["Equals",402,403],
+      ["Whitespace",403,404],
+      ["StringLiteral",404,406],
+      ["Whitespace",406,407],
+      ["BareWord",407,409],
+      ["Whitespace",409,410],
+      ["QuotedIdentifier",410,413],
+      ["Whitespace",413,414],
+      ["BareWord",414,420],
+      ["Whitespace",420,421],
+      ["BareWord",421,430],
+      ["Semicolon",430,431],
+      ["Whitespace",431,432]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/03167_fancy_quotes_off_by_one.sql",
+    "sql": "SELECT ‘test’ AS “column”",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["StringLiteral",7,13],
+      ["Whitespace",13,14],
+      ["BareWord",14,16],
+      ["Whitespace",16,17],
+      ["QuotedIdentifier",17,25]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/03227_proper_parsing_of_cast_operator.sql:1-5",
+    "sql": "SELECT '414243'::String;\nSELECT x'414243'::String;\nSELECT b'01000001'::String;\nSELECT '{\"a\": \\'\\x41\\'}'::String;\nSELECT '{\"a\": \\'\\x4\\'}'::String; -- { clientError SYNTAX_ERROR }\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["StringLiteral",7,15],
+      ["DoubleColon",15,17],
+      ["BareWord",17,23],
+      ["Semicolon",23,24],
+      ["Whitespace",24,25],
+      ["BareWord",25,31],
+      ["Whitespace",31,32],
+      ["StringLiteral",32,41],
+      ["DoubleColon",41,43],
+      ["BareWord",43,49],
+      ["Semicolon",49,50],
+      ["Whitespace",50,51],
+      ["BareWord",51,57],
+      ["Whitespace",57,58],
+      ["StringLiteral",58,69],
+      ["DoubleColon",69,71],
+      ["BareWord",71,77],
+      ["Semicolon",77,78],
+      ["Whitespace",78,79],
+      ["BareWord",79,85],
+      ["Whitespace",85,86],
+      ["StringLiteral",86,103],
+      ["DoubleColon",103,105],
+      ["BareWord",105,111],
+      ["Semicolon",111,112],
+      ["Whitespace",112,113],
+      ["BareWord",113,119],
+      ["Whitespace",119,120],
+      ["StringLiteral",120,136],
+      ["DoubleColon",136,138],
+      ["BareWord",138,144],
+      ["Semicolon",144,145],
+      ["Whitespace",145,146],
+      ["Comment",146,177],
+      ["Whitespace",177,178]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/04512_postgresql_regexp_operators.sql:3-4",
+    "sql": "SELECT 'Hello' ~ 'ell', 'Hello' ~ '^ell', 'Hello' ~ 'ELL', 'Hello' ~* 'ELL';\nSELECT 'Hello' !~ 'ell', 'Hello' !~ '^ell', 'Hello' !~* 'ELL', 'Hello' !~* 'xyz';\n",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["StringLiteral",7,14],
+      ["Whitespace",14,15],
+      ["Tilde",15,16],
+      ["Whitespace",16,17],
+      ["StringLiteral",17,22],
+      ["Comma",22,23],
+      ["Whitespace",23,24],
+      ["StringLiteral",24,31],
+      ["Whitespace",31,32],
+      ["Tilde",32,33],
+      ["Whitespace",33,34],
+      ["StringLiteral",34,40],
+      ["Comma",40,41],
+      ["Whitespace",41,42],
+      ["StringLiteral",42,49],
+      ["Whitespace",49,50],
+      ["Tilde",50,51],
+      ["Whitespace",51,52],
+      ["StringLiteral",52,57],
+      ["Comma",57,58],
+      ["Whitespace",58,59],
+      ["StringLiteral",59,66],
+      ["Whitespace",66,67],
+      ["TildeAsterisk",67,69],
+      ["Whitespace",69,70],
+      ["StringLiteral",70,75],
+      ["Semicolon",75,76],
+      ["Whitespace",76,77],
+      ["BareWord",77,83],
+      ["Whitespace",83,84],
+      ["StringLiteral",84,91],
+      ["Whitespace",91,92],
+      ["NotTilde",92,94],
+      ["Whitespace",94,95],
+      ["StringLiteral",95,100],
+      ["Comma",100,101],
+      ["Whitespace",101,102],
+      ["StringLiteral",102,109],
+      ["Whitespace",109,110],
+      ["NotTilde",110,112],
+      ["Whitespace",112,113],
+      ["StringLiteral",113,119],
+      ["Comma",119,120],
+      ["Whitespace",120,121],
+      ["StringLiteral",121,128],
+      ["Whitespace",128,129],
+      ["NotTildeAsterisk",129,132],
+      ["Whitespace",132,133],
+      ["StringLiteral",133,138],
+      ["Comma",138,139],
+      ["Whitespace",139,140],
+      ["StringLiteral",140,147],
+      ["Whitespace",147,148],
+      ["NotTildeAsterisk",148,151],
+      ["Whitespace",151,152],
+      ["StringLiteral",152,157],
+      ["Semicolon",157,158],
+      ["Whitespace",158,159]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/04512_postgresql_regexp_operators.sql:21",
+    "sql": "\n",
+    "tokens": [
+      ["Whitespace",0,1]
+    ]
+  },
+  {
+    "source": "tests/queries/0_stateless/04613_pipe_operators.sql:1",
+    "sql": "-- Pipe operators: a query can be followed by a chain of |> operators, each wrapping it into a subquery.\n",
+    "tokens": [
+      ["Comment",0,104],
+      ["Whitespace",104,105]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "",
+    "tokens": []
+  },
+  {
+    "source": "edge case",
+    "sql": " ",
+    "tokens": [
+      ["Whitespace",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x",
+    "tokens": [
+      ["BareWord",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'abc",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'abc\\",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'it''s'",
+    "tokens": [
+      ["StringLiteral",0,7]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'a\\'b'",
+    "tokens": [
+      ["StringLiteral",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'a\\\\'",
+    "tokens": [
+      ["StringLiteral",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'''",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\"x",
+    "tokens": [
+      ["ErrorDoubleQuoteIsNotClosed",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\"a\"\"b\"",
+    "tokens": [
+      ["QuotedIdentifier",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\"a\\\"b\"",
+    "tokens": [
+      ["QuotedIdentifier",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "`x",
+    "tokens": [
+      ["ErrorBackQuoteIsNotClosed",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "`a``b`",
+    "tokens": [
+      ["QuotedIdentifier",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "`a\\`b`",
+    "tokens": [
+      ["QuotedIdentifier",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/* x",
+    "tokens": [
+      ["ErrorMultilineCommentIsNotClosed",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/* /* */",
+    "tokens": [
+      ["ErrorMultilineCommentIsNotClosed",0,8]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/* /* */ */",
+    "tokens": [
+      ["Comment",0,11]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/**/",
+    "tokens": [
+      ["Comment",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/*/",
+    "tokens": [
+      ["ErrorMultilineCommentIsNotClosed",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/*/**/*/",
+    "tokens": [
+      ["Comment",0,8]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/* a */ */",
+    "tokens": [
+      ["Comment",0,7],
+      ["Whitespace",7,8],
+      ["Asterisk",8,9],
+      ["Slash",9,10]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "--",
+    "tokens": [
+      ["Comment",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "-- x\ny",
+    "tokens": [
+      ["Comment",0,4],
+      ["Whitespace",4,5],
+      ["BareWord",5,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "--x\r\ny",
+    "tokens": [
+      ["Comment",0,4],
+      ["Whitespace",4,5],
+      ["BareWord",5,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "// x\ny",
+    "tokens": [
+      ["Comment",0,4],
+      ["Whitespace",4,5],
+      ["BareWord",5,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "#",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "#x",
+    "tokens": [
+      ["Error",0,1],
+      ["BareWord",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "# x",
+    "tokens": [
+      ["Comment",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "#!x",
+    "tokens": [
+      ["Comment",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "#\tx",
+    "tokens": [
+      ["Error",0,1],
+      ["Whitespace",1,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x#y",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Error",1,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "!",
+    "tokens": [
+      ["ErrorSingleExclamationMark",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "!x",
+    "tokens": [
+      ["ErrorSingleExclamationMark",0,1],
+      ["BareWord",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "!=",
+    "tokens": [
+      ["NotEquals",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "!~",
+    "tokens": [
+      ["NotTilde",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "!~*",
+    "tokens": [
+      ["NotTildeAsterisk",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "~",
+    "tokens": [
+      ["Tilde",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "~*",
+    "tokens": [
+      ["TildeAsterisk",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\\",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\\G",
+    "tokens": [
+      ["VerticalDelimiter",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "\\g",
+    "tokens": [
+      ["Error",0,1],
+      ["BareWord",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "<",
+    "tokens": [
+      ["Less",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "<=",
+    "tokens": [
+      ["LessOrEquals",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "<>",
+    "tokens": [
+      ["NotEquals",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "<=>",
+    "tokens": [
+      ["Spaceship",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "<=x",
+    "tokens": [
+      ["LessOrEquals",0,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ">",
+    "tokens": [
+      ["Greater",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ">=",
+    "tokens": [
+      ["GreaterOrEquals",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "=",
+    "tokens": [
+      ["Equals",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "==",
+    "tokens": [
+      ["Equals",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "===",
+    "tokens": [
+      ["Equals",0,2],
+      ["Equals",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ":",
+    "tokens": [
+      ["Colon",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "::",
+    "tokens": [
+      ["DoubleColon",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ":::",
+    "tokens": [
+      ["DoubleColon",0,2],
+      ["Colon",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "|",
+    "tokens": [
+      ["PipeMark",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "||",
+    "tokens": [
+      ["Concatenation",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "|>",
+    "tokens": [
+      ["PipeOperator",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "|||",
+    "tokens": [
+      ["Concatenation",0,2],
+      ["PipeMark",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "@",
+    "tokens": [
+      ["At",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "@@",
+    "tokens": [
+      ["DoubleAt",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "@@@",
+    "tokens": [
+      ["DoubleAt",0,2],
+      ["At",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "?",
+    "tokens": [
+      ["QuestionMark",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "^",
+    "tokens": [
+      ["Caret",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "%",
+    "tokens": [
+      ["Percent",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "+",
+    "tokens": [
+      ["Plus",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "-",
+    "tokens": [
+      ["Minus",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "->",
+    "tokens": [
+      ["Arrow",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "-->",
+    "tokens": [
+      ["Comment",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "*",
+    "tokens": [
+      ["Asterisk",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "/",
+    "tokens": [
+      ["Slash",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ",",
+    "tokens": [
+      ["Comma",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ";",
+    "tokens": [
+      ["Semicolon",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "()",
+    "tokens": [
+      ["OpeningRoundBracket",0,1],
+      ["ClosingRoundBracket",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "[]",
+    "tokens": [
+      ["OpeningSquareBracket",0,1],
+      ["ClosingSquareBracket",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "{}",
+    "tokens": [
+      ["OpeningCurlyBrace",0,1],
+      ["ClosingCurlyBrace",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ".",
+    "tokens": [
+      ["Number",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "..",
+    "tokens": [
+      ["Number",0,1],
+      ["Dot",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ".5",
+    "tokens": [
+      ["Number",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ".5e3",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ".5e",
+    "tokens": [
+      ["Number",0,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": ".x",
+    "tokens": [
+      ["Number",0,1],
+      ["BareWord",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x.5",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Dot",1,2],
+      ["Number",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x.5.6",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Dot",1,2],
+      ["Number",2,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x.5e3",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Dot",1,2],
+      ["BareWord",2,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.5.6",
+    "tokens": [
+      ["Number",0,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "(1).2",
+    "tokens": [
+      ["OpeningRoundBracket",0,1],
+      ["Number",1,2],
+      ["ClosingRoundBracket",2,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "[1].2",
+    "tokens": [
+      ["OpeningSquareBracket",0,1],
+      ["Number",1,2],
+      ["ClosingSquareBracket",2,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "'a'.1",
+    "tokens": [
+      ["StringLiteral",0,3],
+      ["Number",3,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "`a`.1",
+    "tokens": [
+      ["QuotedIdentifier",0,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.2.3",
+    "tokens": [
+      ["Number",0,3],
+      ["Dot",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x . 5",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2],
+      ["Dot",2,3],
+      ["Whitespace",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.e5",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.",
+    "tokens": [
+      ["Number",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e5",
+    "tokens": [
+      ["Number",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e+",
+    "tokens": [
+      ["Number",0,2],
+      ["Plus",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e+5",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e-5x",
+    "tokens": [
+      ["ErrorWrongNumber",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1E5",
+    "tokens": [
+      ["Number",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.5x",
+    "tokens": [
+      ["ErrorWrongNumber",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1x",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1$",
+    "tokens": [
+      ["Number",0,1],
+      ["DollarSign",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1_000",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1__0",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1_",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "_1",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1_e5",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1e_5",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1.5_5",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1._5",
+    "tokens": [
+      ["ErrorWrongNumber",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1",
+    "tokens": [
+      ["Number",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0xg",
+    "tokens": [
+      ["BareWord",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1p",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1p3",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1.8p3",
+    "tokens": [
+      ["Number",0,7]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1P-3",
+    "tokens": [
+      ["Number",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1e3",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x_1",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0x1_f",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0b",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0b1",
+    "tokens": [
+      ["Number",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0b2",
+    "tokens": [
+      ["BareWord",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0b1_0",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0b12",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0X1F",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0B11",
+    "tokens": [
+      ["Number",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "08",
+    "tokens": [
+      ["Number",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "0.0e0",
+    "tokens": [
+      ["Number",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x'",
+    "tokens": [
+      ["BareWord",0,1],
+      ["ErrorSingleQuoteIsNotClosed",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x'ab'",
+    "tokens": [
+      ["StringLiteral",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x'abg'",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "X''",
+    "tokens": [
+      ["StringLiteral",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "b'012'",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "B'",
+    "tokens": [
+      ["BareWord",0,1],
+      ["ErrorSingleQuoteIsNotClosed",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "b'",
+    "tokens": [
+      ["BareWord",0,1],
+      ["ErrorSingleQuoteIsNotClosed",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "xyz'a'",
+    "tokens": [
+      ["BareWord",0,3],
+      ["StringLiteral",3,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x'ab",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "ax'1'",
+    "tokens": [
+      ["BareWord",0,2],
+      ["StringLiteral",2,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$",
+    "tokens": [
+      ["DollarSign",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$$",
+    "tokens": [
+      ["DollarSign",0,1],
+      ["DollarSign",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$$$",
+    "tokens": [
+      ["DollarSign",0,1],
+      ["DollarSign",1,2],
+      ["DollarSign",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$$x$$",
+    "tokens": [
+      ["HereDoc",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$a$x$a$",
+    "tokens": [
+      ["HereDoc",0,7]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$a$x",
+    "tokens": [
+      ["BareWord",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$a b$",
+    "tokens": [
+      ["BareWord",0,2],
+      ["Whitespace",2,3],
+      ["BareWord",3,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$1",
+    "tokens": [
+      ["BareWord",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a$b",
+    "tokens": [
+      ["BareWord",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$a$",
+    "tokens": [
+      ["BareWord",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$a$$a$",
+    "tokens": [
+      ["HereDoc",0,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$ab$x$a$y$ab$",
+    "tokens": [
+      ["HereDoc",0,13]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "$é$x$é$",
+    "tokens": [
+      ["DollarSign",0,1],
+      ["Error",1,2],
+      ["BareWord",2,5],
+      ["Error",5,6],
+      ["DollarSign",6,7]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1 $ 2",
+    "tokens": [
+      ["Number",0,1],
+      ["Whitespace",1,2],
+      ["DollarSign",2,3],
+      ["Whitespace",3,4],
+      ["Number",4,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘a",
+    "tokens": [
+      ["Error",0,1],
+      ["BareWord",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘ab",
+    "tokens": [
+      ["Error",0,1],
+      ["BareWord",1,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘abc",
+    "tokens": [
+      ["ErrorSingleQuoteIsNotClosed",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘’",
+    "tokens": [
+      ["StringLiteral",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘abc’",
+    "tokens": [
+      ["StringLiteral",0,5]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "‘a’’",
+    "tokens": [
+      ["StringLiteral",0,3],
+      ["Error",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "“x”",
+    "tokens": [
+      ["QuotedIdentifier",0,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "“abc",
+    "tokens": [
+      ["ErrorDoubleQuoteIsNotClosed",0,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "”",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "’",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "−",
+    "tokens": [
+      ["Minus",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "−1",
+    "tokens": [
+      ["Minus",0,1],
+      ["Number",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1−2",
+    "tokens": [
+      ["Number",0,1],
+      ["Minus",1,2],
+      ["Number",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "é",
+    "tokens": [
+      ["Error",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "😀",
+    "tokens": [
+      ["Error",0,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a😀b",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Error",1,3],
+      ["BareWord",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x y",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x　",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "​",
+    "tokens": [
+      ["Whitespace",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "﻿SELECT 1",
+    "tokens": [
+      ["Whitespace",0,1],
+      ["BareWord",1,7],
+      ["Whitespace",7,8],
+      ["Number",8,9]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a b",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "",
+    "tokens": [
+      ["Whitespace",0,1]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a\r\nb",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,3],
+      ["BareWord",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a\rb",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2],
+      ["BareWord",2,3]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a\n\rb",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,3],
+      ["BareWord",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "{x:UInt8}",
+    "tokens": [
+      ["OpeningCurlyBrace",0,1],
+      ["BareWord",1,2],
+      ["Colon",2,3],
+      ["BareWord",3,8],
+      ["ClosingCurlyBrace",8,9]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "{'a': 1}",
+    "tokens": [
+      ["OpeningCurlyBrace",0,1],
+      ["StringLiteral",1,4],
+      ["Colon",4,5],
+      ["Whitespace",5,6],
+      ["Number",6,7],
+      ["ClosingCurlyBrace",7,8]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x->x * 2",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Arrow",1,3],
+      ["BareWord",3,4],
+      ["Whitespace",4,5],
+      ["Asterisk",5,6],
+      ["Whitespace",6,7],
+      ["Number",7,8]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a::b",
+    "tokens": [
+      ["BareWord",0,1],
+      ["DoubleColon",1,3],
+      ["BareWord",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "count(*)",
+    "tokens": [
+      ["BareWord",0,5],
+      ["OpeningRoundBracket",5,6],
+      ["Asterisk",6,7],
+      ["ClosingRoundBracket",7,8]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "SELECT\t1\f\u000b",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Whitespace",8,10]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x /* c */ .5",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Whitespace",1,2],
+      ["Comment",2,9],
+      ["Whitespace",9,10],
+      ["Dot",10,11],
+      ["Number",11,12]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "1 -- c\n.5",
+    "tokens": [
+      ["Number",0,1],
+      ["Whitespace",1,2],
+      ["Comment",2,6],
+      ["Whitespace",6,7],
+      ["Dot",7,8],
+      ["Number",8,9]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "SELECT 1;.5",
+    "tokens": [
+      ["BareWord",0,6],
+      ["Whitespace",6,7],
+      ["Number",7,8],
+      ["Semicolon",8,9],
+      ["Number",9,11]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "a.\n1",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Dot",1,2],
+      ["Whitespace",2,3],
+      ["Number",3,4]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "t.1 .2",
+    "tokens": [
+      ["BareWord",0,1],
+      ["Dot",1,2],
+      ["Number",2,3],
+      ["Whitespace",3,4],
+      ["Dot",4,5],
+      ["Number",5,6]
+    ]
+  },
+  {
+    "source": "edge case",
+    "sql": "x[1].1e5",
+    "tokens": [
+      ["BareWord",0,1],
+      ["OpeningSquareBracket",1,2],
+      ["Number",2,3],
+      ["ClosingSquareBracket",3,4],
+      ["Dot",4,5],
+      ["BareWord",5,8]
+    ]
+  }
+]
