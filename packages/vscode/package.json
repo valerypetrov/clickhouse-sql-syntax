@@ -64,6 +64,42 @@
         "path": "./syntaxes/clickhouse-sql.tmLanguage.json"
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "clickhouse-sql",
+        "scopes": {
+          "keyword": [
+            "keyword.other.sql"
+          ],
+          "variable": [
+            "variable.other.sql"
+          ],
+          "function": [
+            "entity.name.function.sql"
+          ],
+          "type": [
+            "storage.type.sql"
+          ],
+          "class": [
+            "entity.name.type.class.sql"
+          ],
+          "property": [
+            "variable.other.property.sql"
+          ],
+          "parameter": [
+            "variable.parameter.sql"
+          ],
+          "number": [
+            "constant.numeric.sql"
+          ]
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[clickhouse-sql]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
     "configuration": {
       "title": "ClickHouse SQL",
       "properties": {
@@ -127,7 +163,7 @@
   "scripts": {
     "generate": "tsx scripts/generate-grammar.ts",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
-    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",

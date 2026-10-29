@@ -1,0 +1,2 @@
+CREATE MATERIALIZED VIEW logs.mv on cluster '{cluster}' TO logs.t AS SELECT Timestamp as timestamp, mapKeys(message) as message_keys
+FROM logs.src GROUP BY component_type, timestamp, message_key;

@@ -3,6 +3,7 @@ import { check, type Diagnostic as SyntaxError } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
 import { registerFormatter } from "./format.js";
 import { registerHover } from "./hover.js";
+import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
 
@@ -37,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerCompletion(LANGUAGE_ID),
     registerHover(LANGUAGE_ID),
     registerSignatureHelp(LANGUAGE_ID),
+    registerSemanticTokens(LANGUAGE_ID),
     diagnostics,
     vscode.workspace.onDidOpenTextDocument(validate),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
