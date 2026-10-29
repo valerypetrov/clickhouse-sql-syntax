@@ -330,8 +330,10 @@ export function parseHypotheticalObjectQuery(p: P): Ast | null {
     if (kw(p, "CREATE")) {
       if (!kw(p, "HYPOTHETICAL")) return null;
       let projection = false;
-      if (kw(p, "PROJECTION")) projection = true;
-      else if (!kw(p, "INDEX")) return null;
+      if (!kw(p, "INDEX")) {
+        if (!kw(p, "PROJECTION")) return null;
+        projection = true;
+      }
       kw(p, "IF NOT EXISTS");
       if (!parseIdentifier(p)) return null;
       if (!kw(p, "ON")) return null;

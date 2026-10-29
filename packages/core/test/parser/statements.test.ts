@@ -128,6 +128,8 @@ describe("Other statements", () => {
     ["DELETE FROM t", 13, "Expected one of: ON, IN PARTITION, WHERE"],
     ["BEGIN", 5, "Expected TRANSACTION"],
     ["WATCH lv", 0, "Expected one of: Query, Query with output, EXPLAIN, SELECT query, possibly with UNION, list of union…"],
+    ["CREATE HYPOTHETICAL INEDX i ON t (a) TYPE minmax", 20, "Expected one of: INDEX, PROJECTION"],
+    ["DROP HYPOTHETICAL INEDX i ON t", 18, "Expected one of: INDEX, PROJECTION"],
   ]);
 });
 
