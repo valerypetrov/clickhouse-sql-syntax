@@ -57,7 +57,8 @@ describe("check()", () => {
     assert.deepEqual(errors("SELECT (1; SELECT 2"), [[9, "Unmatched parentheses: '(' at position 8 is never closed."]]);
   });
 
-  test("takes time in proportion to the input, not to the number of statements times its length", () => {
+  // Quadratic work would take half a minute here.
+  test("takes time in proportion to the input, not to the number of statements times its length", { timeout: 10_000 }, () => {
     const sql = Array.from({ length: 20000 }, (_, i) => `SELECT ${i} FROM t WHERE x IN (${i});`).join("\n");
     assert.deepEqual(check(sql), []);
   });
