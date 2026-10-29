@@ -77,9 +77,12 @@ export function parseUserNameWithHost(p: P, allowParam = false): Ast | null {
 /** ParserUserNamesWithHost: a non-empty list of user names; returns how many there are. */
 export function parseUserNamesWithHost(p: P, allowParam = false): number | null {
   let count = 0;
-  const ok = base(p, "UserNamesWithHost", () =>
-    listUtil(p, () => parseUserNameWithHostBody(p, allowParam) !== null && ++count > 0, undefined, false),
-  );
+  const name = () => {
+    if (!parseUserNameWithHostBody(p, allowParam)) return false;
+    count++;
+    return true;
+  };
+  const ok = base(p, "UserNamesWithHost", () => listUtil(p, name, undefined, false));
   return ok ? count : null;
 }
 
@@ -171,12 +174,13 @@ function parseRowPolicyTable(p: P): boolean {
 /** ON table or ON table, table, ...; returns how many tables there are. */
 function parseOnRowPolicyTables(p: P, multiple: boolean): number {
   let count = 0;
-  attempt(p, () => {
-    if (!kw(p, "ON")) return false;
-    if (!multiple) return parseRowPolicyTable(p) && ++count > 0;
-    return listUtil(p, () => parseRowPolicyTable(p) && ++count > 0, undefined, false);
-  });
-  return count;
+  const table = () => {
+    if (!parseRowPolicyTable(p)) return false;
+    count++;
+    return true;
+  };
+  const ok = attempt(p, () => kw(p, "ON") && (multiple ? listUtil(p, table, undefined, false) : table()));
+  return ok ? count : 0;
 }
 
 /** parseRowPolicyNamesAroundON: name[, name] [ON CLUSTER c] ON table[, table] [ON CLUSTER c]. */
@@ -344,9 +348,10 @@ function parseAlterSettingsProfileElements(p: P, inherit = false): boolean {
       if (!target) return false;
       if (target === "PROFILES") {
         if (!parseProfileNameOrId(p, false)) return false;
-        if (action === "ADD") return ++added > 0;
-        if (action === "DROP") return ++dropped > 0;
-        return false;
+        if (action === "ADD") added++;
+        else if (action === "DROP") dropped++;
+        else return false;
+        return true;
       }
       if (target === "SETTINGS") {
         if (action === "ADD" || action === "MODIFY") {
@@ -355,8 +360,9 @@ function parseAlterSettingsProfileElements(p: P, inherit = false): boolean {
           else modified++;
           return true;
         }
-        if (action === "DROP") return parseCompoundIdentifier(p) !== null && ++dropped > 0;
-        return false;
+        if (action !== "DROP" || !parseCompoundIdentifier(p)) return false;
+        dropped++;
+        return true;
       }
       if (action === "DROP" && target === "ALL PROFILES" && !dropAllProfiles) return (dropAllProfiles = true);
       if (action === "DROP" && target === "ALL SETTINGS" && !dropAllSettings) return (dropAllSettings = true);
