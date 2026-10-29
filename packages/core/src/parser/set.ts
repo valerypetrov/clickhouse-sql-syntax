@@ -57,8 +57,11 @@ function parseParameterValue(p: P): boolean {
   return parseCompoundIdentifier(p) !== null || parseLiteral(p) !== null || parseAllCollectionsOfLiterals(p) !== null;
 }
 
-/** name = value, param_name = value, name = DEFAULT, or just name when shorthand is allowed. */
-function parseSetting(p: P, shorthand: boolean): "setting" | "parameter" | "default" | null {
+/**
+ * parseNameValuePairWithParameterOrDefault: name = value, param_name = value, name = DEFAULT,
+ * or just name when shorthand is allowed. A {name:Type} value is a "substitution".
+ */
+export function parseSetting(p: P, shorthand: boolean): "setting" | "parameter" | "default" | "substitution" | null {
   const name = parseCompoundIdentifier(p);
   if (!name) return null;
   const hasEquals = tok(p, T.Equals);
@@ -74,7 +77,7 @@ function parseSetting(p: P, shorthand: boolean): "setting" | "parameter" | "defa
   const fn = parseFunction(p);
   if (fn && fn.name === "disk") return "setting";
   p.restore(beforeFunction);
-  if (parseSubstitution(p)) return "setting";
+  if (parseSubstitution(p)) return "substitution";
   return parseLiteralOrMap(p) ? "setting" : null;
 }
 
