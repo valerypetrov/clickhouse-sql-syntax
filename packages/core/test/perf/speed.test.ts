@@ -1,5 +1,5 @@
 // Time budgets for 1 MB inputs, about ten times what they take here, so that only work that grows
-// faster than the input fails them. A { timeout } cannot stop synchronous code, so each test measures.
+// faster than the input fails them. Each test takes the fastest of 3 runs, so warm-up does not count.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
@@ -59,7 +59,7 @@ for (const [name, sql] of Object.entries(INPUTS)) {
     ];
     for (const [what, budget, run] of budgets) {
       test(`${what} within ${budget} ms`, (t) => {
-        const ms = fastest(1, run);
+        const ms = fastest(3, run);
         t.diagnostic(`${ms.toFixed(0)} ms`);
         assert.ok(ms < budget, `took ${ms.toFixed(0)} ms`);
       });
