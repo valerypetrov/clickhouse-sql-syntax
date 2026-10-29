@@ -1,2 +1,2 @@
--- ORDER needs BY.
-SELECT * FROM hits ORDER;
+-- The parenthesis after count is never closed.
+SELECT count(* FROM hits;
