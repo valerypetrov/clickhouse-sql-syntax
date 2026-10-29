@@ -133,6 +133,25 @@ describe("Other statements", () => {
   ]);
 });
 
+// Builds with XRay take an instrumentation point, others only ON CLUSTER; errors follow the latter.
+describe("SYSTEM INSTRUMENT", () => {
+  accepts([
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 0 1 2",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' LOG EXIT 'this is a log printed at exit'",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' PROFILE",
+    "SYSTEM INSTRUMENT REMOVE ALL",
+    "SYSTEM INSTRUMENT REMOVE (SELECT id FROM system.instrumentation WHERE handler = 'log')",
+    "SYSTEM INSTRUMENT ADD ON CLUSTER c",
+    "SYSTEM INSTRUMENT REMOVE",
+  ]);
+
+  rejects([
+    ["SYSTEM INSTRUMENT ADD 'f' SLEEP ENTRY", 22, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SYSTEM INSTRUMENT ADD 'f' SLEEP MIDDLE 1", 22, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SYSTEM INSTRUMENT REMOVE xyz", 25, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
+  ]);
+});
+
 // What may follow each statement, in the order ClickHouse lists it.
 describe("Unexpected words after a statement", () => {
   rejects([
