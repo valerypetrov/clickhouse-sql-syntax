@@ -5,17 +5,69 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: npm test
+      - name: Oracle thresholds on the stored corpus
+        working-directory: oracle
+        run: npx tsx --test test/thresholds.test.ts
+
+  vscode:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Find the current VS Code version
+        id: vscode
+        run: >-
+          echo "stable=$(node -e "fetch('https://update.code.visualstudio.com/api/releases/stable')
+          .then((r) => r.json()).then((v) => console.log(v[0]))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: packages/vscode/.vscode-test/vscode-*
+          key: vscode-${{ runner.os }}-${{ steps.vscode.outputs.stable }}-1.90.0
+      - name: Package the extension
+        run: npm run package -w packages/vscode -- --out "$RUNNER_TEMP/clickhouse-sql.vsix"
+      # The tests that need a ClickHouse server skip themselves, since CLICKHOUSE_BINARY is not set.
+      - name: Test the package in VS Code ${{ steps.vscode.outputs.stable }}
+        env:
+          VSCODE_VERSION: ${{ steps.vscode.outputs.stable }}
+          VSIX: ${{ runner.temp }}/clickhouse-sql.vsix
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} npm run test:vscode
+      - name: Test the package in VS Code 1.90.0, the oldest it supports
+        env:
+          VSCODE_VERSION: 1.90.0
+          VSIX: ${{ runner.temp }}/clickhouse-sql.vsix
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} npm run test:vscode
