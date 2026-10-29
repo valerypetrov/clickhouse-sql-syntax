@@ -252,6 +252,8 @@ class Checker {
       this.reportToken(this.clamp(toks, lastIndex, endIndex), expectedMessage(last, sql, p.e));
       return afterStatement;
     }
+    // A query may run past a ';', like COPY to an unsupported target; the next one starts after it.
+    if (p.i > endIndex) return stop.kind === T.Semicolon ? stop.end : stop.start;
     return afterStatement;
   }
 
