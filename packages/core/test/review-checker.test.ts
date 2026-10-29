@@ -26,20 +26,18 @@ const TOO_DEEP_AST = "AST is too deep. Maximum: 1000";
 
 describe("where a statement begins", () => {
   // clickhouse-client skips only ASCII whitespace, so U+1680 (which /\s/ matches) is an error token.
-  test("reports U+1680 before a statement as an unrecognized token", { skip: "check() skips it with /\\s/ and accepts the input" }, () => {
+  test("reports U+1680 before a statement as an unrecognized token", () => {
     assert.deepEqual(errors("\u1680SELECT 1"), [[0, "Unrecognized token"]]);
     assert.deepEqual(errors("\u1680"), [[0, "Unrecognized token"]]);
     assert.deepEqual(errors("SELECT 1;\u1680SELECT 2"), [[9, "Unrecognized token"]]);
   });
 
-  test(
-    "counts bracket positions from a no-break space that starts the statement",
-    { skip: "check() starts the statement after the U+00A0 and says position 8" },
-    () => {
-      assert.deepEqual(errors("\u00a0SELECT ("), [[9, "Unmatched parentheses: '(' at position 10 is never closed."]]);
-      assert.deepEqual(errors("SELECT 1;\u00a0SELECT ("), [[18, "Unmatched parentheses: '(' at position 10 is never closed."]]);
-    },
-  );
+  test("counts bracket positions from a no-break space that starts the statement", () => {
+    assert.deepEqual(errors("\u00a0SELECT ("), [[9, "Unmatched parentheses: '(' at position 10 is never closed."]]);
+    assert.deepEqual(errors("SELECT 1;\u00a0SELECT ("), [[18, "Unmatched parentheses: '(' at position 10 is never closed."]]);
+    assert.deepEqual(errors("\u2003SELECT ("), [[9, "Unmatched parentheses: '(' at position 11 is never closed."]]);
+    assert.deepEqual(errors("\u2003SELECT 1"), []);
+  });
 
   // The client gives a comment on the line of the ';' to the query before it (adjustQueryEnd).
   test(

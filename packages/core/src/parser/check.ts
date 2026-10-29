@@ -348,15 +348,19 @@ class TokenStream {
   }
 }
 
+/** isWhitespaceASCII: clickhouse-client skips only these before a query. */
+function isAsciiWhitespace(c: string | undefined): boolean {
+  return c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f" || c === "\v";
+}
+
 /** Returns the syntax errors of every statement in `sql`. */
 export function check(sql: string): Diagnostic[] {
   const checker = new Checker(sql);
   const stream = new TokenStream(sql);
   let offset = 0;
   while (offset < sql.length) {
-    // Skip whitespace and ';' like clickhouse-client.
     let begin = offset;
-    while (begin < sql.length && (/\s/.test(sql[begin]!) || sql[begin] === ";")) begin++;
+    while (begin < sql.length && (isAsciiWhitespace(sql[begin]) || sql[begin] === ";")) begin++;
     if (begin >= sql.length) break;
     const start = stream.firstFrom(begin);
     const first = stream.significant[start]!;
