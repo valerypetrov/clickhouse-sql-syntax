@@ -291,7 +291,7 @@ class Checker {
       return this.sql.length;
     }
     const blank = this.sql.indexOf("\n\n", data);
-    return blank === -1 ? this.sql.length : blank + 2;
+    return blank === -1 ? this.sql.length : blank;
   }
 }
 
@@ -348,6 +348,19 @@ class TokenStream {
   }
 }
 
+/**
+ * ClientBase::adjustQueryEnd: a query that parsed takes the ';'s after it, and the rest of
+ * its line when only whitespace and comments are left there.
+ */
+function adjustQueryEnd(sql: string, stream: TokenStream, end: number): number {
+  const toks = stream.significant;
+  let i = stream.firstFrom(end);
+  for (; toks[i]!.kind === T.Semicolon; i++) end = toks[i]!.end;
+  const newline = sql.indexOf("\n", end);
+  const lineEnd = newline === -1 ? sql.length : newline;
+  return lineEnd <= toks[i]!.start ? lineEnd : end;
+}
+
 /** isWhitespaceASCII: clickhouse-client skips only these before a query. */
 function isAsciiWhitespace(c: string | undefined): boolean {
   return c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f" || c === "\v";
@@ -370,7 +383,9 @@ export function check(sql: string): Diagnostic[] {
       offset = first.end;
       continue;
     }
-    const next = checker.checkStatement({ begin, toks: stream.significant, start });
+    const reported = checker.diagnostics.length;
+    let next = checker.checkStatement({ begin, toks: stream.significant, start });
+    if (checker.diagnostics.length === reported) next = adjustQueryEnd(sql, stream, next);
     if (next <= offset) break;
     offset = next;
   }

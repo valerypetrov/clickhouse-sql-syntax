@@ -40,14 +40,10 @@ describe("where a statement begins", () => {
   });
 
   // The client gives a comment on the line of the ';' to the query before it (adjustQueryEnd).
-  test(
-    "starts the next statement after a comment on the same line as the ';'",
-    { skip: "check() starts the statement at the comment and says position 13 (line 2, col 8)" },
-    () => {
-      assert.deepEqual(errors("SELECT 1; -- c\nSELECT ("), [[23, "Unmatched parentheses: '(' at position 8 is never closed."]]);
-      assert.deepEqual(errors("SELECT 1; /* a */ -- b\nSELECT ("), [[31, "Unmatched parentheses: '(' at position 8 is never closed."]]);
-    },
-  );
+  test("starts the next statement after a comment on the same line as the ';'", () => {
+    assert.deepEqual(errors("SELECT 1; -- c\nSELECT ("), [[23, "Unmatched parentheses: '(' at position 8 is never closed."]]);
+    assert.deepEqual(errors("SELECT 1; /* a */ -- b\nSELECT ("), [[31, "Unmatched parentheses: '(' at position 8 is never closed."]]);
+  });
 });
 
 describe("AST depth", () => {

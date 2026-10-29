@@ -90,6 +90,18 @@ describe("check()", () => {
     assert.equal(found[0]![0], 32);
   });
 
+  // Measured with clickhouse local, which applies adjustQueryEnd like clickhouse-client.
+  test("gives the rest of the line after a ';' to the query before it", () => {
+    const opened = (position: string) => `Unmatched parentheses: '(' at position ${position} is never closed.`;
+    assert.deepEqual(errors("SELECT 1 -- c\n; -- d\nSELECT ("), [[29, opened("8")]]);
+    assert.deepEqual(errors("INSERT INTO t VALUES (1); -- c\nSELECT ("), [[39, opened("8")]]);
+    // Not when a query follows on the same line, or after the data of FORMAT.
+    assert.deepEqual(errors("SELECT 1; SELECT 2 -- c\nSELECT ("), [[31, opened("22 (line 2, col 8)")]]);
+    assert.deepEqual(errors("INSERT INTO t FORMAT CSV\n1\n\n-- c\nSELECT ("), [[41, opened("13 (line 2, col 8)")]]);
+    // A comment that goes on to the next line is cut there, so the next query starts inside it.
+    assert.deepEqual(errors("SELECT 1; /* a \n */ SELECT ("), [[27, opened("11")]]);
+  });
+
   test("reads the rest of the input as part of COPY to an unsupported target, as ClickHouse does", () => {
     assert.deepEqual(check("COPY t TO 'file.csv'; garbage"), []);
   });
