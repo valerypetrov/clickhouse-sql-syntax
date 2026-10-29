@@ -6,7 +6,7 @@
 import { Ast, stringValue } from "./ast.js";
 import { parseIdentifier, parseNumber, parseStringLiteral, parseSubstitution } from "./elements.js";
 import { parseExpression, parseIntervalKind } from "./expression.js";
-import { base, kw, listUtil, P, T, tok, tokQuiet } from "./state.js";
+import { attempt, base, kw, listUtil, P, T, tok, tokQuiet } from "./state.js";
 
 /** parseIdentifierOrStringLiteral: a name or a non-empty string; moves back on failure. */
 export function parseIdentifierOrStringLiteral(p: P): string | null {
@@ -21,8 +21,14 @@ export function parseIdentifierOrStringLiteral(p: P): string | null {
 }
 
 /** parseIdentifiersOrStringLiterals: a non-empty comma-separated list of them. */
-export function parseIdentifiersOrStringLiterals(p: P): boolean {
-  return listUtil(p, () => parseIdentifierOrStringLiteral(p) !== null, undefined, false);
+export function parseIdentifiersOrStringLiterals(p: P): string[] | null {
+  const names: string[] = [];
+  const element = () => {
+    const name = parseIdentifierOrStringLiteral(p);
+    if (name !== null) names.push(name);
+    return name !== null;
+  };
+  return listUtil(p, element, undefined, false) ? names : null;
 }
 
 /** ASTQueryWithOnCluster::parse, called after ON: CLUSTER name. */
@@ -59,35 +65,50 @@ export function parseDatabaseAsAST(p: P): boolean {
   return parseIdentifier(p, true) !== null;
 }
 
-/** parseDatabaseAndTableNameOrAsterisks: *, *.*, db.*, db.table, table, with * wildcards after names. */
-export function parseDatabaseAndTableNameOrAsterisks(p: P): boolean {
-  const begin = p.i;
-  if (tok(p, T.Asterisk)) {
-    const beforeDot = p.i;
-    if (tok(p, T.Dot) && tok(p, T.Asterisk)) return true;
-    p.restore(beforeDot);
-    return true;
-  }
-  if (parseIdentifier(p)) {
-    let wildcard = tok(p, T.Asterisk);
+export interface TableNameOrAsterisks {
+  database: string;
+  table: string;
+  wildcard: boolean;
+  /** The name has no database part, so the current database is meant. */
+  defaultDatabase: boolean;
+}
+
+/** parseDatabaseAndTableNameOrAsterisks: *, *.*, db.*, db.table or table, a name maybe with a * wildcard after it. */
+export function parseDatabaseAndTableNameOrAsterisks(p: P): TableNameOrAsterisks | null {
+  return attempt(p, () => {
+    const result: TableNameOrAsterisks = { database: "", table: "", wildcard: false, defaultDatabase: false };
+    if (tok(p, T.Asterisk)) {
+      const beforeDot = p.i;
+      if (tok(p, T.Dot) && tok(p, T.Asterisk)) return result;
+      p.restore(beforeDot);
+      result.defaultDatabase = true;
+      return result;
+    }
+    const first = parseIdentifier(p);
+    if (!first) return null;
+    if (tok(p, T.Asterisk)) result.wildcard = true;
     const beforeDot = p.i;
     if (tok(p, T.Dot)) {
-      if (tok(p, T.Asterisk)) return true;
-      if (wildcard) {
-        p.restore(begin);
-        return false;
+      if (tok(p, T.Asterisk)) {
+        result.database = first.name;
+        return result;
       }
-      if (parseIdentifier(p)) {
-        tok(p, T.Asterisk);
-        return true;
+      // db*.table: a database wildcard cannot go with a table name.
+      if (result.wildcard) return null;
+      const second = parseIdentifier(p);
+      if (second) {
+        result.database = first.name;
+        result.table = second.name;
+        if (tok(p, T.Asterisk)) result.wildcard = true;
+        return result;
       }
     }
     p.restore(beforeDot);
-    if (!wildcard) wildcard = tok(p, T.Asterisk);
-    return true;
-  }
-  p.restore(begin);
-  return false;
+    result.table = first.name;
+    result.defaultDatabase = true;
+    if (!result.wildcard && tok(p, T.Asterisk)) result.wildcard = true;
+    return result;
+  });
 }
 
 /** ParserPartition: ID 'x', ALL, or a partition expression. */

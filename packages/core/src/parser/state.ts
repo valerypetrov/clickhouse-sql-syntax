@@ -277,15 +277,19 @@ function infoOf(keyword: string): KeywordInfo {
   return info;
 }
 
-/** ParserKeyword(keyword).ignore(pos, expected). */
-export function kw(p: P, keyword: string): boolean {
+/**
+ * ParserKeyword(keyword).ignore(pos, expected). An `id` tells this keyword apart from another
+ * one with the same text, as two keyword strings at different addresses are in ClickHouse.
+ */
+export function kw(p: P, keyword: string, id?: string): boolean {
   const info = infoOf(keyword);
-  p.expect(keyword);
+  const ids = id === undefined ? info.ids : info.ids.map((_, w) => (w === 0 ? id : `${id}@${w}`));
+  p.expect(keyword, p.i, ids[0]);
   if (p.depth + 1 > MAX_PARSER_DEPTH) p.increaseDepth();
   const begin = p.i;
   if (p.kind() !== T.BareWord) return false;
   for (let w = 0; w < info.lowerWords.length; w++) {
-    p.expect(info.descriptions[w]!, p.i, info.ids[w]);
+    p.expect(info.descriptions[w]!, p.i, ids[w]);
     if (p.kind() !== T.BareWord || p.lower() !== info.lowerWords[w]) {
       p.restore(begin);
       return false;
