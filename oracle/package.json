@@ -8,6 +8,7 @@
   "scripts": {
     "corpus": "tsx src/build-corpus.ts",
     "oracle": "tsx src/oracle.ts",
+    "oracle:format": "tsx src/format-oracle.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/**/*.test.ts\""
   },
