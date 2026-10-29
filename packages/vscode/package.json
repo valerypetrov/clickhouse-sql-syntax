@@ -167,6 +167,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
+    "build:e2e:stress": "esbuild test/e2e/stress-run.ts test/e2e/stress-index.ts test/e2e/stress.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
+    "test:e2e:stress": "npm run build && npm run build:e2e:stress && node out/e2e/stress-run.js",
     "build:e2e:corpus": "esbuild test/e2e/corpus-run.ts test/e2e/corpus-index.ts test/e2e/corpus.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
     "test:e2e:corpus": "npm run build && npm run build:e2e:corpus && node out/e2e/corpus-run.js",
     "package": "vsce package --no-dependencies",

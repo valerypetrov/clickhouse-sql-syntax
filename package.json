@@ -24,6 +24,7 @@
     "generate": "tsx scripts/generate-names.ts",
     "package:vscode": "npm run package -w packages/vscode",
     "test:vscode": "npm run test:e2e -w packages/vscode",
+    "test:vscode:stress": "npm run test:e2e:stress -w packages/vscode",
     "test:vscode:corpus": "npm run test:e2e:corpus -w packages/vscode"
   },
   "devDependencies": {
