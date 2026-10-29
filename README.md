@@ -86,5 +86,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
 
 ## License
 
-[Apache License 2.0](LICENSE), the same as ClickHouse. The lexer and parser follow the structure
-of ClickHouse's parser in `src/Parsers`, and the keyword and data type lists are generated from it.
+[Apache License 2.0 with the Commons Clause](LICENSE): you may use, modify and share it, but not sell it. Parts are derived from ClickHouse (Apache License 2.0); see [NOTICE](NOTICE).

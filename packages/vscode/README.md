@@ -64,4 +64,4 @@ grammar tests check that both colour the test files the same way.
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0 with the Commons Clause](LICENSE): free to use, modify and share, but not to sell. See [NOTICE](NOTICE).

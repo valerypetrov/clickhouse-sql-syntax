@@ -10,7 +10,7 @@
     "syntax-highlighting",
     "linter"
   ],
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "Valery Petrov <valerypetrov@icloud.com>",
   "repository": {
     "type": "git",
@@ -27,7 +27,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=22"

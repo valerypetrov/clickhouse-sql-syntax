@@ -2,7 +2,7 @@
   "name": "clickhouse-sql-syntax-monorepo",
   "private": true,
   "description": "Syntax highlighting and syntax checking for ClickHouse SQL",
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "repository": {
     "type": "git",

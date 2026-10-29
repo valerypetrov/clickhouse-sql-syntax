@@ -25,4 +25,4 @@ The types are documented in [`src/types.ts`](src/types.ts).
 
 ## License
 
-Apache License 2.0.
+Apache License 2.0 with the Commons Clause: you may use, modify and share it, but not sell it. See LICENSE and NOTICE.
