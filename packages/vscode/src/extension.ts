@@ -3,13 +3,14 @@ import { check, type Diagnostic as SyntaxError } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
 import { registerFormatter } from "./format.js";
 import { registerHover } from "./hover.js";
+import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
 
 export const LANGUAGE_ID = "clickhouse-sql";
 const CHECK_DELAY_MS = 300;
 
 /** Checks ClickHouse SQL documents when they open and shortly after each change. */
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
 
@@ -46,6 +47,7 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );
   vscode.workspace.textDocuments.forEach(validate);
+  return registerServer(context, LANGUAGE_ID);
 }
 
 function toDiagnostic(document: vscode.TextDocument, error: SyntaxError): vscode.Diagnostic {

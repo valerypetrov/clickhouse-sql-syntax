@@ -7,6 +7,7 @@ export function run(): Promise<void> {
   mocha.addFile(resolve(__dirname, "extension.test.js"));
   mocha.addFile(resolve(__dirname, "format.test.js"));
   mocha.addFile(resolve(__dirname, "complete.test.js"));
+  mocha.addFile(resolve(__dirname, "server.test.js"));
   return new Promise((done, fail) => {
     mocha.run((failures) => (failures > 0 ? fail(new Error(`${failures} test(s) failed`)) : done()));
   });

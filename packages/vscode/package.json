@@ -33,7 +33,12 @@
   "main": "./dist/extension.js",
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": "limited",
+      "description": "In Restricted Mode the server check uses only the user settings for clickhouseSql.server.enabled and clickhouseSql.server.url.",
+      "restrictedConfigurations": [
+        "clickhouseSql.server.enabled",
+        "clickhouseSql.server.url"
+      ]
     },
     "virtualWorkspaces": true
   },
@@ -77,16 +82,54 @@
           "default": "upper",
           "scope": "language-overridable",
           "description": "The case of keywords when formatting ClickHouse SQL."
+        },
+        "clickhouseSql.server.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Check names, functions and types against a ClickHouse server. Each SELECT, and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`, is sent as `EXPLAIN QUERY TREE` with `readonly=1`; nothing is executed."
+        },
+        "clickhouseSql.server.url": {
+          "type": "string",
+          "default": "http://localhost:8123",
+          "description": "The HTTP interface of the ClickHouse server."
+        },
+        "clickhouseSql.server.user": {
+          "type": "string",
+          "default": "default",
+          "markdownDescription": "The ClickHouse user. Set its password with the **ClickHouse SQL: Set Server Password** command."
+        },
+        "clickhouseSql.server.database": {
+          "type": "string",
+          "default": "",
+          "description": "The database of table names without one; empty for the default database of the user."
+        },
+        "clickhouseSql.server.timeoutMs": {
+          "type": "integer",
+          "default": 5000,
+          "minimum": 1,
+          "description": "How long to wait for the server, in milliseconds."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "clickhouseSql.server.setPassword",
+        "title": "Set Server Password",
+        "category": "ClickHouse SQL"
+      },
+      {
+        "command": "clickhouseSql.server.refreshSchema",
+        "title": "Refresh Schema",
+        "category": "ClickHouse SQL"
+      }
+    ]
   },
   "scripts": {
     "generate": "tsx scripts/generate-grammar.ts",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
-    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\"",
+    "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
     "package": "vsce package --no-dependencies",
     "vscode:prepublish": "npm run build -- --minify"
