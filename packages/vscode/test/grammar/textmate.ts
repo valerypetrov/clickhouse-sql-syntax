@@ -7,7 +7,7 @@ const ROOT_SCOPE = "source.clickhouse-sql";
 let grammar: Promise<IGrammar> | undefined;
 
 // Loads the grammar with the same TextMate and regex engines that VS Code uses.
-function loadGrammar(): Promise<IGrammar> {
+export function loadGrammar(): Promise<IGrammar> {
   grammar ??= (async () => {
     const wasm = readFileSync(require.resolve("vscode-oniguruma/release/onig.wasm"));
     await loadWASM(wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength));
