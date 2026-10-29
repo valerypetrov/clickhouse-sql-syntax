@@ -101,6 +101,11 @@ function asCase(entry: Entry): Case {
   return { file: entry.file, line: entry.line, ...(entry.mutation ? { mutation: entry.mutation } : {}), sql: entry.sql };
 }
 
+/** ClickHouse ends every exception text with a '.' that the corpus leaves out, so drop it here too. */
+function withoutFinalPeriod(message: string): string {
+  return message.endsWith(".") ? message.slice(0, -1) : message;
+}
+
 function first(diagnostics: Diagnostic[]): Diagnostic {
   return diagnostics.reduce((a, b) => (b.start < a.start ? b : a));
 }
@@ -166,7 +171,7 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
     if (offset === undefined) continue;
     const d = first(diagnostics);
     m.positionCompared++;
-    if (d.message === entry.message) m.messageMatched++;
+    if (withoutFinalPeriod(d.message) === entry.message) m.messageMatched++;
     if (d.start === offset) m.positionMatched++;
     else positionMismatches.push({ ...asCase(entry), ...clickhouse, clickhouseOffset: offset, start: d.start, message: d.message });
   }

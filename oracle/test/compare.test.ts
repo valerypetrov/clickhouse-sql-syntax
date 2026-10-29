@@ -60,6 +60,16 @@ test("a check() that always throws scores 0", () => {
   assert.match(formatReport(report, 3), /check\(\) threw on 2 statements/);
 });
 
+test("a message ending in its own period matches the corpus text without it", () => {
+  const corpus = corpusOf([
+    { sql: "SELECT (1", valid: false, position: 8, message: "Unmatched parentheses: '(' at position 8 is never closed" },
+    { sql: "SELECT 1 +", valid: false, position: 11, message: "Expected one of: token, OR" },
+  ]);
+  const fake = (sql: string): Diagnostic[] =>
+    sql === "SELECT (1" ? [error(7, "Unmatched parentheses: '(' at position 8 is never closed.")] : [error(10, "Expected one of: token, OR")];
+  assert.equal(compare(corpus, fake, "test").metrics.messageMatch, 1);
+});
+
 test("converts ClickHouse byte positions to UTF-16 offsets", () => {
   assert.equal(utf16Offset("SELECT 1", 1), 0);
   assert.equal(utf16Offset("SELECT 'é', (", 14), 12);
