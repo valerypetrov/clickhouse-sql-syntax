@@ -186,6 +186,8 @@ export interface ClickHouseSqlSyntax {
   highlight(sql: string): HighlightSpan[];
   /** Syntax errors of every ';'-separated statement; an empty array when the input is valid. */
   check(sql: string): Diagnostic[];
+  /** The input with ClickHouse-style layout and keyword case; meaning, names and comments are kept. */
+  format(sql: string, options?: FormatOptions): string;
 }
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
