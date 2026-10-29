@@ -1,8 +1,11 @@
 import * as vscode from "vscode";
 import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete } from "clickhouse-sql-syntax";
 
-/** Where the databases, tables and columns to complete come from, such as a live server; a failure means none. */
-export type SchemaSource = (document: vscode.TextDocument) => CompletionSchema | undefined | Promise<CompletionSchema | undefined>;
+/** Where the databases, tables and columns to complete at `offset` come from, such as a live server; a failure means none. */
+export type SchemaSource = (document: vscode.TextDocument, offset: number) => CompletionSchema | undefined | Promise<CompletionSchema | undefined>;
+
+/** How long completion waits for the schema; a list made without it is asked for again at the next key. */
+const SCHEMA_WAIT_MS = 1000;
 
 const KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
   keyword: vscode.CompletionItemKind.Keyword,
@@ -31,14 +34,23 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       const text = document.getText();
       const offset = document.offsetAt(position);
       if (context.triggerCharacter === " " && !opensAfterSpace(text, offset)) return undefined;
-      const names = await Promise.resolve(schema?.(document)).catch(() => undefined);
-      const candidates = complete(text, offset, { schema: names });
+      const names = await schemaWithin(schema, document, offset);
+      const candidates = complete(text, offset, { schema: names === "late" ? undefined : names });
       const word = document.getWordRangeAtPosition(position);
       const bracketFollows = text[word ? document.offsetAt(word.end) : offset] === "(";
-      return candidates.map((candidate, i) => toItem(candidate, i, bracketFollows));
+      const items = candidates.map((candidate, i) => toItem(candidate, i, bracketFollows));
+      return new vscode.CompletionList(items, names === "late");
     },
   };
   return vscode.languages.registerCompletionItemProvider(languageId, provider, ".", "(", " ");
+}
+
+/** The schema from the source, undefined when it fails, or "late" when it takes longer than SCHEMA_WAIT_MS. */
+async function schemaWithin(source: SchemaSource | undefined, document: vscode.TextDocument, offset: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), SCHEMA_WAIT_MS)));
+  const names = Promise.resolve(source?.(document, offset)).catch(() => undefined);
+  return Promise.race([names, late]).finally(() => clearTimeout(timer));
 }
 
 /** Whether the space at `offset` follows a word after which a name comes, as in FROM or ENGINE =. */

@@ -73,6 +73,15 @@ async function open(content: string): Promise<vscode.TextEditor> {
   return vscode.window.showTextDocument(document);
 }
 
+/** The completion items at the "|" of `text`, as label and detail. */
+async function completions(text: string, kind: vscode.CompletionItemKind, trigger?: string): Promise<string[][]> {
+  const editor = await open(text.replace("|", ""));
+  const position = editor.document.positionAt(text.indexOf("|"));
+  const list = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", editor.document.uri, position, trigger);
+  const items = list.items.filter((item) => item.kind === kind);
+  return items.map((item) => [typeof item.label === "string" ? item.label : item.label.label, item.detail ?? ""]).sort();
+}
+
 async function replaceAll(editor: vscode.TextEditor, text: string): Promise<void> {
   const document = editor.document;
   const whole = new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length));
@@ -202,6 +211,55 @@ describe("ClickHouse server check", function () {
     await vscode.commands.executeCommand("clickhouseSql.server.refreshSchema");
     await api.schema.tables("logs");
     assert.ok(sent.slice(before).some((request) => request.sql.includes("FROM system.tables")));
+  });
+
+  it("completes the databases, tables and columns of the server", async () => {
+    const columns = [
+      ["Timestamp", "DateTime"],
+      ["component_type", "String"],
+      ["log_type", "String"],
+      ["message", "Map(String, String)"],
+    ];
+    const { Field, Module, Struct } = vscode.CompletionItemKind;
+    assert.deepEqual(await completions("SELECT | FROM logs.rc_logs_replicated_365", Field), columns);
+    assert.deepEqual(await completions("SELECT t.| FROM logs.rc_logs_replicated_365 AS t", Field, "."), columns);
+    assert.deepEqual(await completions("SELECT * FROM logs.|", Struct, "."), [
+      ["rc_logs_replicated_365", "logs"],
+      ["unique_message_keys_replicated", "logs"],
+    ]);
+    for (const text of ["SELECT * FROM |", "SELECT * FROM logs.rc_logs_replicated_365 JOIN |", "INSERT INTO |"])
+      assert.ok((await completions(text, Module, " ")).some(([name]) => name === "logs"), text);
+
+    await settings().update("database", "logs", global);
+    try {
+      assert.deepEqual(await completions("SELECT | FROM rc_logs_replicated_365", Field), columns);
+    } finally {
+      await settings().update("database", undefined, global);
+    }
+  });
+
+  it("completes without the names of a server that does not answer", async () => {
+    const silent = createServer(() => {});
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const url = settings().get<string>("url");
+    await settings().update("url", `http://127.0.0.1:${(silent.address() as AddressInfo).port}`, global);
+    try {
+      const editor = await open("SELECT * FROM ");
+      const start = Date.now();
+      const list = await vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        editor.document.uri,
+        editor.document.positionAt(14),
+      );
+      assert.ok(Date.now() - start < 3_000, "completion does not wait for the 5 s timeout");
+      assert.ok(list.isIncomplete);
+      assert.ok(list.items.some((item) => item.label === "numbers"));
+      assert.ok(!list.items.some((item) => item.kind === vscode.CompletionItemKind.Module));
+    } finally {
+      await settings().update("url", url, global);
+      silent.closeAllConnections();
+      silent.close();
+    }
   });
 
   it("notes a wrong password once and shows no diagnostics for it", async () => {

@@ -13,6 +13,7 @@ const CHECK_DELAY_MS = 300;
 /** Checks ClickHouse SQL documents when they open and shortly after each change. */
 export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
+  const server = registerServer(context, LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
 
   const cancel = (document: vscode.TextDocument): void => {
@@ -35,7 +36,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
 
   context.subscriptions.push(
     registerFormatter(LANGUAGE_ID),
-    registerCompletion(LANGUAGE_ID),
+    registerCompletion(LANGUAGE_ID, (document, offset) => server.schema.completion(document.getText(), offset)),
     registerHover(LANGUAGE_ID),
     registerSignatureHelp(LANGUAGE_ID),
     registerSemanticTokens(LANGUAGE_ID),
@@ -49,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );
   vscode.workspace.textDocuments.forEach(validate);
-  return registerServer(context, LANGUAGE_ID);
+  return server;
 }
 
 function toDiagnostic(document: vscode.TextDocument, error: SyntaxError): vscode.Diagnostic {
