@@ -84,7 +84,7 @@
   "scripts": {
     "generate": "tsx scripts/generate-grammar.ts",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
-    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
