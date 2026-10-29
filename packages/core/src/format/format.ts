@@ -32,7 +32,9 @@ export function format(sql: string, options: FormatOptions = {}): string {
 }
 
 function formatUnit(sql: string, unit: Unit, keywordCase: KeywordCase, indent: string, eol: string): string {
-  const original = sql.slice(unit.start, unit.end);
+  let original = sql.slice(unit.start, unit.end);
+  // A line comment at the end keeps its "\r", which the eol written after the unit would double.
+  if (eol === "\r\n") original = original.replace(/\r$/, "");
   if (unit.statement && check(sql.slice(unit.statement.start, unit.statement.end)).length > 0) return original;
   const piece = toPiece(sql, unit, eol);
   const text = print(piece, analyze(piece.sig), keywordCase, indent, eol);

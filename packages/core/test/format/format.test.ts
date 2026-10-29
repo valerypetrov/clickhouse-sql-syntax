@@ -181,6 +181,11 @@ describe("format() keeps the line endings of the input", () => {
     formats("select 'a\r\nb', /* c\r\nd */ 1\r\n", "SELECT\r\n    'a\r\nb', /* c\r\nd */\r\n    1\r\n");
   });
 
+  test("CRLF after a line comment that ends a statement with an error", () => {
+    formats("select (; -- c\r\nselect 1\r\n", "select (; -- c\r\n\r\nSELECT 1\r\n");
+    formats("select 1\r\nselect (; -- c\r\n", "select 1\r\nselect (; -- c\r\n");
+  });
+
   test("LF when the first line break is LF", () => {
     assert.equal(format("select 1;\nselect 2;\r\n"), "SELECT 1;\n\nSELECT 2;\n");
   });
