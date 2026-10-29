@@ -38,8 +38,9 @@ export class Schema {
    * database and of the databases the statement names, and the columns of the tables it names.
    */
   async completion(sql: string, offset: number): Promise<CompletionSchema> {
-    const names = statementNames(sql, offset);
     const [databases, current] = await Promise.all([this.databases(), this.currentDatabase()]);
+    if (databases.length === 0) return {};
+    const names = statementNames(sql, offset);
     const listed = databases.filter((database) => database === current || names.has(database));
     const lists = await Promise.all(listed.map(async (database) => (await this.tables(database)).map((name) => ({ database, name }))));
     const tables = lists.flat().map(async (table) => ({
@@ -78,12 +79,20 @@ export class Schema {
 
 /** The bare words and quoted identifiers of the statement at `offset`. */
 function statementNames(sql: string, offset: number): Set<string> {
+  const tokens = tokenize(sql);
+  let start = 0;
+  let end = tokens.length;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i]!.kind !== T.Semicolon) continue;
+    if (tokens[i]!.start >= offset) {
+      end = i;
+      break;
+    }
+    start = i + 1;
+  }
   const names = new Set<string>();
-  for (const token of tokenize(sql)) {
-    if (token.kind === T.Semicolon) {
-      if (token.start >= offset) break;
-      names.clear();
-    } else if (token.kind === T.BareWord) {
+  for (const token of tokens.slice(start, end)) {
+    if (token.kind === T.BareWord) {
       names.add(sql.slice(token.start, token.end));
     } else if (token.kind === T.QuotedIdentifier) {
       names.add(sql.slice(token.start + 1, token.end - 1).replace(/\\(.)/g, "$1").replace(/``|""/g, (pair) => pair[0]!));
