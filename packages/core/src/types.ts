@@ -187,3 +187,14 @@ export interface ClickHouseSqlSyntax {
   /** Syntax errors of every ';'-separated statement; an empty array when the input is valid. */
   check(sql: string): Diagnostic[];
 }
+
+/** How format() writes keywords: in upper case, in lower case, or as they are. */
+export type KeywordCase = "upper" | "lower" | "preserve";
+
+/** Options of format(). */
+export interface FormatOptions {
+  /** "upper" by default. */
+  keywordCase?: KeywordCase;
+  /** Spaces per level of indentation, 4 by default. */
+  indentSize?: number;
+}
