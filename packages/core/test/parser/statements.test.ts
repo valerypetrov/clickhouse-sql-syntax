@@ -130,3 +130,32 @@ describe("Other statements", () => {
     ["WATCH lv", 0, "Expected one of: Query, Query with output, EXPLAIN, SELECT query, possibly with UNION, list of union…"],
   ]);
 });
+
+// What may follow each statement, in the order ClickHouse lists it.
+describe("Unexpected words after a statement", () => {
+  rejects([
+    ["CREATE USER u NOT IDENTIFIED, xyz", 28, "Expected one of: VALID UNTIL, VALID FOR, GRANTS, HOST, SettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, ROLE, DEFAULT ROLE, ON, GRANTEES, DEFAULT DATABASE, IN, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE USER u IDENTIFIED xyz", 25, "Expected one of: WITH, NO_PASSWORD, PLAINTEXT_PASSWORD, SHA256_PASSWORD, DOUBLE_SHA1_PASSWORD, LDAP, KERBEROS, SSL_CERTIFICATE, BCRYPT_PASSWORD, SSH_KEY, HTTP, JWT, SCRAM_SHA256_PASSWORD, NO_AUTHENTICATION, SHA256_HASH, SCRAM_SHA256_HASH, DOUBLE_SHA1_HASH, BCRYPT_HASH, BY, end of query"],
+    ["ALTER USER u xyz", 13, "Expected one of: token, At, Comma, NOT IDENTIFIED, IDENTIFIED, ADD, RESET AUTHENTICATION METHODS TO NEW, HOST, AlterSettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, DROP, MODIFY, SET, DEFAULT ROLE, ON, GRANTEES, DEFAULT DATABASE, RENAME TO, IN, VALID UNTIL, VALID FOR"],
+    ["CREATE ROLE r xyz", 14, "Expected one of: token, At, Comma, SettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, ON, IN, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE QUOTA q xyz", 15, "Expected one of: token, Comma, NOT KEYED, KEY BY, KEYED BY, IPV4_PREFIX_BITS, IPV6_PREFIX_BITS, FOR, ON, IN, TO, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE ROW POLICY p ON t xyz", 25, "Expected one of: token, Asterisk, Dot, ON, Comma, AS, FOR, USING, WITH CHECK, IN, TO, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE SETTINGS PROFILE p xyz", 26, "Expected one of: token, Comma, SettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, INHERIT, ON, IN, TO, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE MASKING POLICY m ON t xyz", 29, "Expected one of: UPDATE, WHERE, TO, PRIORITY, ON, IN"],
+    ["GRANT SELECT ON t TO u xyz", 23, "Expected one of: token, At, Comma, EXCEPT, ON, WITH GRANT OPTION, WITH ADMIN OPTION, WITH REPLACE OPTION, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["REVOKE SELECT ON t FROM u xyz", 26, "Expected one of: token, At, Comma, EXCEPT, ON, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SET ROLE r xyz", 11, "Expected one of: token, At, Comma, EXCEPT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SHOW CREATE USER u xyz", 19, "Expected one of: token, At, Comma, INTO OUTFILE, FORMAT, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["DROP USER u xyz", 12, "Expected one of: token, At, Comma, FROM, ON, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["BACKUP TABLE t TO Null xyz", 23, "Expected one of: token sequence, Dot, token, OpeningRoundBracket, SETTINGS, ASYNC, SYNC, INTO OUTFILE, FORMAT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SYSTEM FLUSH LOGS a, b xyz", 23, "Expected one of: token, Comma, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SHOW GRANTS xyz", 12, "Expected one of: FOR, WITH IMPLICIT, FINAL, INTO OUTFILE, FORMAT, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE TABLE t (a UInt8 xyz) ENGINE = Memory", 24, "Expected one of: SIGNED, UNSIGNED, COLLATE, NOT, NULL, DEFAULT, MATERIALIZED, ALIAS, EPHEMERAL, AUTO_INCREMENT, COMMENT, CODEC, STATISTICS, TTL, PRIMARY KEY, SETTINGS, token, Comma, ClosingRoundBracket"],
+    ["CREATE DICTIONARY d (a UInt8) PRIMARY KEY a xyz", 44, "Expected one of: token, Comma, SOURCE, LIFETIME, LAYOUT, RANGE, SETTINGS, COMMENT, INTO OUTFILE, FORMAT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["CREATE VIEW v xyz", 14, "Expected one of: token sequence, Dot, token, UUID, ON, REFRESH, OpeningRoundBracket, sql security, DEFINER, SQL SECURITY, COMMENT, AS"],
+    ["CREATE MATERIALIZED VIEW v xyz", 27, "Expected one of: token sequence, Dot, token, UUID, ON, REFRESH, TO INNER UUID, TO, OpeningRoundBracket, storage definition, ENGINE, PARTITION BY, PRIMARY KEY, ORDER BY, UNIQUE KEY, SAMPLE BY, TTL, SETTINGS, POPULATE, EMPTY, sql security, DEFINER, SQL SECURITY, COMMENT, AS"],
+    ["OPTIMIZE TABLE t xyz", 17, "Expected one of: token, Dot, ON, PARTITION, DRY RUN, FINAL, FORCE, DEDUPLICATE, CLEANUP, MANIFEST, INTO OUTFILE, FORMAT, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["INSERT INTO t xyz", 14, "Expected one of: token, Dot, OpeningRoundBracket, RETURNING, FROM INFILE, SETTINGS, VALUES, FORMAT, SELECT, WITH, FROM"],
+    ["EXPLAIN xyz", 11, "Expected one of: token sequence, Dot, token, Equals"],
+  ]);
+});
