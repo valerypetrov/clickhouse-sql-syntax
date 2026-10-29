@@ -78,6 +78,12 @@ describe("check()", () => {
     assert.equal(found[0]![0], 44);
   });
 
+  // Measured with clickhouse local, which splits queries like clickhouse-client.
+  test("ends FORMAT data only at \\n\\n, not at a line of spaces or at \\r\\n\\r\\n", () => {
+    assert.deepEqual(check("INSERT INTO t FORMAT CSV\n1\n \nSELECT 1 +"), []);
+    assert.deepEqual(check("INSERT INTO t FORMAT CSV\r\n1\r\n\r\nSELECT 1 +"), []);
+  });
+
   test("lets a comment end a statement before its ';'", () => {
     const found = errors("SELECT 1 -- comment\n; SELECT 2 +");
     assert.equal(found.length, 1);
