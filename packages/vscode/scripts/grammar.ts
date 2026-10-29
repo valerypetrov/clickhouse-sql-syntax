@@ -1,4 +1,4 @@
-import type { DataTypeName } from "clickhouse-sql-syntax";
+import { type DataTypeName, SYSTEM_COMMANDS } from "clickhouse-sql-syntax";
 
 // ClickHouse words are ASCII letters, digits, "_" and "$".
 const WORD_BEFORE = "(?<![A-Za-z0-9_$])";
@@ -12,9 +12,12 @@ const CLAUSE_WORDS = (
   "LATERAL LAYOUT LIFETIME LIKE LIMIT MATERIALIZED NOT OFFSET ON OR OVER PARTITION PREWHERE QUALIFY " +
   "ROLLUP SELECT SETS SETTINGS SOME SOURCE STATISTICS THEN TOP TTL UNION USING VALUES WHEN WHERE WITH"
 ).split(" ");
+// As in highlight(): short interval units, keywords only after a number or a string, as in INTERVAL 1 D.
+const UNIT_ABBREVIATIONS = "D DD H HH M MCS MI MM MS N NS Q QQ S SS WK WW YY YYYY".split(" ");
 // Words that start a line before a column, as in WHERE date = today(), or before a type, as in FORMAT JSON.
 const NOT_COLUMNS = [...CLAUSE_WORDS.filter((word) => word !== "KEY"), "FORMAT", "SET", "WHERE"];
 const QUOTED_NAME = '`(?:[^`\\\\]|\\\\.|``)*`|"(?:[^"\\\\]|\\\\.|"")*"';
+const STRING_ON_ONE_LINE = "'(?:[^'\\\\]|\\\\.|'')*'";
 // Keywords that may follow AS, as in CREATE VIEW v AS SELECT.
 const KEYWORDS_AFTER_AS = [
   ...CONSTANTS,
@@ -34,6 +37,8 @@ const UNICODE_ALLOWED =
 export function buildGrammar(keywords: readonly string[], dataTypes: readonly DataTypeName[]): object {
   const keywordWords = new Set(keywords.flatMap(words).map((word) => word.toUpperCase()));
   for (const constant of CONSTANTS) keywordWords.delete(constant);
+  for (const unit of UNIT_ABBREVIATIONS) keywordWords.delete(unit);
+  const unit = `(?i:${alternation(UNIT_ABBREVIATIONS)})${WORD_AFTER}`;
 
   // Any spelling the type allows, used where a type must follow (after "::").
   const exactTypes = new Set<string>();
@@ -51,6 +56,14 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
   const number = "[0-9](?:_?[0-9])*";
   const exponent = `(?:[eE][+-]?${number})?`;
   const hexNumber = "[0-9A-Fa-f](?:_?[0-9A-Fa-f])*";
+  // A number and the interval unit after it: INTERVAL 1 D.
+  const numberWithUnit = (match: string): object => ({
+    match: `(${match})(?:([ \\t]+)(${unit}))?`,
+    captures: {
+      1: { name: "constant.numeric.sql" },
+      3: { name: "keyword.other.sql" },
+    },
+  });
 
   return {
     $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
@@ -92,6 +105,23 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
       strings: {
         patterns: [
           { name: "string.quoted.single.sql", match: `${WORD_BEFORE}(?:[xX]'[0-9A-Fa-f]*'|[bB]'[01]*')` },
+          // The interval unit after a string: INTERVAL '1' D, and the second one in INTERVAL '1 2' DAY TO H.
+          {
+            match: `(${STRING_ON_ONE_LINE})([ \\t]+)(${NAME})([ \\t]+)((?i:TO))([ \\t]+)(${unit})`,
+            captures: {
+              1: { name: "string.quoted.single.sql" },
+              3: { name: "keyword.other.sql" },
+              5: { name: "keyword.other.sql" },
+              7: { name: "keyword.other.sql" },
+            },
+          },
+          {
+            match: `(${STRING_ON_ONE_LINE})([ \\t]+)(${unit})`,
+            captures: {
+              1: { name: "string.quoted.single.sql" },
+              3: { name: "keyword.other.sql" },
+            },
+          },
           quoted("string.quoted.single.sql", "'"),
           { name: "string.quoted.single.sql", begin: "\u2018", end: "\u2019" },
         ],
@@ -120,18 +150,13 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
       numbers: {
         patterns: [
           // After a dot only a plain integer, so that x.1.2 is x . 1 . 2 as in ClickHouse.
-          { name: "constant.numeric.sql", match: `(?<=\\.)(?>${number})(?![A-Za-z0-9_])` },
-          {
-            name: "constant.numeric.sql",
-            match:
-              `${WORD_BEFORE}(?>0[xX]${hexNumber}(?:\\.(?:${hexNumber})?)?(?:[pP][+-]?${number})?` +
+          numberWithUnit(`(?<=\\.)(?>${number})(?![A-Za-z0-9_])`),
+          numberWithUnit(
+            `${WORD_BEFORE}(?>0[xX]${hexNumber}(?:\\.(?:${hexNumber})?)?(?:[pP][+-]?${number})?` +
               `|0[bB][01](?:_?[0-9])*(?:\\.(?:${number})?)?${exponent}` +
               `|${number}(?:\\.(?:${number})?)?${exponent})(?![A-Za-z0-9_])`,
-          },
-          {
-            name: "constant.numeric.sql",
-            match: `(?<![A-Za-z0-9_$)\\]"\`])(?>\\.${number}${exponent})(?![A-Za-z0-9_])`,
-          },
+          ),
+          numberWithUnit(`(?<![A-Za-z0-9_$)\\]"\`])(?>\\.${number}${exponent})(?![A-Za-z0-9_])`),
         ],
       },
       "cast-type": {
@@ -196,9 +221,11 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
               5: { name: "storage.type.sql" },
             },
           },
-          // CREATE TABLE t (...) and INSERT INTO t (...) name a table, not a function.
+          // CREATE TABLE t (...) and INSERT INTO t (...) name a table, not a function; IN (...) stays a keyword.
           {
-            match: `${WORD_BEFORE}((?i:${alternation(OBJECT_WORDS)}))(\\s+)(${NAME})(?=[ \\t]*\\()`,
+            match:
+              `${WORD_BEFORE}((?i:${alternation(OBJECT_WORDS)}))(\\s+)` +
+              `(?!(?i:${alternation(CLAUSE_WORDS)})${WORD_AFTER})(${NAME})(?=[ \\t]*\\()`,
             captures: {
               1: { name: "keyword.other.sql" },
               3: { name: "variable.other.sql" },
@@ -207,6 +234,14 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
           {
             name: "entity.name.function.sql",
             match: `${WORD_BEFORE}(?!(?i:${alternation(CLAUSE_WORDS)})${WORD_AFTER})${NAME}(?=[ \\t]*\\()`,
+          },
+          // SYSTEM FLUSH LOGS: the words of a SYSTEM command are keywords, as in highlight().
+          {
+            match: `${WORD_BEFORE}((?i:SYSTEM))([ \\t]+)((?i:${phrases(SYSTEM_COMMANDS)}))${WORD_AFTER}(?![ \\t]*\\.)`,
+            captures: {
+              1: { name: "keyword.other.sql" },
+              3: { patterns: [{ name: "keyword.other.sql", match: NAME }] },
+            },
           },
           { name: "keyword.other.sql", match: `${WORD_BEFORE}(?i:${alternation(keywordWords)})${WORD_AFTER}` },
           { name: "variable.other.sql", match: NAME },
@@ -243,6 +278,12 @@ function alternation(items: Iterable<string>): string {
     if (!/^[A-Za-z0-9_$]+$/.test(item)) throw new Error(`Unexpected character in name: ${item}`);
   }
   return sorted.map((item) => item.replaceAll("$", "\\$")).join("|");
+}
+
+// Multi-word phrases such as FLUSH LOGS, longest first, with any spaces or tabs between the words.
+function phrases(items: Iterable<string>): string {
+  const sorted = [...items].sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
+  return sorted.map((phrase) => words(phrase).map((word) => alternation([word])).join("[ \\t]+")).join("|");
 }
 
 // A quoted token that may span lines, with backslash escapes and a doubled quote inside.

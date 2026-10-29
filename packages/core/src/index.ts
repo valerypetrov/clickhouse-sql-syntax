@@ -7,6 +7,7 @@ import type { ClickHouseSqlSyntax } from "./types.js";
 export * from "./types.js";
 export { DATA_TYPES, type DataTypeName } from "./generated/data-types.js";
 export { KEYWORDS } from "./generated/keywords.js";
+export { SYSTEM_COMMANDS } from "./highlight/index.js";
 export { check, format, highlight, tokenize };
 
 // Typed against the interface, so an implementation that drifts from the API fails to compile.

@@ -1,1 +1,1 @@
-export { highlight } from "./highlight.js";
+export { highlight, SYSTEM_COMMANDS } from "./highlight.js";
