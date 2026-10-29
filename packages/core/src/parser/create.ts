@@ -685,7 +685,7 @@ export function parseCreateTableQuery(p: P): Ast | null {
         p.failOther(`Storage engine ${engine ?? "(no engine)"} does not support inner UUID`);
       if (targets) p.failOther("targets are already defined");
     }
-    return new Ast("CreateQuery");
+    return new Ast("CreateQuery").set("columns", columns);
   });
 }
 

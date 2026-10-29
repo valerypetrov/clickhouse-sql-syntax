@@ -53,9 +53,11 @@ describe("AST depth", () => {
     ["a chain of NOT", `SELECT ${repeat("NOT ", 497)}1`, `SELECT ${repeat("NOT ", 498)}1`],
     ["nested calls", `SELECT ${repeat("f(", 497)}1${repeat(")", 497)}`, `SELECT ${repeat("f(", 498)}1${repeat(")", 498)}`],
     ["nested column types", `CREATE TABLE t (a ${repeat("Array(", 497)}UInt8${repeat(")", 497)}) ENGINE = Memory`, `CREATE TABLE t (a ${repeat("Array(", 498)}UInt8${repeat(")", 498)}) ENGINE = Memory`],
+    // ClickHouse makes each (t JOIN t ...) a subquery, seven levels deep.
+    ["joins in brackets", `SELECT * FROM ${repeat("(", 141)}t${repeat(" JOIN t USING (a))", 141)}`, `SELECT * FROM ${repeat("(", 142)}t${repeat(" JOIN t USING (a))", 142)}`],
   ];
   for (const [name, fits, tooDeep] of cases) {
-    test(`rejects ${name} one level deeper than ClickHouse allows`, { skip: "check() never measures the depth of the AST" }, () => {
+    test(`rejects ${name} one level deeper than ClickHouse allows`, () => {
       assert.deepEqual(check(fits), []);
       const found = check(tooDeep);
       assert.equal(found.length, 1);
@@ -63,22 +65,18 @@ describe("AST depth", () => {
     });
   }
 
-  test("checks the statements after one with too deep an AST", { skip: "check() never measures the depth of the AST" }, () => {
+  test("checks the statements after one with too deep an AST", () => {
     const found = errors(`SELECT ${repeat("1", 499, " + ")}; SELECT 1 +`);
     assert.equal(found.length, 2);
     assert.ok(found[0]![1].startsWith(TOO_DEEP_AST), found[0]![1]);
   });
 
   // readsInput() in insert.ts recurses over the AST; its RangeError is shown as the parser depth error.
-  test(
-    "reports an INSERT ... SELECT too deep for the JavaScript stack as too deep an AST",
-    { skip: "check() says 'Maximum parse depth (1000) exceeded' at offset 0" },
-    () => {
-      const found = check(`INSERT INTO t SELECT ${repeat("1", 20000, " + ")}`);
-      assert.equal(found.length, 1);
-      assert.ok(found[0]!.message.startsWith(TOO_DEEP_AST), found[0]!.message);
-    },
-  );
+  test("reports an INSERT ... SELECT too deep for the JavaScript stack as too deep an AST", () => {
+    const found = check(`INSERT INTO t SELECT ${repeat("1", 20000, " + ")}`);
+    assert.equal(found.length, 1);
+    assert.ok(found[0]!.message.startsWith(TOO_DEEP_AST), found[0]!.message);
+  });
 });
 
 describe("time in proportion to the input", () => {

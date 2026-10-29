@@ -106,6 +106,15 @@ describe("check()", () => {
     assert.deepEqual(check("COPY t TO 'file.csv'; garbage"), []);
   });
 
+  // x BETWEEN a AND b uses x twice, so a chain of them shares nodes that must be measured once.
+  test("measures the depth of a chain of BETWEEN in time in proportion to its length", () => {
+    const sql = `SELECT 1 ${Array.from({ length: 30 }, () => "BETWEEN 1 AND 2").join(" ")}`;
+    const start = performance.now();
+    assert.deepEqual(check(sql), []);
+    const ms = performance.now() - start;
+    assert.ok(ms < 500, `took ${ms.toFixed(0)} ms`);
+  });
+
   test("reports too deep nesting instead of overflowing the stack", () => {
     const sql = "SELECT " + "(".repeat(2000) + "1" + ")".repeat(2000);
     assert.deepEqual(errors(sql), [[991, "Maximum parse depth (1000) exceeded. Consider rising max_parser_depth parameter."]]);

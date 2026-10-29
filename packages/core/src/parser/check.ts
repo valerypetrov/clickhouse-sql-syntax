@@ -11,7 +11,7 @@ import {
   type Token,
   TokenKind as T,
 } from "../types.js";
-import type { Ast } from "./ast.js";
+import { type Ast, astDepth } from "./ast.js";
 import { parseQuery } from "./query.js";
 import { Expected, kwQuiet, MAX_PARSER_DEPTH, P, ParseError } from "./state.js";
 
@@ -226,6 +226,11 @@ class Checker {
         return afterStatement;
       }
       throw error;
+    }
+    // tryParseQuery() calls checkDepth() on the AST before anything else.
+    if (node && astDepth(node) >= MAX_PARSER_DEPTH) {
+      this.reportToken(toks[start]!, `AST is too deep. Maximum: ${MAX_PARSER_DEPTH}`);
+      return afterStatement;
     }
     const lastIndex = p.maxIndex;
     const last = toks[lastIndex]!;

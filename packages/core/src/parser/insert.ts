@@ -33,10 +33,18 @@ function parseInsertElement(p: P): Ast | null {
 }
 
 /** Whether the SELECT reads inline data through the input() table function. */
-function readsInput(node: Ast): boolean {
-  if (node.kind === "Function" && node.name === "input") return true;
-  if (node.children.some(readsInput) || node.params?.some(readsInput)) return true;
-  for (const value of Object.values(node.fields ?? {})) if (value && readsInput(value)) return true;
+function readsInput(select: Ast): boolean {
+  // A loop, not recursion: the tree can be deeper than the JavaScript stack, and share nodes.
+  const stack = [select];
+  const seen = new Set<Ast>();
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (seen.has(node)) continue;
+    seen.add(node);
+    if (node.kind === "Function" && node.name === "input") return true;
+    for (const child of node.children) stack.push(child);
+    for (const param of node.params ?? []) stack.push(param);
+    for (const value of Object.values(node.fields ?? {})) if (value) stack.push(value);
+  }
   return false;
 }
 

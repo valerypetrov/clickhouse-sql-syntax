@@ -2,7 +2,7 @@
  * SELECT queries: a port of ParserSelectWithUnionQuery.cpp, ParserSelectQuery.cpp,
  * ParserTablesInSelectQuery.cpp, ParserWithElement.cpp, ParserSampleRatio.cpp and ParserPipeOperators.cpp.
  */
-import { Ast } from "./ast.js";
+import { Ast, list } from "./ast.js";
 import {
   parseAlias,
   parseCompoundIdentifier,
@@ -597,7 +597,12 @@ export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
       const tables = parseTablesInSelectQuery(p, false);
       if (tables && p.kind() === T.ClosingRoundBracket && tables.children.length > 1) {
         p.i++;
+        // ClickHouse makes the brackets a subquery: SELECT * FROM t1 JOIN t2.
+        const select = new Ast("SelectQuery").set("select", list([new Ast("Asterisk")])).set("tables", tables);
+        const union = new Ast("SelectWithUnionQuery");
+        union.children = [select];
         source = new Ast("Subquery");
+        source.children = [union];
         node.flag("subquery");
         const alias = parseAlias(p, allowWithoutAs);
         if (alias) source.alias = alias.name;
