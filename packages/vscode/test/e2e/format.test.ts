@@ -25,10 +25,6 @@ const SQL = [
 const global = vscode.ConfigurationTarget.Global;
 
 describe("Formatting ClickHouse SQL", () => {
-  // The chat input of VS Code takes the keyboard focus, and the format commands act on the focused editor.
-  before(() => vscode.workspace.getConfiguration("chat").update("disableAIFeatures", true, global));
-  after(() => vscode.workspace.getConfiguration("chat").update("disableAIFeatures", undefined, global));
-
   afterEach(async () => {
     await vscode.workspace.getConfiguration("clickhouseSql.format").update("keywordCase", undefined, global);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");

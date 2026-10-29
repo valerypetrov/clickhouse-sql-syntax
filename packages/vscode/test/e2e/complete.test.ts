@@ -38,12 +38,7 @@ async function until(ready: () => boolean, what: string): Promise<void> {
   }
 }
 
-const global = vscode.ConfigurationTarget.Global;
-
 describe("Completion, hover and signature help", () => {
-  // The chat input of VS Code takes the keyboard focus, and the suggest widget acts on the focused editor.
-  before(() => vscode.workspace.getConfiguration("chat").update("disableAIFeatures", true, global));
-  after(() => vscode.workspace.getConfiguration("chat").update("disableAIFeatures", undefined, global));
   afterEach(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
 
   it("offers functions with brackets and keywords valid at the cursor", async () => {
