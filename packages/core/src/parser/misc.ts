@@ -34,7 +34,7 @@ export function parseUuidClause(p: P): boolean {
   const value = parseStringLiteral(p);
   if (!value) return false;
   const text = stringValue(value)!;
-  if (!UUID_TEXT.test(text)) p.failOther(`Cannot parse UUID from '${text}'`, p.i - 1);
+  if (!UUID_TEXT.test(text)) p.failOther(`Cannot parse uuid ${text}`, p.i - 1);
   return true;
 }
 

@@ -43,7 +43,7 @@ const NIL_UUID = /^0{8}-?0{4}-?0{4}-?0{4}-?0{12}$/;
 /** parseFromString<UUID> of a string literal; a bad value is not a syntax error. */
 function uuidOf(p: P, literal: Ast, at: number): string {
   const text = stringValue(literal) ?? "";
-  if (!UUID_TEXT.test(text)) p.failOther(`Cannot parse UUID from '${text}'`, at);
+  if (!UUID_TEXT.test(text)) p.failOther(`Cannot parse uuid ${text}`, at);
   return text;
 }
 
