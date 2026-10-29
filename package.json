@@ -23,7 +23,8 @@
     "oracle:format": "npm run oracle:format -w oracle --",
     "generate": "tsx scripts/generate-names.ts",
     "package:vscode": "npm run package -w packages/vscode",
-    "test:vscode": "npm run test:e2e -w packages/vscode"
+    "test:vscode": "npm run test:e2e -w packages/vscode",
+    "test:vscode:corpus": "npm run test:e2e:corpus -w packages/vscode"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
