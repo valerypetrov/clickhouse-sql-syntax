@@ -450,8 +450,10 @@ export function parseStorage(p: P): Ast | null {
     let storageLike = false;
     if (kw(p, "ENGINE")) {
       tok(p, T.Equals);
+      const name = p.i;
       const engine = parseIdentifierWithOptionalParameters(p);
       if (!engine) return null;
+      p.mark(name, "engine", name + 1);
       node.set("engine", engine);
       storageLike = true;
     }

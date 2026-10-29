@@ -1,10 +1,11 @@
 import { DATA_TYPES } from "../generated/data-types.js";
 import { KEYWORDS } from "../generated/keywords.js";
 import { tokenize } from "../lexer/index.js";
+import { type Role, roles } from "../parser/index.js";
 import { TokenKind, isErrorKind, isSignificant, type HighlightSpan, type Scope, type Token } from "../types.js";
 
-// highlight() colours tokens, and bare words by what is around them: bareWord() tries its rules
-// in order, and the first that matches wins.
+// highlight() colours words by their role in the statements that parse. In the others it colours
+// them by what is around them: bareWord() tries its rules in order, and the first that matches wins.
 
 /** Keywords that a bracket often follows without making a function call, as in IN (1, 2). */
 const CLAUSE_WORDS = new Set(
@@ -139,6 +140,8 @@ class Highlighter {
   constructor(
     private readonly sql: string,
     private readonly tokens: Token[],
+    /** The parser's role of each word, by its offset. */
+    private readonly roles: Map<number, Role>,
   ) {
     tokens.forEach((t, i) => {
       if (!isSignificant(t.kind)) return;
@@ -382,6 +385,27 @@ class Highlighter {
     return 0;
   }
 
+  /** The scope of word `i` with the role the parser gave it. */
+  private roleScope(i: number, role: Role): Scope {
+    switch (role) {
+      case "keyword":
+        return CONSTANTS.has(this.word(i)) ? "constant.language.sql" : "keyword.other.sql";
+      case "function":
+        return "entity.name.function.sql";
+      case "type":
+        return "storage.type.sql";
+      // ENGINE = Memory names an engine, and ENGINE = MergeTree() calls one.
+      case "engine":
+        return this.callFollows(i) ? "entity.name.function.sql" : "variable.other.sql";
+      case "parameter":
+        return "variable.parameter.sql";
+      case "number":
+        return "constant.numeric.sql";
+      default:
+        return "variable.other.sql";
+    }
+  }
+
   /** Puts the comments back between the classified tokens. */
   private spans(): HighlightSpan[] {
     const spans: HighlightSpan[] = [];
@@ -403,7 +427,8 @@ class Highlighter {
         skipUntil = end;
         continue;
       }
-      const scope = this.scopes[s];
+      const role = this.roles.get(token.start);
+      const scope = role ? this.roleScope(s, role) : this.scopes[s];
       if (scope && token.end > token.start) spans.push({ start: token.start, end: token.end, scope });
     }
     return spans;
@@ -433,5 +458,6 @@ function tokenScope(kind: TokenKind): Scope | undefined {
 
 /** Returns coloured spans for `sql`, sorted by offset. */
 export function highlight(sql: string): HighlightSpan[] {
-  return new Highlighter(sql, tokenize(sql)).run();
+  const byStart = new Map(roles(sql).map((span) => [span.start, span.role]));
+  return new Highlighter(sql, tokenize(sql), byStart).run();
 }

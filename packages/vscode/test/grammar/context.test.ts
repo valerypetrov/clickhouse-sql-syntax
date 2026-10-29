@@ -37,11 +37,6 @@ const CASES: [string, [string, string][]][] = [
       ["system", KEYWORD], ["stop", KEYWORD], ["merges", KEYWORD], ["db", NAME], ["t", NAME],
     ],
   ],
-  [
-    "SELECT * FROM t WHERE table IN (1)",
-    [["SELECT", KEYWORD], ["FROM", KEYWORD], ["t", NAME], ["WHERE", KEYWORD], ["table", KEYWORD], ["IN", KEYWORD]],
-  ],
-  ["INSERT INTO index VALUES (1)", [["INSERT", KEYWORD], ["INTO", KEYWORD], ["index", KEYWORD], ["VALUES", KEYWORD]]],
 ];
 
 describe("words coloured by what is around them", () => {
@@ -51,6 +46,17 @@ describe("words coloured by what is around them", () => {
       assert.deepEqual(wordScopes(sql, libraryScopes(sql)), expected);
     });
   }
+
+  // The grammar takes these names for keywords; highlight() and the semantic tokens take them from the parser.
+  test("keywords used as names", async () => {
+    const sql = "SELECT * FROM t WHERE table IN (1); INSERT INTO index VALUES (1)";
+    const words = (name: string): [string, string][] => [
+      ["SELECT", KEYWORD], ["FROM", KEYWORD], ["t", NAME], ["WHERE", KEYWORD], ["table", name], ["IN", KEYWORD],
+      ["INSERT", KEYWORD], ["INTO", KEYWORD], ["index", name], ["VALUES", KEYWORD],
+    ];
+    assert.deepEqual(wordScopes(sql, await grammarScopes(sql)), words(KEYWORD));
+    assert.deepEqual(wordScopes(sql, libraryScopes(sql)), words(NAME));
+  });
 
   // highlight() takes a unit only after a number or a string, so it leaves out the one after TO.
   test("the second unit of INTERVAL '1 2' DAY TO H", async () => {

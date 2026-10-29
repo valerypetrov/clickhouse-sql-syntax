@@ -1349,8 +1349,10 @@ function parseDateOperator(p: P, keyword: string, name: string): Ast | null {
 /** ParserFunctionName: a compound name that is not a query parameter. */
 function parseFunctionName(p: P): Ast | null {
   return base(p, "function name", () => {
+    const begin = p.i;
     const node = parseCompoundIdentifier(p, false, true);
     if (!node || node.has("param")) return null;
+    p.mark(begin, "function");
     return node;
   });
 }
@@ -1492,6 +1494,7 @@ function tryParseOperand(layers: Layer[], p: P): Action {
 
   if (isArrayConstructorWithKeyword(p)) {
     p.i += 2;
+    p.mark(p.i - 2, "keyword");
     layers.push(new ArrayLayer());
     return Action.Operand;
   }

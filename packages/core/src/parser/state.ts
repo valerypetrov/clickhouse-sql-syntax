@@ -3,6 +3,7 @@
  * A parser function takes a P and returns a node, or null and leaves p.i where it was.
  */
 import { TokenKind as T, isErrorKind, type Token } from "../types.js";
+import type { Role, Roles } from "./roles.js";
 
 export { T };
 
@@ -78,6 +79,8 @@ export class P {
   e = new Expected();
   depth = 0;
   backtracks = 0;
+  /** Where the roles of consumed words go, when someone asked for them. */
+  roles?: Roles;
   readonly last: number;
   private readonly lowered: (string | undefined)[] = [];
 
@@ -179,6 +182,12 @@ export class P {
       if (this.budget && --this.budget.backtracks < 0) throw new OutOfBudget();
     }
     this.i = i;
+    this.roles?.rewind(i);
+  }
+
+  /** The tokens from `from` up to `to` have `role`. */
+  mark(from: number, role: Role, to = this.i): void {
+    this.roles?.mark(from, to, role);
   }
 
   increaseDepth(): void {
@@ -259,6 +268,7 @@ export function lookahead<R>(p: P, body: () => R, expected?: Expected): R {
     p.i = i;
     p.depth = depth;
     p.backtracks = backtracks;
+    p.roles?.rewind(i);
   }
 }
 
@@ -306,6 +316,7 @@ export function kw(p: P, keyword: string, id?: string): boolean {
     }
     p.i++;
   }
+  p.mark(begin, "keyword");
   p.at(p.i);
   return true;
 }
@@ -315,6 +326,7 @@ export function peekKw(p: P, keyword: string): boolean {
   const begin = p.i;
   const ok = kw(p, keyword);
   p.i = begin;
+  p.roles?.rewind(begin);
   return ok;
 }
 

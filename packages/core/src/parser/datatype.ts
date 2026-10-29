@@ -68,7 +68,9 @@ function parseEnumValues(p: P): boolean {
 /** Dynamic(max_types=N). */
 function parseDynamicArgument(p: P): Ast | null {
   return base(p, "Dynamic data type optional argument", () => {
+    const begin = p.i;
     if (!parseIdentifier(p)) return null;
+    p.mark(begin, "setting");
     if (p.kind() !== T.Equals) {
       p.expect("equals operator");
       return null;
@@ -100,6 +102,7 @@ function parseObjectArgument(p: P): Ast | null {
       if (!hasIdentifier) return null;
       p.restore(afterIdentifier);
       if (p.kind() === T.Equals) {
+        p.mark(begin, "setting");
         p.i++;
         return parseNumber(p) ? new Ast("Other") : null;
       }
@@ -125,6 +128,7 @@ export function parseNameTypePair(p: P): Ast | null {
 /** ParserDataType: a type name with optional arguments, including the SQL-standard multi-word names. */
 export function parseDataType(p: P): Ast | null {
   return base(p, "data type", () => {
+    const begin = p.i;
     const name = parseIdentifier(p);
     if (!name) return null;
     let typeName = name.name;
@@ -164,6 +168,7 @@ export function parseDataType(p: P): Ast | null {
       }
     }
     if (suffix) typeName = upper + " " + suffix;
+    p.mark(begin, "type");
     if (p.kind() === T.OpeningRoundBracket) {
       if (upper === "ARRAY") typeName = "Array";
       else if (upper === "MAP") typeName = "Map";

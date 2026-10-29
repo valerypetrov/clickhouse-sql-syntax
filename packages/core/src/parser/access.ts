@@ -382,11 +382,13 @@ function parseAccessFlags(p: P): string | null {
   const isAccessWord = () => p.kind() === T.BareWord && !["on", "to", "from"].includes(p.lower());
   return attempt(p, () => {
     if (!isAccessWord()) return null;
+    const begin = p.i;
     const words: string[] = [];
     do {
       words.push(p.text());
       p.i++;
     } while (isAccessWord());
+    p.mark(begin, "keyword");
     const text = words.join(" ");
     if (ACCESS_TYPE_KEYWORDS.has(text)) return text;
     const upper = text.toUpperCase();

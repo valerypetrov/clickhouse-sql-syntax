@@ -32,7 +32,9 @@ function parseLiteralOrMap(p: P): Ast | null {
 
 /** ParserSetQuery::parseNameValuePair: name = literal, map or disk(...); it does not move back on failure. */
 export function parseNameValuePair(p: P): boolean {
+  const begin = p.i;
   if (!parseCompoundIdentifier(p)) return false;
+  p.mark(begin, "setting");
   if (!tok(p, T.Equals)) return false;
   const beforeFunction = p.i;
   const fn = parseFunction(p);
@@ -62,8 +64,10 @@ function parseParameterValue(p: P): boolean {
  * or just name when shorthand is allowed. A {name:Type} value is a "substitution".
  */
 export function parseSetting(p: P, shorthand: boolean): "setting" | "parameter" | "default" | "substitution" | null {
+  const begin = p.i;
   const name = parseCompoundIdentifier(p);
   if (!name) return null;
+  p.mark(begin, "setting");
   const hasEquals = tok(p, T.Equals);
   if (!shorthand && !hasEquals) return null;
   if (name.name.startsWith("param_")) {

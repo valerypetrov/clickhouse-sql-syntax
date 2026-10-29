@@ -157,8 +157,8 @@ describe("bare words", () => {
     ]);
   });
 
-  test("a name before ( on the same line is a function", () => {
-    assertScopes("SELECT count(), sum (x), max\n(y), quantile(0.5)(z) FROM numbers(10)", [
+  test("without a parse, a name before ( on the same line is a function", () => {
+    assertScopes("SELECT count(), sum (x), max\n(y), quantile(0.5)(z) FROM numbers(10) WHERE", [
       ["count", "entity.name.function.sql"],
       ["sum", "entity.name.function.sql"],
       ["x", "variable.other.sql"],
@@ -299,8 +299,8 @@ describe("data types", () => {
     ]);
   });
 
-  test("a type name elsewhere is a name or a function", () => {
-    assertScopes("SELECT String, Date, toDate(x), Array(1) FROM t", [
+  test("without a parse, a type name elsewhere is a name or a function", () => {
+    assertScopes("SELECT String, Date, toDate(x), Array(1) FROM t WHERE", [
       ["String", "variable.other.sql"],
       ["Date", "keyword.other.sql"],
       ["toDate", "entity.name.function.sql"],

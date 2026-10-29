@@ -39,7 +39,8 @@ import { base, kw, listUtil, P, peekKw, peekKwQuiet, T, tok, tokSeq } from "./st
 
 /** ParserIdentifier: a bare word, a quoted name, or a {name:Identifier} parameter. */
 export function parseIdentifier(p: P, allowParam = false): Ast | null {
-  return base(p, "identifier", () => {
+  const begin = p.i;
+  const node = base(p, "identifier", () => {
     const kind = p.kind();
     if (kind === T.QuotedIdentifier) {
       const name = quotedIdentifierName(p.text());
@@ -83,6 +84,8 @@ export function parseIdentifier(p: P, allowParam = false): Ast | null {
     }
     return null;
   });
+  if (node) p.mark(begin, node.has("param") ? "parameter" : "identifier");
+  return node;
 }
 
 /** ParserTableAsStringLiteralIdentifier: a table named by a string, like 'data.csv'. */
@@ -264,6 +267,7 @@ export function parseNumber(p: P): Ast | null {
         return null;
       }
       p.i++;
+      p.mark(p.i - 1, "number");
       return literal(value);
     }
     if (p.kind() !== T.Number) {
@@ -481,6 +485,7 @@ export function parseWithOptionalAlias(p: P, element: () => Ast | null, allowWit
 export function parseSubstitution(p: P): Ast | null {
   return base(p, "substitution", () => {
     if (p.kind() !== T.OpeningCurlyBrace) return null;
+    const begin = p.i;
     p.i++;
     if (p.kind() !== T.BareWord) {
       p.expect("substitution name (identifier)");
@@ -502,6 +507,7 @@ export function parseSubstitution(p: P): Ast | null {
       return null;
     }
     p.i++;
+    p.mark(begin, "parameter");
     const node = new Ast("QueryParameter");
     node.name = name;
     return node;
@@ -512,6 +518,7 @@ export function parseSubstitution(p: P): Ast | null {
 export function parseMySQLGlobalVariable(p: P): Ast | null {
   return base(p, "MySQL-style global variable", () => {
     if (p.kind() !== T.DoubleAt) return null;
+    const begin = p.i;
     p.i++;
     if (p.kind() !== T.BareWord) {
       p.expect("variable name");
@@ -528,6 +535,7 @@ export function parseMySQLGlobalVariable(p: P): Ast | null {
       name = p.text();
       p.i++;
     }
+    p.mark(begin, "identifier");
     const node = func("globalVariable", [literal({ t: "String", v: name })]);
     node.alias = "@@" + name;
     return node;

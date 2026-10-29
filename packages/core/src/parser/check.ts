@@ -14,6 +14,7 @@ import {
 } from "../types.js";
 import { type Ast, astDepth } from "./ast.js";
 import { parseQuery } from "./query.js";
+import { Roles, type RoleSpan } from "./roles.js";
 import { Budget, Expected, kwQuiet, MAX_PARSER_DEPTH, OutOfBudget, P, ParseError } from "./state.js";
 
 const SHOW_CHARS = 160;
@@ -111,10 +112,15 @@ interface Statement {
 
 class Checker {
   readonly diagnostics: Diagnostic[] = [];
+  /** The roles of the words of the last statement parsed, when they are asked for. */
+  roles?: Roles;
   private readonly lines: Lines;
   private readonly budget = new Budget();
 
-  constructor(private readonly sql: string) {
+  constructor(
+    private readonly sql: string,
+    private readonly withRoles = false,
+  ) {
     this.lines = new Lines(sql);
   }
 
@@ -216,6 +222,7 @@ class Checker {
     }
 
     const p = new P(toks, sql, start, this.budget);
+    if (this.withRoles) p.roles = this.roles = new Roles(p);
     let node: Ast | null;
     try {
       node = parseQuery(p);
@@ -376,7 +383,18 @@ function isAsciiWhitespace(c: string | undefined): boolean {
 
 /** Returns the syntax errors of every statement in `sql`. */
 export function check(sql: string): Diagnostic[] {
-  const checker = new Checker(sql);
+  return checkAll(sql);
+}
+
+/** The roles of the words of every statement without syntax errors. */
+export function roles(sql: string): RoleSpan[] {
+  const spans: RoleSpan[] = [];
+  checkAll(sql, spans);
+  return spans;
+}
+
+function checkAll(sql: string, spans?: RoleSpan[]): Diagnostic[] {
+  const checker = new Checker(sql, spans !== undefined);
   const stream = new TokenStream(sql);
   let offset = 0;
   while (offset < sql.length) {
@@ -401,7 +419,10 @@ export function check(sql: string): Diagnostic[] {
       checker.reportToken(first, NOT_CHECKED, "warning");
       break;
     }
-    if (checker.diagnostics.length === reported) next = adjustQueryEnd(sql, stream, next);
+    if (checker.diagnostics.length === reported) {
+      if (spans) for (const span of checker.roles!.spans()) spans.push(span);
+      next = adjustQueryEnd(sql, stream, next);
+    }
     if (next <= offset) break;
     offset = next;
   }
