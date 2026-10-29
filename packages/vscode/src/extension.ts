@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { check, type Diagnostic as SyntaxError } from "clickhouse-sql-syntax";
+import { registerFormatter } from "./format.js";
 
 export const LANGUAGE_ID = "clickhouse-sql";
 const CHECK_DELAY_MS = 300;
@@ -28,6 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
+    registerFormatter(LANGUAGE_ID),
     diagnostics,
     vscode.workspace.onDidOpenTextDocument(validate),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
