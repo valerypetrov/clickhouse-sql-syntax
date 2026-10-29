@@ -761,6 +761,7 @@ function parseQuotaKeyType(p: P): string | null {
   return attempt(p, () => {
     if (kw(p, "NOT KEYED")) return "none";
     if (!kw(p, "KEY BY") && !kw(p, "KEYED BY")) return null;
+    const at = p.i;
     const names = parseIdentifiersOrStringLiterals(p);
     if (!names) return null;
     const name = names.join("_or_").replace(/[A-Z]/g, (c) => c.toLowerCase()).replaceAll(" ", "_");
@@ -768,6 +769,7 @@ function parseQuotaKeyType(p: P): string | null {
     p.fail(
       `Quota cannot be keyed by '${name}'. Expected one of the following identifiers: ` +
         QUOTA_KEY_TYPES.map((type) => `'${type}'`).join(", "),
+      at,
     );
   });
 }

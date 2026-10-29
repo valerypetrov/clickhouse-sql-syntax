@@ -851,8 +851,9 @@ function parseCreateViewQuery(p: P): Ast | null {
         if (kw(p, "TO"))
           p.fail("When creating a materialized view you can't declare both 'ENGINE' and 'TO [db].[table]'", p.i - 1);
       } else {
+        const storageAt = p.i;
         if (parseStorage(p))
-          p.fail("When creating a materialized view you can't declare both 'TO [db].[table]' and 'ENGINE'", p.i - 1);
+          p.fail("When creating a materialized view you can't declare both 'TO [db].[table]' and 'ENGINE'", storageAt);
         parsePopulateOrEmpty();
       }
     }
