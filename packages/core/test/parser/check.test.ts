@@ -50,6 +50,18 @@ describe("check()", () => {
     assert.deepEqual(errors("SELECT (1,\n  2"), [[14, "Unmatched parentheses: '(' at position 8 (line 1, col 8) is never closed."]]);
   });
 
+  test("matches brackets across statements, as ClickHouse looks at the rest of the input", () => {
+    const found = errors("SELECT (1; SELECT 2)");
+    assert.ok(found[0]![1].startsWith("Expected one of: comma or closing bracket"));
+    assert.deepEqual(found[1], [19, "Unmatched parentheses: ')' at position 9 has no matching opening bracket."]);
+    assert.deepEqual(errors("SELECT (1; SELECT 2"), [[9, "Unmatched parentheses: '(' at position 8 is never closed."]]);
+  });
+
+  test("takes time in proportion to the input, not to the number of statements times its length", () => {
+    const sql = Array.from({ length: 20000 }, (_, i) => `SELECT ${i} FROM t WHERE x IN (${i});`).join("\n");
+    assert.deepEqual(check(sql), []);
+  });
+
   test("skips VALUES data up to a ';' outside brackets and strings", () => {
     const found = errors("INSERT INTO t VALUES ('a;b'), (1); SELECT 1 +");
     assert.equal(found.length, 1);

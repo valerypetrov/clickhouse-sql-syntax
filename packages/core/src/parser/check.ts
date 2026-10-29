@@ -137,12 +137,16 @@ class Checker {
     return result;
   }
 
-  /** checkUnmatchedParentheses over the tokens from the statement start. */
-  private unmatchedParentheses(toks: Token[], start: number): Token[] {
+  /**
+   * checkUnmatchedParentheses over the tokens from the statement start. It stops at the
+   * statement end when nothing is open, as later brackets are not reported for this statement.
+   */
+  private unmatchedParentheses(toks: Token[], start: number, statementEnd: number): Token[] {
     const stack: Token[] = [];
     for (let i = start; i < toks.length; i++) {
       const token = toks[i]!;
       if (token.kind === T.EndOfStream || isErrorKind(token.kind)) break;
+      if (!stack.length && token.start >= statementEnd) break;
       if (token.kind === T.OpeningRoundBracket || token.kind === T.OpeningSquareBracket) {
         stack.push(token);
       } else if (token.kind === T.ClosingRoundBracket || token.kind === T.ClosingSquareBracket) {
@@ -227,7 +231,7 @@ class Checker {
     const last = toks[lastIndex]!;
 
     const data = node ? insertData(node) : undefined;
-    if (data !== undefined) return this.insertDataEnd(node!, data, toks);
+    if (data !== undefined) return this.insertDataEnd(node!, data, toks, start);
 
     if (isErrorKind(last.kind)) {
       this.reportToken(last, LEXER_ERROR_MESSAGES[last.kind]!);
@@ -235,7 +239,7 @@ class Checker {
     }
 
     const statementEnd = Math.max(afterStatement, last.end);
-    const parens = this.unmatchedParentheses(toks, start).filter((token) => token.start >= begin && token.start < statementEnd);
+    const parens = this.unmatchedParentheses(toks, start, statementEnd).filter((token) => token.start >= begin && token.start < statementEnd);
     if (parens.length) {
       const { token, message } = this.unmatchedMessage(parens, last, begin, statementEnd);
       this.reportToken(token, message);
@@ -271,10 +275,11 @@ class Checker {
    * Where the inline data of an INSERT ends, as in clickhouse-client: VALUES data (and FORMAT Values)
    * at a ';' outside brackets, other formats at the first empty line.
    */
-  private insertDataEnd(node: Ast, data: number, toks: Token[]): number {
+  private insertDataEnd(node: Ast, data: number, toks: Token[], start: number): number {
     const insert = node.kind === "InsertQuery" ? node : node.get("query")!;
     if (insert.has("values") || insert.name === "Values") {
-      let i = toks.findIndex((token) => token.start >= data);
+      let i = start;
+      while (toks[i]!.start < data && toks[i]!.kind !== T.EndOfStream) i++;
       let depth = 0;
       for (; i < toks.length; i++) {
         const kind = toks[i]!.kind;
