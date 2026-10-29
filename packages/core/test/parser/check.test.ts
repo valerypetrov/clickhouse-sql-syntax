@@ -115,6 +115,24 @@ describe("check()", () => {
     assert.ok(ms < 500, `took ${ms.toFixed(0)} ms`);
   });
 
+  // Each statement reaches ClickHouse's limit of 1,000,000 backtracks, which takes about half a second.
+  test("stops after about a second of backtracking and warns that the rest is not checked", () => {
+    const slow = `SELECT ${"INTERVAL (".repeat(18)}+${") DAY".repeat(18)}`;
+    const sql = Array.from({ length: 10 }, () => slow).join(";\n");
+    const start = performance.now();
+    const found = check(sql);
+    const ms = performance.now() - start;
+    assert.deepEqual(
+      found.map((d) => [d.line, d.severity, d.message.slice(0, 34)]),
+      [
+        [1, "error", "Maximum amount of backtracking (10"],
+        [2, "error", "Maximum amount of backtracking (10"],
+        [3, "warning", "Not checked: checking took too lon"],
+      ],
+    );
+    assert.ok(ms < 3000, `took ${ms.toFixed(0)} ms`);
+  });
+
   test("reports too deep nesting instead of overflowing the stack", () => {
     const sql = "SELECT " + "(".repeat(2000) + "1" + ")".repeat(2000);
     assert.deepEqual(errors(sql), [[991, "Maximum parse depth (1000) exceeded. Consider rising max_parser_depth parameter."]]);

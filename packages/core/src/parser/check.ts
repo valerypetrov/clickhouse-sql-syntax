@@ -8,14 +8,16 @@ import {
   isErrorKind,
   isSignificant,
   LEXER_ERROR_MESSAGES,
+  type Severity,
   type Token,
   TokenKind as T,
 } from "../types.js";
 import { type Ast, astDepth } from "./ast.js";
 import { parseQuery } from "./query.js";
-import { Expected, kwQuiet, MAX_PARSER_DEPTH, P, ParseError } from "./state.js";
+import { Budget, Expected, kwQuiet, MAX_PARSER_DEPTH, OutOfBudget, P, ParseError } from "./state.js";
 
 const SHOW_CHARS = 160;
+const NOT_CHECKED = "Not checked: checking took too long, so this statement and the ones after it were skipped";
 
 /** Line and column of every offset, with lines ending at \n, \r\n or a lone \r. */
 class Lines {
@@ -110,18 +112,19 @@ interface Statement {
 class Checker {
   readonly diagnostics: Diagnostic[] = [];
   private readonly lines: Lines;
+  private readonly budget = new Budget();
 
   constructor(private readonly sql: string) {
     this.lines = new Lines(sql);
   }
 
-  private report(start: number, end: number, message: string): void {
+  private report(start: number, end: number, message: string, severity: Severity = "error"): void {
     const { line, col } = this.lines.at(start);
-    this.diagnostics.push({ message, start, end, line, col, severity: "error" });
+    this.diagnostics.push({ message, start, end, line, col, severity });
   }
 
-  private reportToken(token: Token, message: string): void {
-    this.report(token.start, token.kind === T.EndOfStream ? token.start : token.end, message);
+  reportToken(token: Token, message: string, severity?: Severity): void {
+    this.report(token.start, token.kind === T.EndOfStream ? token.start : token.end, message, severity);
   }
 
   /** Byte position from the query begin, with line and column if the statement has several lines. */
@@ -212,7 +215,7 @@ class Checker {
       }
     }
 
-    const p = new P(toks, sql, start);
+    const p = new P(toks, sql, start, this.budget);
     let node: Ast | null;
     try {
       node = parseQuery(p);
@@ -389,7 +392,15 @@ export function check(sql: string): Diagnostic[] {
       continue;
     }
     const reported = checker.diagnostics.length;
-    let next = checker.checkStatement({ begin, toks: stream.significant, start });
+    let next: number;
+    try {
+      next = checker.checkStatement({ begin, toks: stream.significant, start });
+    } catch (error) {
+      if (!(error instanceof OutOfBudget)) throw error;
+      // Better nothing than a guess: the rest gets one warning instead of errors.
+      checker.reportToken(first, NOT_CHECKED, "warning");
+      break;
+    }
     if (checker.diagnostics.length === reported) next = adjustQueryEnd(sql, stream, next);
     if (next <= offset) break;
     offset = next;

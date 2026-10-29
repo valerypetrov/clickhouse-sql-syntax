@@ -10,6 +10,14 @@ export { T };
 export const MAX_PARSER_DEPTH = 1000;
 export const MAX_PARSER_BACKTRACKS = 1_000_000;
 
+/** Backtracks shared by all statements of one check() call: about a second of work. */
+export class Budget {
+  backtracks = 2 * MAX_PARSER_BACKTRACKS;
+}
+
+/** Thrown when a check() call has used up its Budget. */
+export class OutOfBudget extends Error {}
+
 /**
  * What the parser could accept at the rightmost position it reached, like ClickHouse's Expected.
  * ClickHouse compares the descriptions by pointer, so `ids` keeps what tells two equal texts apart.
@@ -77,6 +85,7 @@ export class P {
     readonly toks: Token[],
     readonly sql: string,
     start = 0,
+    readonly budget?: Budget,
   ) {
     this.last = toks.length - 1;
     this.i = start;
@@ -167,6 +176,7 @@ export class P {
           this.i,
           false,
         );
+      if (this.budget && --this.budget.backtracks < 0) throw new OutOfBudget();
     }
     this.i = i;
   }
