@@ -188,6 +188,10 @@ export interface ClickHouseSqlSyntax {
   check(sql: string): Diagnostic[];
   /** The input with ClickHouse-style layout and keyword case; meaning, names and comments are kept. */
   format(sql: string, options?: FormatOptions): string;
+  /** Suggestions at an offset: the keywords valid there, and the functions, types, settings or names that fit. */
+  complete(sql: string, offset: number, options?: CompleteOptions): CompletionCandidate[];
+  /** The documentation of a function, setting, table function, table engine, format or combinator. */
+  describe(name: string, kind?: CompletionKind): Description | undefined;
 }
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
@@ -199,4 +203,62 @@ export interface FormatOptions {
   keywordCase?: KeywordCase;
   /** Spaces per level of indentation, 4 by default. */
   indentSize?: number;
+}
+
+/** What a completion candidate or a described name is. */
+export type CompletionKind =
+  | "keyword"
+  | "function"
+  | "combinator"
+  | "table function"
+  | "table engine"
+  | "format"
+  | "setting"
+  | "data type"
+  | "database"
+  | "table"
+  | "column";
+
+/** One suggestion of complete(). */
+export interface CompletionCandidate {
+  label: string;
+  kind: CompletionKind;
+  /** A short note shown next to the label, such as the type of a column. */
+  detail?: string;
+  /** Markdown from the ClickHouse documentation. */
+  documentation?: string;
+  /** What to insert when it is not the label, such as a name in back quotes. */
+  insertText?: string;
+}
+
+/** Databases, tables and their columns, for example as a live server lists them. */
+export interface CompletionSchema {
+  databases?: string[];
+  tables?: { database: string; name: string; columns: { name: string; type: string }[] }[];
+}
+
+/** Options of complete(). */
+export interface CompleteOptions {
+  /** Names to offer besides those ClickHouse knows; columns come from the tables the statement uses. */
+  schema?: CompletionSchema;
+}
+
+/** A documented argument of a function. */
+export interface ArgumentInfo {
+  name: string;
+  description: string;
+}
+
+/** The documentation of a name, and for a function what signature help needs. */
+export interface Description {
+  /** The name as ClickHouse spells it. */
+  name: string;
+  kind: CompletionKind;
+  /** Markdown. */
+  documentation: string;
+  /** How it is used, one form per line, such as `toDate(x)`. */
+  syntax?: string;
+  arguments?: readonly ArgumentInfo[];
+  /** The parameters of a parametric aggregate function, as `level` in quantile(level)(x). */
+  parameters?: readonly ArgumentInfo[];
 }
