@@ -821,9 +821,13 @@ export function parseWindowList(p: P): Ast | null {
 export function parseIdentifierWithParameters(p: P): Ast | null {
   return base(p, "identifier with parameters", () => {
     const begin = p.i;
-    if (!parseIdentifier(p)) return null;
+    const name = parseIdentifier(p);
+    if (!name) return null;
     p.restore(begin);
-    return parseFunction(p);
+    const node = parseFunction(p);
+    // Keep the name as written: an engine named Overlay is not the function overlay.
+    if (node?.kind === "Function" && node.name.toLowerCase() === name.name.toLowerCase()) node.name = name.name;
+    return node;
   });
 }
 

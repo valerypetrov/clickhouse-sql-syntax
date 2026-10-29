@@ -25,14 +25,13 @@ import {
 import { parseAlterQuery } from "./alter.js";
 import { Ast } from "./ast.js";
 import { parseBackupQuery } from "./backup.js";
-import { parseCreateQuery } from "./create.js";
+import { parseCreateNamedCollectionQuery, parseCreateQuery } from "./create.js";
 import {
   parseAlterNamedCollectionQuery,
   parseCopyQuery,
   parseCreateFunctionQuery,
   parseCreateHandlerQuery,
   parseCreateIndexQuery,
-  parseCreateNamedCollectionQuery,
   parseCreateResourceQuery,
   parseCreateWorkloadQuery,
   parseDropFunctionQuery,

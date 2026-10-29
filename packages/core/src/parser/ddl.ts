@@ -6,7 +6,6 @@ export function parseCopyQuery(_p: P): Ast | null { return null; }
 export function parseCreateFunctionQuery(_p: P): Ast | null { return null; }
 export function parseCreateHandlerQuery(_p: P): Ast | null { return null; }
 export function parseCreateIndexQuery(_p: P): Ast | null { return null; }
-export function parseCreateNamedCollectionQuery(_p: P): Ast | null { return null; }
 export function parseCreateResourceQuery(_p: P): Ast | null { return null; }
 export function parseCreateWorkloadQuery(_p: P): Ast | null { return null; }
 export function parseDropFunctionQuery(_p: P): Ast | null { return null; }

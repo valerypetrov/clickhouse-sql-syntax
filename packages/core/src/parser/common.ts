@@ -115,7 +115,7 @@ export function parsePartition(p: P): Ast | null {
 const CALENDAR_UNITS = new Set(["Month", "Quarter", "Year"]);
 
 /** ParserTimeInterval: 1 HOUR 30 MINUTE, as in REFRESH EVERY. */
-export function parseTimeInterval(p: P, allowZero = false, allowMixing = false): Ast | null {
+export function parseTimeInterval(p: P, allowZero = false, allowMixing = true): Ast | null {
   return base(p, "time interval", () => {
     const kinds: string[] = [];
     const values: number[] = [];

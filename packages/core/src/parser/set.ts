@@ -30,6 +30,28 @@ function parseLiteralOrMap(p: P): Ast | null {
   });
 }
 
+/** ParserSetQuery::parseNameValuePair: name = literal, map or disk(...); it does not move back on failure. */
+export function parseNameValuePair(p: P): boolean {
+  if (!parseCompoundIdentifier(p)) return false;
+  if (!tok(p, T.Equals)) return false;
+  const beforeFunction = p.i;
+  const fn = parseFunction(p);
+  if (fn && fn.name === "disk") return true;
+  p.restore(beforeFunction);
+  return parseLiteralOrMap(p) !== null;
+}
+
+/** name = value, ... as in named collections and dictionary SETTINGS; `after` runs after each pair. */
+export function parseNameValuePairs(p: P, after: () => void = () => {}): boolean {
+  let count = 0;
+  for (;;) {
+    if (count && !tokQuiet(p, T.Comma)) return true;
+    if (!parseNameValuePair(p)) return false;
+    after();
+    count++;
+  }
+}
+
 /** parseParameterValueIntoString: an identifier, a literal or a collection of literals. */
 function parseParameterValue(p: P): boolean {
   return parseCompoundIdentifier(p) !== null || parseLiteral(p) !== null || parseAllCollectionsOfLiterals(p) !== null;
