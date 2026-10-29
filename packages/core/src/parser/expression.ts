@@ -1880,18 +1880,23 @@ export function parseTTLExpressionList(p: P): Ast | null {
 /** ParserKeyValuePair: key value, where the value may be a nested (list of pairs). */
 function parseKeyValuePair(p: P): Ast | null {
   return base(p, "key-value pair", () => {
-    if (!parseIdentifier(p)) return null;
-    const value =
+    const key = parseIdentifier(p);
+    if (!key) return null;
+    let value =
       parseFunction(p) ??
       parseLiteral(p) ??
       (p.kind() === T.OpeningSquareBracket ? parseAllCollectionsOfLiterals(p, false) : null) ??
       parseIdentifier(p);
     if (!value) {
       if (!tok(p, T.OpeningRoundBracket)) return null;
-      if (!parseKeyValuePairsList(p)) return null;
+      value = parseKeyValuePairsList(p);
+      if (!value) return null;
       if (!tok(p, T.ClosingRoundBracket)) return null;
     }
-    return new Ast("Other");
+    const pair = new Ast("Pair");
+    pair.name = key.name.toLowerCase();
+    pair.children = [value];
+    return pair;
   });
 }
 

@@ -158,14 +158,16 @@ export function parseCompoundIdentifier(p: P, tableWithUuid = false, allowParam 
 
     if (tableWithUuid) {
       if (parts.length > 2) return null;
+      let uuid: Ast | null = null;
       if (kw(p, "UUID")) {
-        const uuid = parseStringLiteral(p);
+        uuid = parseStringLiteral(p);
         if (!uuid) return null;
         const text = stringValueOf(uuid);
         if (!UUID_TEXT.test(text)) p.failOther(`Cannot parse UUID from '${text}'`, p.i - 1);
       }
       const node = identifier(parts);
       node.kind = "TableIdentifier";
+      node.set("uuid", uuid);
       return hasParam ? node.flag("param") : node;
     }
     const node = identifier(parts);
@@ -1053,13 +1055,16 @@ export function parseFunctionWithKeyValueArguments(p: P, bracketsCanBeOmitted = 
       p.i++;
       bracket = true;
     }
-    if (!parseKeyValuePairsList(p)) return null;
+    const pairs = parseKeyValuePairsList(p);
+    if (!pairs) return null;
     if (bracket) {
       if (p.kind() !== T.ClosingRoundBracket) return null;
       p.i++;
     }
-    const node = new Ast("Other");
+    const node = new Ast("FunctionWithKeyValueArguments");
     node.name = name.name.toLowerCase();
+    node.children = pairs.children;
+    if (bracket) node.flag("brackets");
     return node;
   });
 }

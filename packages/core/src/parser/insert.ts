@@ -98,7 +98,9 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
       if (p.kind() !== T.Semicolon) data = p.tok().start;
       node.flag("values");
     } else if (kw(p, "FORMAT")) {
-      if (!parseIdentifier(p, true)) return null;
+      const name = parseIdentifier(p, true);
+      if (!name) return null;
+      node.name = name.name;
       format = true;
     } else if (kw(p, "SELECT") || kw(p, "WITH") || kw(p, "FROM") || tok(p, T.OpeningRoundBracket)) {
       p.restore(beforeValues);
@@ -110,7 +112,9 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
         }
       }
       if (kw(p, "FORMAT")) {
-        if (!parseIdentifier(p, true)) return null;
+        const name = parseIdentifier(p, true);
+        if (!name) return null;
+        node.name = name.name;
         format = true;
       }
     } else if (!infile) {

@@ -41,7 +41,18 @@ class Lines {
 }
 
 function utf8Length(text: string): number {
-  return new TextEncoder().encode(text).length;
+  let length = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) length += 1;
+    else if (code < 0x800) length += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      // A surrogate pair is one 4-byte character.
+      length += 4;
+      i++;
+    } else length += 3;
+  }
+  return length;
 }
 
 function levenshtein(a: string, b: string): number {
@@ -254,10 +265,13 @@ class Checker {
     return toks[this.statementEndIndex(toks, index)]!.end;
   }
 
-  /** Where the inline data of an INSERT ends: at a ';' outside brackets after VALUES, else at the end of the line. */
+  /**
+   * Where the inline data of an INSERT ends, as in clickhouse-client: VALUES data (and FORMAT Values)
+   * at a ';' outside brackets, other formats at the first empty line.
+   */
   private insertDataEnd(node: Ast, data: number, toks: Token[]): number {
     const insert = node.kind === "InsertQuery" ? node : node.get("query")!;
-    if (insert.has("values")) {
+    if (insert.has("values") || insert.name === "Values") {
       let i = toks.findIndex((token) => token.start >= data);
       let depth = 0;
       for (; i < toks.length; i++) {
@@ -269,8 +283,8 @@ class Checker {
       }
       return this.sql.length;
     }
-    const newline = this.sql.indexOf("\n", data);
-    return newline === -1 ? this.sql.length : newline;
+    const blank = this.sql.indexOf("\n\n", data);
+    return blank === -1 ? this.sql.length : blank + 2;
   }
 }
 
