@@ -29,6 +29,46 @@ check("SELECT 1 +");
 
 The full API is described in [`packages/core/src/types.ts`](packages/core/src/types.ts).
 
+## Use it in VS Code
+
+The extension is not on the Marketplace yet, so you build the `.vsix` file once and install it from disk.
+
+1. **Build it** (needs Node.js 22 or newer):
+
+   ```sh
+   git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
+   cd clickhouse-sql-syntax
+   npm install
+   npm run build
+   npm run package:vscode
+   ```
+
+   This writes `packages/vscode/clickhouse-sql-0.1.0.vsix`.
+
+2. **Install it** (needs VS Code 1.90 or newer), in either of two ways:
+   - In VS Code, open the Extensions view (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` elsewhere), click `...` at the
+     top of the view, choose **Install from VSIX...** and pick the file.
+   - From a terminal: `code --install-extension packages/vscode/clickhouse-sql-0.1.0.vsix`
+
+3. **Open a ClickHouse file.** Files ending in `.chsql` or `.clickhouse.sql` use the extension automatically.
+   For `.sql` files, add this to your `settings.json`:
+
+   ```json
+   "files.associations": {
+     "*.sql": "clickhouse-sql"
+   }
+   ```
+
+   For a single file, run **Change Language Mode** (`Cmd+K M` / `Ctrl+K M`) and pick **ClickHouse SQL**.
+
+4. **Read the errors.** Syntax errors show up as red squiggles while you type, in ClickHouse's own words. Hover
+   over one to read it, or open the Problems panel (`Cmd+Shift+M` / `Ctrl+Shift+M`) to see them all. Only syntax
+   is checked, as `clickhouse format` does: unknown tables, functions or settings are fine, and inline data
+   after `INSERT ... VALUES` or `FORMAT` is skipped.
+
+To update, pull the repository and repeat steps 1 and 2; installing a newer `.vsix` replaces the old one. To
+remove it, open the Extensions view, select **ClickHouse SQL** and click **Uninstall**.
+
 ## Development
 
 Requires Node.js 22 or newer.

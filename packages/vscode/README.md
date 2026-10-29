@@ -14,6 +14,23 @@ Syntax highlighting and syntax checking for [ClickHouse](https://github.com/Clic
 The checker looks at syntax only, as `clickhouse format` does: unknown tables, functions or
 settings are fine. Inline data after `INSERT ... VALUES` or `FORMAT` is not checked.
 
+## Install
+
+The extension is not on the Marketplace yet. Build the `.vsix` from the root of the
+[repository](https://github.com/valerypetrov/clickhouse-sql-syntax) (Node.js 22 or newer):
+
+```sh
+npm install
+npm run build
+npm run package:vscode   # writes packages/vscode/clickhouse-sql-0.1.0.vsix
+```
+
+Then install it in VS Code 1.90 or newer: in the Extensions view click `...`, choose **Install from VSIX...**
+and pick the file, or run `code --install-extension packages/vscode/clickhouse-sql-0.1.0.vsix`.
+
+Syntax errors appear as red squiggles while you type; hover over one, or open the Problems panel
+(`Cmd+Shift+M` / `Ctrl+Shift+M`) to see them all.
+
 ## Files
 
 The extension is used for `.chsql` and `.clickhouse.sql` files. To use it for `.sql` files as
