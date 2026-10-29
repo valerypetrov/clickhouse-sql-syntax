@@ -163,6 +163,7 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
       if (!parseCollation(p)) return null;
       collation = true;
     }
+    let defaultSpecifier = true;
     if (kw(p, "DEFAULT") || kw(p, "MATERIALIZED") || kw(p, "ALIAS")) {
       defaultExpression = parseExpression(p);
       if (!defaultExpression) return null;
@@ -173,6 +174,8 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
       if (!defaultExpression && !type) return null;
     } else if (kw(p, "AUTO_INCREMENT")) {
       type ??= new Ast("DataType");
+    } else {
+      defaultSpecifier = false;
     }
     if (defaultExpression && !canHaveAlias(defaultExpression)) return null;
     if (requireType && !type && !defaultExpression) return null;
@@ -226,6 +229,10 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
     }
     if (type) node.set("type", type);
     if (defaultExpression) node.set("default", defaultExpression);
+    if (defaultSpecifier) node.flag("default_specifier");
+    if (nullModifier !== undefined) node.flag("null_modifier");
+    // Like ASTColumnDeclaration::hasChildren(): any part besides the name and the flags.
+    if (type || defaultExpression || comment || codec || statistics || ttl || settings || collation) node.flag("children");
     if (comment) node.flag("comment");
     if (codec) node.flag("codec");
     if (statistics) node.flag("statistics");
@@ -753,7 +760,7 @@ function parseCreateDatabaseQuery(p: P): Ast | null {
 }
 
 /** ParserRefreshStrategy: AFTER|EVERY interval [OFFSET ...] [RANDOMIZE FOR ...] [DEPENDS ON ...] [SETTINGS ...] [APPEND]. */
-function parseRefreshStrategy(p: P): Ast | null {
+export function parseRefreshStrategy(p: P): Ast | null {
   return base(p, "refresh strategy", () => {
     let scheduled = false;
     if (kw(p, "AFTER")) {
