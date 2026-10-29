@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete } from "clickhouse-sql-syntax";
 
-/** Where the databases, tables and columns to complete come from, such as a live server. */
+/** Where the databases, tables and columns to complete come from, such as a live server; a failure means none. */
 export type SchemaSource = (document: vscode.TextDocument) => CompletionSchema | undefined | Promise<CompletionSchema | undefined>;
 
 const KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
@@ -31,7 +31,8 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       const text = document.getText();
       const offset = document.offsetAt(position);
       if (context.triggerCharacter === " " && !opensAfterSpace(text, offset)) return undefined;
-      const candidates = complete(text, offset, { schema: await schema?.(document) });
+      const names = await Promise.resolve(schema?.(document)).catch(() => undefined);
+      const candidates = complete(text, offset, { schema: names });
       const word = document.getWordRangeAtPosition(position);
       const bracketFollows = text[word ? document.offsetAt(word.end) : offset] === "(";
       return candidates.map((candidate, i) => toItem(candidate, i, bracketFollows));
