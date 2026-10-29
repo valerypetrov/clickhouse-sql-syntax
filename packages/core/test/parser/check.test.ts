@@ -57,10 +57,13 @@ describe("check()", () => {
     assert.deepEqual(errors("SELECT (1; SELECT 2"), [[9, "Unmatched parentheses: '(' at position 8 is never closed."]]);
   });
 
-  // Quadratic work would take half a minute here.
-  test("takes time in proportion to the input, not to the number of statements times its length", { timeout: 10_000 }, () => {
+  // About 0.4 s here, and quadratic work would take half a minute. A { timeout } cannot stop synchronous code.
+  test("takes time in proportion to the input, not to the number of statements times its length", () => {
     const sql = Array.from({ length: 20000 }, (_, i) => `SELECT ${i} FROM t WHERE x IN (${i});`).join("\n");
+    const start = performance.now();
     assert.deepEqual(check(sql), []);
+    const ms = performance.now() - start;
+    assert.ok(ms < 5000, `took ${ms.toFixed(0)} ms`);
   });
 
   test("skips VALUES data up to a ';' outside brackets and strings", () => {
