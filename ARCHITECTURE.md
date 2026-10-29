@@ -20,7 +20,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
 
-`types.ts` holds the public types. `index.ts` exports them and every function, by name and as one default object.
+`types.ts` holds the public types. `index.ts` exports them and the functions by name, and the six main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,
 `\r\n` or a lone `\r`, as in VS Code.
 

@@ -17,7 +17,7 @@ cd ../your-project && npm install ../clickhouse-sql-syntax/packages/core
 ## API
 
 Offsets count UTF-16 code units, as JavaScript strings do; lines and columns start at 1.
-The types are in [src/types.ts](src/types.ts), and every function is also on the default export.
+The types are in [src/types.ts](src/types.ts), and the functions below are also on the default export.
 
 ### check(sql)
 
