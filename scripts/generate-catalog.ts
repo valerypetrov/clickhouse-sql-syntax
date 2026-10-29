@@ -1,5 +1,4 @@
-// Regenerates the completion catalog in packages/core/src/generated/ from a ClickHouse binary:
-// functions, settings, table engines, formats, table functions and aggregate function combinators.
+// Regenerates the completion catalog of functions, settings, engines, formats and combinators from a ClickHouse binary.
 // Usage: npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse binary>
 
 import { execFileSync } from "node:child_process";
