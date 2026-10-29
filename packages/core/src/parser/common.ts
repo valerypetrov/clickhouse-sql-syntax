@@ -133,10 +133,25 @@ export function parsePartition(p: P): Ast | null {
   });
 }
 
-const CALENDAR_UNITS = new Set(["Month", "Quarter", "Year"]);
+const SECONDS: Record<string, number> = { Second: 1, Minute: 60, Hour: 3600, Day: 86400, Week: 604800 };
+const MONTHS: Record<string, number> = { Month: 1, Quarter: 3, Year: 12 };
+const DAY = 86400;
+
+/** A CalendarTimeInterval: months and seconds, kept apart because months differ in length. */
+export interface TimeInterval {
+  months: number;
+  seconds: number;
+}
+
+/** CalendarTimeInterval::minSeconds and maxSeconds: a month is 28 to 31 days, a year 365 to 366. */
+export function intervalSeconds(interval: TimeInterval, longest: boolean): number {
+  const { months, seconds } = interval;
+  const years = Math.floor(months / 12);
+  return (years * (longest ? 366 : 365) + (months % 12) * (longest ? 31 : 28)) * DAY + seconds;
+}
 
 /** ParserTimeInterval: 1 HOUR 30 MINUTE, as in REFRESH EVERY. */
-export function parseTimeInterval(p: P, allowZero = false, allowMixing = true): Ast | null {
+export function parseTimeInterval(p: P, allowZero = false, allowMixing = true): TimeInterval | null {
   return base(p, "time interval", () => {
     const kinds: string[] = [];
     const values: number[] = [];
@@ -155,10 +170,15 @@ export function parseTimeInterval(p: P, allowZero = false, allowMixing = true): 
       if (seen.has(kind)) p.fail(`Time interval contains multiple ${kind} components`, p.i - 1);
       seen.add(kind);
     }
-    if (!allowZero && values.every((value) => value === 0))
-      p.failOther("Interval must be positive", p.i - 1);
-    if (!allowMixing && kinds.some((kind) => CALENDAR_UNITS.has(kind)) && kinds.some((kind) => !CALENDAR_UNITS.has(kind)))
+    const interval: TimeInterval = { months: 0, seconds: 0 };
+    kinds.forEach((kind, index) => {
+      if (kind in MONTHS) interval.months += values[index]! * MONTHS[kind]!;
+      else if (kind in SECONDS) interval.seconds += values[index]! * SECONDS[kind]!;
+      else p.failOther("Sub-second intervals are not supported here.", p.i - 1);
+    });
+    if (!allowZero && !interval.months && !interval.seconds) p.failOther("Interval must be positive", p.i - 1);
+    if (!allowMixing && interval.months && interval.seconds)
       p.failOther("Interval shouldn't contain both calendar units and clock units (e.g. months and days)", p.i - 1);
-    return new Ast("Other");
+    return interval;
   });
 }

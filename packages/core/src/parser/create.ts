@@ -5,7 +5,7 @@
  */
 import { parseUserNameWithHost } from "./access.js";
 import { Ast, canHaveAlias, func, stringValue } from "./ast.js";
-import { parseCluster, parseTimeInterval } from "./common.js";
+import { intervalSeconds, parseCluster, parseTimeInterval } from "./common.js";
 import { parseDataType } from "./datatype.js";
 import {
   parseArrayOfLiterals,
@@ -767,9 +767,15 @@ export function parseRefreshStrategy(p: P): Ast | null {
       if (!parseTimeInterval(p, true, true)) return null;
       scheduled = true;
     } else if (kw(p, "EVERY")) {
-      if (!parseTimeInterval(p, false, false)) return null;
+      const period = parseTimeInterval(p, false, false);
+      if (!period) return null;
       scheduled = true;
-      if (kw(p, "OFFSET") && !parseTimeInterval(p, true, true)) return null;
+      if (kw(p, "OFFSET")) {
+        const offset = parseTimeInterval(p, true, true);
+        if (!offset) return null;
+        if (intervalSeconds(offset, true) >= intervalSeconds(period, false))
+          p.failOther("OFFSET must be less than the period", p.i - 1);
+      }
     }
     if (kw(p, "RANDOMIZE FOR") && !parseTimeInterval(p, true, true)) return null;
     let dependencies = false;
