@@ -235,6 +235,7 @@ describe("complete()", () => {
     assert.ok(complete("SELECT 1 ", 100).some((c) => c.label === "FROM"));
   });
 
+  // Ten times what it takes here, for slower machines; the VS Code stress tests hold it to 50 ms.
   test("is fast at the end of a 1 MB file", () => {
     const statement = "SELECT a, toDate(b) AS c, 'x; y' FROM db.t WHERE d IN (1, 2, 3) -- note\n;\n";
     const sql = `${statement.repeat(Math.ceil(1_000_000 / statement.length))}SELECT * FROM t WHERE to`;
@@ -244,7 +245,7 @@ describe("complete()", () => {
       assert.ok(complete(sql, sql.length).some((c) => c.label === "toDate"));
       best = Math.min(best, performance.now() - start);
     }
-    assert.ok(best < 50, `took ${best.toFixed(1)} ms`);
+    assert.ok(best < 250, `took ${best.toFixed(1)} ms`);
   });
 });
 
