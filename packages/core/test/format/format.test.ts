@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { check } from "../../src/parser/index.js";
 import { format } from "../../src/format/index.js";
 import { tokenize } from "../../src/lexer/index.js";
-import { TokenKind, isErrorKind } from "../../src/types.js";
+import { type KeywordCase, TokenKind, isErrorKind } from "../../src/types.js";
 import { GOLDEN } from "./golden.js";
 
 /** The significant tokens of a text, keywords in upper case, and its comments. */
@@ -158,6 +158,8 @@ describe("format() options", () => {
     formats(sql, "select\n    a,\n    b\nfrom t\nwhere x in (\n    select 1\n)", { keywordCase: "lower" });
     formats("Select a From t", "Select a\nFrom t", { keywordCase: "preserve" });
     formats("select a from t", "SELECT a\nFROM t", { keywordCase: "upper" });
+    // A value from an editor setting may be anything.
+    formats("select a from t", "SELECT a\nFROM t", { keywordCase: "Lower" as KeywordCase });
   });
 
   test("indentSize", () => {

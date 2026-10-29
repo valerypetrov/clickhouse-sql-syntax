@@ -14,7 +14,7 @@ const DEFAULT_INDENT = 4;
 
 export function format(sql: string, options: FormatOptions = {}): string {
   if (sql.trim() === "") return sql;
-  const keywordCase = options.keywordCase ?? "upper";
+  const keywordCase = options.keywordCase === "lower" || options.keywordCase === "preserve" ? options.keywordCase : "upper";
   const size = options.indentSize ?? DEFAULT_INDENT;
   const unit = " ".repeat(Number.isFinite(size) && size > 0 ? Math.floor(size) : size === 0 ? 0 : DEFAULT_INDENT);
   const firstBreak = /\r\n|\n|\r/.exec(sql)?.[0];
