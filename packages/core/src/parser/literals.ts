@@ -27,18 +27,22 @@ function isControl(c: string): boolean {
  */
 export function unquote(text: string, quote: string, sqlStyle = true): string | undefined {
   if (text[0] !== quote) return undefined;
-  let result = "";
+  // Without escapes or doubled quotes the value is the text between the quotes.
+  const body = text.slice(1, -1);
+  if (text.length > 1 && text.endsWith(quote) && !body.includes(quote) && !body.includes("\\")) return body;
+  // Pieces joined once, as adding one character at a time takes dozens of bytes per character.
+  const result: string[] = [];
   let i = 1;
   while (i < text.length) {
     const c = text[i]!;
     if (c === quote) {
       i++;
       if (sqlStyle && text[i] === quote) {
-        result += quote;
+        result.push(quote);
         i++;
         continue;
       }
-      return i === text.length ? result : undefined;
+      return i === text.length ? result.join("") : undefined;
     }
     if (c === "\\") {
       i++;
@@ -47,20 +51,22 @@ export function unquote(text: string, quote: string, sqlStyle = true): string | 
       if (after === "x") {
         const hex = text.slice(i + 1, i + 3);
         if (hex.length !== 2) return undefined;
-        result += String.fromCharCode(parseInt(hex, 16) || 0);
+        result.push(String.fromCharCode(parseInt(hex, 16) || 0));
         i += 3;
       } else if (after === "N") {
         i++;
       } else {
         const decoded = SIMPLE_ESCAPES[after] ?? after;
-        if (!"\\'\"`/=".includes(decoded) && !isControl(decoded)) result += "\\";
-        result += decoded;
+        if (!"\\'\"`/=".includes(decoded) && !isControl(decoded)) result.push("\\");
+        result.push(decoded);
         i++;
       }
       continue;
     }
-    result += c;
-    i++;
+    let end = i + 1;
+    while (end < text.length && text[end] !== quote && text[end] !== "\\") end++;
+    result.push(text.slice(i, end));
+    i = end;
   }
   return undefined;
 }
@@ -76,12 +82,12 @@ export function quotedIdentifierName(text: string): string | undefined {
 }
 
 function decodeBits(digits: string, wordSize: number, hex: boolean): string {
-  let result = "";
+  const result: string[] = [];
   for (let i = 0; i < digits.length; i += wordSize) {
     const word = digits.slice(i, i + wordSize);
-    result += String.fromCharCode(parseInt(word, hex ? 16 : 2) || 0);
+    result.push(String.fromCharCode(parseInt(word, hex ? 16 : 2) || 0));
   }
-  return result;
+  return result.join("");
 }
 
 /** The value of a StringLiteral token, or undefined where ParserStringLiteral fails. */
