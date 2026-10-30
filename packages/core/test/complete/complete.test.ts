@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { gunzipSync } from "node:zlib";
 
-import { type CompletionCandidate, type CompletionSchema, complete, describe as describeName } from "../../src/index.js";
+import {
+  check,
+  type CompletionCandidate,
+  type CompletionSchema,
+  complete,
+  describe as describeName,
+  isSignificant,
+  TokenKind,
+  tokenize,
+} from "../../src/index.js";
+import { expectedAt } from "../../src/parser/index.js";
+
+const CORPUS = new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url);
 
 const schema: CompletionSchema = {
   databases: ["default", "logs"],
@@ -242,6 +256,61 @@ describe("complete()", () => {
     assert.deepEqual(labels("SELECT 12|"), []);
     assert.ok(labels("SELECT 1 /* c */ |").includes("FROM"));
     assert.ok(labels("SELECT 'abc' |").includes("FROM"));
+  });
+
+  test("offers no keyword that the parser then rejects", () => {
+    const keywords = (text: string) => at(text).filter((c) => c.kind === "keyword").map((c) => c.label);
+    assert.ok(!keywords("SELECT * FROM t WHERE x |").includes("FETCH"));
+    assert.ok(keywords("SELECT * FROM t ORDER BY x |").includes("FETCH"));
+    for (const keyword of ["SEMI", "ANTI", "ONLY"]) assert.ok(!keywords("SELECT * FROM t INNER |").includes(keyword), keyword);
+    assert.ok(keywords("SELECT * FROM t LEFT |").includes("SEMI"));
+    for (const keyword of ["PASTE", "CROSS"]) assert.ok(!keywords("SELECT * FROM t ANY |").includes(keyword), keyword);
+    for (const keyword of ["END", "UNKNOWN"]) assert.ok(!keywords("SYSTEM |").includes(keyword), keyword);
+    assert.ok(!keywords("SYSTEM STOP MERGES |").includes("PARALLEL WITH"));
+    assert.ok(!keywords("SYSTEM FLUSH LOGS |").includes("PARALLEL WITH"));
+    assert.ok(keywords("SYSTEM SHUTDOWN |").includes("PARALLEL WITH"));
+  });
+
+  // Cut statements of ClickHouse's tests anywhere: the parser takes every keyword offered there.
+  test("offers only keywords that the parser takes next, in statements of ClickHouse's tests", () => {
+    const statements = gunzipSync(readFileSync(CORPUS))
+      .toString("utf8")
+      .split("\n")
+      .slice(1)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { sql: string; valid: boolean; mutation?: string })
+      .filter((entry) => entry.valid && !entry.mutation && entry.sql.length < 300)
+      .map((entry) => entry.sql);
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const rejected: string[] = [];
+    for (let n = 0; n < 400; n++) {
+      const sql = statements[Math.floor(random() * statements.length)]!;
+      const tokens = tokenize(sql).filter((token) => isSignificant(token.kind) && token.kind !== TokenKind.EndOfStream);
+      if (tokens.length < 2) continue;
+      const cut = tokens[1 + Math.floor(random() * (tokens.length - 1))]!;
+      const before = `${sql.slice(0, cut.start).trimEnd()} `;
+      for (const candidate of complete(before, before.length)) {
+        if (candidate.kind !== "keyword") continue;
+        // The brackets still open are closed after the keyword.
+        const keyword = before + candidate.label;
+        const open: string[] = [];
+        for (const token of tokenize(keyword)) {
+          if (token.kind === TokenKind.OpeningRoundBracket) open.push(")");
+          else if (token.kind === TokenKind.OpeningSquareBracket) open.push("]");
+          else if (token.kind === TokenKind.ClosingRoundBracket || token.kind === TokenKind.ClosingSquareBracket) open.pop();
+        }
+        const closed = `${keyword} ${open.reverse().join("")}`;
+        const onKeyword = [keyword, closed].every((text) => check(text).some((d) => d.start >= before.length && d.start < keyword.length));
+        const expects = (text: string) => {
+          const significant = tokenize(text).filter((token) => isSignificant(token.kind) && token.kind !== TokenKind.EndOfStream);
+          return expectedAt(text, significant, text.length + 1).length > 0;
+        };
+        const goesOn = check(closed).length === 0 || expects(keyword) || expects(closed);
+        if (onKeyword || !goesOn) rejected.push(keyword);
+      }
+    }
+    assert.deepEqual(rejected, []);
   });
 
   test("finds the statement around the cursor after inline data, as check() does", () => {

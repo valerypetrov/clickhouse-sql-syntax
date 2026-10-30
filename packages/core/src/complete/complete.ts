@@ -10,7 +10,7 @@ import { SETTINGS } from "../generated/settings.js";
 import { TABLE_ENGINES } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
 import { split, type Unit } from "../format/index.js";
-import { expectedAt } from "../parser/index.js";
+import { acceptsKeyword, expectedAt } from "../parser/index.js";
 import {
   type CompleteOptions,
   type CompletionCandidate,
@@ -272,7 +272,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   }
 
   for (const variant of variants)
-    if (KEYWORD_VARIANT.test(variant))
+    if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && acceptsKeyword(sql, before, word.start, variant))
       out.add(keywordTier, { label: isLower(prefix) ? variant.toLowerCase() : variant, kind: "keyword" });
 
   const previous = before[before.length - 1];
