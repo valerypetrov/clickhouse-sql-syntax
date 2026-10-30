@@ -47,6 +47,11 @@ function uuidOf(p: P, literal: Ast, at: number): string {
   return text;
 }
 
+/** The UUID of TO INNER UUID, which must be one and not the Nil UUID. */
+function rejectNilInnerUuid(p: P, uuid: { literal: Ast; at: number }): void {
+  if (NIL_UUID.test(uuidOf(p, uuid.literal, uuid.at))) p.failOther("TO INNER UUID cannot use a Nil UUID", uuid.at);
+}
+
 function rejectNilUuid(p: P, attach: boolean, table: Ast): void {
   const uuid = table.get("uuid");
   if (attach && uuid && NIL_UUID.test(stringValue(uuid) ?? "")) p.failOther("ATTACH queries cannot use a Nil UUID");
@@ -569,10 +574,12 @@ export function parseCreateTableQuery(p: P): Ast | null {
     if (!replace) kw(p, "IF NOT EXISTS");
     const table = parseCompoundIdentifier(p, true, true);
     if (!table) return null;
-    let innerUuid = false;
+    let innerUuid: { literal: Ast; at: number } | null = null;
     if (kw(p, "TO INNER UUID")) {
-      if (!parseStringLiteral(p)) return null;
-      innerUuid = true;
+      const at = p.i;
+      const literal = parseStringLiteral(p);
+      if (!literal) return null;
+      innerUuid = { literal, at };
     }
     let fromPath = false;
     if (attach) {
@@ -686,6 +693,7 @@ export function parseCreateTableQuery(p: P): Ast | null {
       if (engine !== "SharedSet" && engine !== "SharedJoin")
         p.failOther(`Storage engine ${engine ?? "(no engine)"} does not support inner UUID`);
       if (targets) p.failOther("targets are already defined");
+      rejectNilInnerUuid(p, innerUuid);
     }
     return new Ast("CreateQuery").set("columns", columns);
   });
@@ -816,9 +824,12 @@ function parseCreateViewQuery(p: P): Ast | null {
       refresh = true;
     }
     let toTable = false;
+    let innerUuid: { literal: Ast; at: number } | null = null;
     if (materialized && kw(p, "TO INNER UUID")) {
+      const at = p.i;
       const literal = parseStringLiteral(p);
       if (!literal) return null;
+      innerUuid = { literal, at };
     } else if (materialized && kw(p, "TO")) {
       if (!parseCompoundIdentifier(p, true, true)) return null;
       toTable = true;
@@ -892,6 +903,7 @@ function parseCreateViewQuery(p: P): Ast | null {
       if (storagePrimaryKey) p.failOther("Multiple primary keys are not allowed.");
       storagePrimaryKey = true;
     }
+    if (innerUuid) rejectNilInnerUuid(p, innerUuid);
     return new Ast("CreateQuery");
   });
 }
