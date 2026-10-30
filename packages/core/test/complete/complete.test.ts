@@ -153,6 +153,21 @@ describe("complete()", () => {
     assert.deepEqual(labels("SELECT * FROM numb|", false), ["numbers", "numbers_mt"]);
   });
 
+  test("offers no tables or table functions after a whole table expression", () => {
+    for (const text of [
+      "SELECT * FROM t |",
+      "SELECT * FROM t AS x |",
+      "SELECT * FROM t FINAL |",
+      "SELECT * FROM t JOIN u ON a = b |",
+      "SELECT * FROM t JOIN u USING (x) |",
+      "SELECT * FROM t ARRAY JOIN arr |",
+    ]) {
+      const found = at(text);
+      assert.ok(!found.some((c) => c.kind === "table function" || c.kind === "table" || c.kind === "database"), text);
+      assert.ok(found.some((c) => c.label === "JOIN"), text);
+    }
+  });
+
   test("offers table names where a statement takes one", () => {
     assert.ok(labels("INSERT INTO |").includes("hits"));
     assert.ok(labels("DROP TABLE |").includes("events"));

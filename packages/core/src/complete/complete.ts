@@ -35,8 +35,8 @@ import { databases, isWord, nameOf, resolve, type SchemaTable, tableRefs } from 
 /** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
 const KEYWORD_VARIANT = /^[A-Z][A-Z0-9_]*( [A-Z][A-Z0-9_]*)*$/;
 
-/** The variants of the parsers that read a table expression after FROM or JOIN. */
-const TABLE_VARIANTS = ["table, table function, subquery or list of joined tables", "table or subquery or table function"];
+/** Expected where a table goes after FROM or JOIN; the list of joins expects its own variant after a table too. */
+const TABLE_VARIANT = "table or subquery or table function";
 
 /** Words after which a table name follows. */
 const TABLE_NAME_WORDS = new Set(["table", "into", "update", "describe", "desc", "exists", "truncate"]);
@@ -277,7 +277,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
       });
     }
     if (prefix) addCombinators(out, nameTier + 1);
-  } else if (TABLE_VARIANTS.some(has)) {
+  } else if (has(TABLE_VARIANT)) {
     addTables(out, schemaTier, schema.tables ?? []);
     addDatabases(out, schemaTier, schema);
     for (const info of TABLE_FUNCTIONS)
