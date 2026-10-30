@@ -11,6 +11,12 @@ const TYPED = "abcdefghijklmnopqrstuvwxyz0123456789 ,.()+";
 // The first statement always has an error, so that every check sets new diagnostics; edits leave it alone.
 const BROKEN = "SELECT 1 +;\n";
 const TYPING = "SELECT * FROM t WHERE to";
+// The time budgets fit a desktop; STRESS_TIME_SCALE=<factor> multiplies them on a slower machine, such as a CI runner.
+const SCALE = Number(process.env.STRESS_TIME_SCALE || 1);
+assert.ok(SCALE > 0, `STRESS_TIME_SCALE must be a positive number, not ${process.env.STRESS_TIME_SCALE}`);
+const DIAGNOSTICS_MS = 300 * SCALE;
+const ROUND_TRIP_MS = 500 * SCALE;
+const TOOL_MS = 50 * SCALE;
 
 /** BROKEN and then 10,000 statements that ClickHouse accepts, from the oracle's corpus: about 1 MB. */
 function corpusFile(): string {
@@ -98,7 +104,7 @@ describe("A file of 10,000 statements, about 1 MB", function () {
   const sql = corpusFile();
   afterEach(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
 
-  it("gets its diagnostics within 300 ms of the check delay after each of 500 edits", async () => {
+  it(`gets its diagnostics within ${DIAGNOSTICS_MS} ms of the check delay after each of 500 edits`, async () => {
     const editor = await open(sql);
     while (syntaxErrors(editor.document).length === 0) await sleep(10);
     const stop = probe();
@@ -114,11 +120,11 @@ describe("A file of 10,000 statements, about 1 MB", function () {
     const roundTrips = await stop();
     console.log(`      diagnostics after the ${CHECK_DELAY_MS} ms delay: ${summary(latencies)}`);
     console.log(`      command round trips meanwhile: ${summary(roundTrips)}`);
-    assert.ok(percentile(latencies, 95) < 300, summary(latencies));
-    assert.ok(Math.max(...roundTrips) < 500, summary(roundTrips));
+    assert.ok(percentile(latencies, 95) < DIAGNOSTICS_MS, summary(latencies));
+    assert.ok(Math.max(...roundTrips) < ROUND_TRIP_MS, summary(roundTrips));
   });
 
-  it("answers commands within 500 ms through 500 edits in a row", async () => {
+  it(`answers commands within ${ROUND_TRIP_MS} ms through 500 edits in a row`, async () => {
     const editor = await open(sql);
     while (syntaxErrors(editor.document).length === 0) await sleep(10);
     const stop = probe();
@@ -129,10 +135,10 @@ describe("A file of 10,000 statements, about 1 MB", function () {
     while (syntaxErrors(editor.document)[0] === before) await sleep(1);
     const roundTrips = await stop();
     console.log(`      command round trips: ${summary(roundTrips)}`);
-    assert.ok(Math.max(...roundTrips) < 500, summary(roundTrips));
+    assert.ok(Math.max(...roundTrips) < ROUND_TRIP_MS, summary(roundTrips));
   });
 
-  it("gives semantic tokens within 50 ms after an edit, of the whole file and of a screen of it", async () => {
+  it(`gives semantic tokens within ${TOOL_MS} ms after an edit, of the whole file and of a screen of it`, async () => {
     const editor = await open(sql);
     const uri = editor.document.uri;
     const whole = () => vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri);
@@ -149,11 +155,11 @@ describe("A file of 10,000 statements, about 1 MB", function () {
       ofScreen = Math.min(ofScreen, await timed(range));
     }
     console.log(`      semantic tokens: first ${first.toFixed(0)} ms, after an edit ${afterEdit.toFixed(0)} ms, of a screen ${ofScreen.toFixed(0)} ms`);
-    assert.ok(afterEdit < 50, `after an edit: ${afterEdit.toFixed(0)} ms`);
-    assert.ok(ofScreen < 50, `of a screen: ${ofScreen.toFixed(0)} ms`);
+    assert.ok(afterEdit < TOOL_MS, `after an edit: ${afterEdit.toFixed(0)} ms`);
+    assert.ok(ofScreen < TOOL_MS, `of a screen: ${ofScreen.toFixed(0)} ms`);
   });
 
-  it("completes within 50 ms at its end and in its middle", async () => {
+  it(`completes within ${TOOL_MS} ms at its end and in its middle`, async () => {
     const half = sql.indexOf(";\n", sql.length / 2) + 2;
     const editor = await open(`${sql.slice(0, half)}${TYPING};\n${sql.slice(half)}${TYPING}`);
     const document = editor.document;
@@ -166,7 +172,7 @@ describe("A file of 10,000 statements, about 1 MB", function () {
       inMiddle = Math.min(inMiddle, await timed(complete(half + TYPING.length)));
     }
     console.log(`      completion: at the end ${atEnd.toFixed(0)} ms, in the middle ${inMiddle.toFixed(0)} ms`);
-    assert.ok(atEnd < 50, `at the end: ${atEnd.toFixed(0)} ms`);
-    assert.ok(inMiddle < 50, `in the middle: ${inMiddle.toFixed(0)} ms`);
+    assert.ok(atEnd < TOOL_MS, `at the end: ${atEnd.toFixed(0)} ms`);
+    assert.ok(inMiddle < TOOL_MS, `in the middle: ${inMiddle.toFixed(0)} ms`);
   });
 });
