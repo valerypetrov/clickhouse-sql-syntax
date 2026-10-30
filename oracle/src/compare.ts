@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import type { Diagnostic } from "clickhouse-sql-syntax";
 
+import type { Verdict } from "./clickhouse.js";
 import type { Corpus, Entry } from "./corpus.js";
 import { expectsSyntaxError } from "./extract.js";
 import { isSignificant, lex } from "./lexer.js";
@@ -33,6 +34,8 @@ export interface Metrics {
   expectedErrors: number;
   expectedErrorsClickHouseRejects: number;
   expectedErrorsCheckRejects: number;
+  /** Statements left out of the numbers above, as the reference build reads them as check() does and this one does not. */
+  versionGaps: number;
   seconds: number;
 }
 
@@ -57,6 +60,9 @@ export interface Report {
   falseNegatives: (Case & { clickhouseMessage?: string; clickhouseOffset?: number })[];
   positionMismatches: (Case & { clickhouseOffset: number; clickhouseMessage?: string; start: number; message: string })[];
   thrown: (Case & { error: string })[];
+  /** The build of the reference labels, when they come from another build than the corpus. */
+  reference?: string;
+  versionGaps: (Case & { clickhouseVerdict: string; referenceVerdict: string })[];
   groups: Record<"falsePositives" | "falseNegatives" | "positionMismatches", Group>;
   slowest: (Case & { ms: number })[];
 }
@@ -110,8 +116,33 @@ function first(diagnostics: Diagnostic[]): Diagnostic {
   return diagnostics.reduce((a, b) => (b.start < a.start ? b : a));
 }
 
-/** Runs check() on every statement of the corpus and compares it with ClickHouse. */
-export function compare(corpus: Corpus, check: CheckFunction, corpusName: string): Report {
+/** Whether diagnostics of check() say what a ClickHouse verdict says: no error, or the first one at its position with its message. */
+export function matches(verdict: Verdict, sql: string, diagnostics: Diagnostic[]): boolean {
+  if (verdict.valid || diagnostics.length === 0) return verdict.valid === (diagnostics.length === 0);
+  if (verdict.position === undefined) return true;
+  const d = first(diagnostics);
+  return d.start === utf16Offset(sql, verdict.position) && withoutFinalPeriod(d.message) === verdict.message;
+}
+
+export function sameVerdict(a: Verdict, b: Verdict): boolean {
+  return a.valid === b.valid && a.position === b.position && a.message === b.message;
+}
+
+/** A verdict as text: "valid", or where and why the statement fails. */
+export function verdictText(verdict: Verdict, sql: string): string {
+  if (verdict.valid) return "valid";
+  const at = verdict.position === undefined ? "" : ` at ${utf16Offset(sql, verdict.position)}`;
+  return `fails${at}: ${verdict.message ?? "(no message)"}`;
+}
+
+/**
+ * Runs check() on every statement of the corpus and compares it with ClickHouse. With labels of another
+ * build as `reference`, a statement that build reads as check() does, while this one does not, is a version gap.
+ */
+export function compare(corpus: Corpus, check: CheckFunction, corpusName: string, reference?: Corpus): Report {
+  const otherBuild = reference && reference.header.gitHash !== corpus.header.gitHash;
+  const references = new Map(otherBuild ? reference.entries.map((e) => [e.sql, e]) : []);
+  const versionGaps: Report["versionGaps"] = [];
   const falsePositives: Report["falsePositives"] = [];
   const falseNegatives: Report["falseNegatives"] = [];
   const positionMismatches: Report["positionMismatches"] = [];
@@ -135,6 +166,11 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
     }
     timings.push({ entry, ms: performance.now() - t0 });
     const rejected = diagnostics !== undefined && diagnostics.length > 0;
+    const ref = references.get(entry.sql);
+    if (diagnostics && ref && !sameVerdict(ref, entry) && matches(ref, entry.sql, diagnostics)) {
+      versionGaps.push({ ...asCase(entry), clickhouseVerdict: verdictText(entry, entry.sql), referenceVerdict: verdictText(ref, entry.sql) });
+      continue;
+    }
 
     if (entry.hints && expectsSyntaxError(entry.hints)) {
       m.expectedErrors++;
@@ -178,8 +214,9 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
 
   const valid = m.validAccepted + m.validRejected + m.validThrew;
   const invalid = m.invalidAccepted + m.invalidRejected + m.invalidThrew;
+  const statements = corpus.entries.length - versionGaps.length;
   const metrics: Metrics = {
-    statements: corpus.entries.length,
+    statements,
     valid,
     invalid,
     validAccepted: m.validAccepted,
@@ -188,7 +225,7 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
     invalidRejected: m.invalidRejected,
     invalidAccepted: m.invalidAccepted,
     invalidThrew: m.invalidThrew,
-    verdictAgreement: ratio(m.validAccepted + m.invalidRejected, corpus.entries.length),
+    verdictAgreement: ratio(m.validAccepted + m.invalidRejected, statements),
     validAcceptedRate: ratio(m.validAccepted, valid),
     invalidRejectedRate: ratio(m.invalidRejected, invalid),
     positionMatch: ratio(m.positionMatched, m.positionCompared),
@@ -197,6 +234,7 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
     expectedErrors: m.expectedErrors,
     expectedErrorsClickHouseRejects: m.expectedErrorsClickHouseRejects,
     expectedErrorsCheckRejects: m.expectedErrorsCheckRejects,
+    versionGaps: versionGaps.length,
     seconds: (performance.now() - started) / 1000,
   };
   const group = <T extends Case>(cases: T[], message: (c: T) => string): Group => ({
@@ -215,6 +253,8 @@ export function compare(corpus: Corpus, check: CheckFunction, corpusName: string
     falseNegatives,
     positionMismatches,
     thrown,
+    ...(otherBuild ? { reference: reference.header.clickhouse } : {}),
+    versionGaps,
     groups: {
       falsePositives: group(falsePositives, (c) => c.message),
       falseNegatives: group(falseNegatives, (c) => c.clickhouseMessage ?? "(no message)"),
@@ -243,7 +283,8 @@ export function formatReport(report: Report, examples: number): string {
   const out: string[] = [];
   const row = (label: string, a: number, b: number, c: number): string =>
     `  ${label.padEnd(20)}${String(a).padStart(12)}${String(b).padStart(12)}${String(c).padStart(12)}`;
-  out.push(`ClickHouse ${report.clickhouse}, ${report.corpus}: ${m.statements} statements, check() took ${m.seconds.toFixed(1)} s`);
+  const gaps = m.versionGaps > 0 ? ` and ${m.versionGaps} version gaps` : "";
+  out.push(`ClickHouse ${report.clickhouse}, ${report.corpus}: ${m.statements} statements${gaps}, check() took ${m.seconds.toFixed(1)} s`);
   out.push("");
   out.push(`  ${"".padEnd(20)}${"accepted".padStart(12)}${"rejected".padStart(12)}${"threw".padStart(12)}`);
   out.push(row(`ClickHouse valid`, m.validAccepted, m.validRejected, m.validThrew));
@@ -285,6 +326,16 @@ export function formatReport(report: Report, examples: number): string {
       (c) => `${where(c)}: ${short(c.sql)}\n      ClickHouse at ${c.clickhouseOffset}, check() at ${c.start}: ${short(c.message, 80)}`,
     ),
   );
+  if (report.versionGaps.length > 0) {
+    out.push(
+      "",
+      `Version gaps, left out of the numbers above: ClickHouse ${report.reference} reads these as check() does, ClickHouse ${report.clickhouse} does not (${report.versionGaps.length}):`,
+    );
+    for (const c of report.versionGaps) {
+      // In full, as the verdicts often differ only deep in a list of expected tokens.
+      out.push(`    ${where(c)}: ${short(c.sql)}`, `      ${report.clickhouse}: ${c.clickhouseVerdict}`, `      ${report.reference}: ${c.referenceVerdict}`);
+    }
+  }
   if (report.thrown.length > 0) {
     out.push("", `check() threw on ${m.validThrew + m.invalidThrew} statements, for example:`);
     for (const c of report.thrown.slice(0, Math.min(examples, 3))) out.push(`    ${where(c)}: ${short(c.sql, 60)}\n      -> ${c.error}`);

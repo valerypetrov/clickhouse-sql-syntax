@@ -7,7 +7,9 @@ import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { check, complete, type Diagnostic as SyntaxError, format, KEYWORDS } from "clickhouse-sql-syntax";
 import * as vscode from "vscode";
-import { classify, type Verdict } from "../../../../oracle/src/clickhouse.js";
+import { classify, type ClickHouseInfo, type Verdict } from "../../../../oracle/src/clickhouse.js";
+import { sameVerdict, verdictText } from "../../../../oracle/src/compare.js";
+import { readCorpus } from "../../../../oracle/src/corpus.js";
 import { expectsSyntaxError, sha1, usesOtherDialect } from "../../../../oracle/src/extract.js";
 import { type Statement, splitStatements } from "../../../../oracle/src/split.js";
 
@@ -16,6 +18,9 @@ const CORPUS = process.env.CLICKHOUSE_CORPUS!;
 const CLICKHOUSE = process.env.CLICKHOUSE_BINARY!;
 const ROOT = resolve(__dirname, "..", "..");
 const REPORT = resolve(ROOT, "out", "corpus-report.json");
+const CACHE_DIR = resolve(ROOT, ".vscode-test", "corpus", "verdicts");
+/** The oracle's stored labels, which tell a version gap from a disagreement. */
+const STORED_LABELS = resolve(ROOT, "..", "..", "oracle", "fixtures", "corpus.jsonl.gz");
 /** Files taken in the hash order of their names, before pickFiles() adds more. */
 const SAMPLE = 300;
 /** Statements per file at whose middle and end completion is asked for, besides the end of the file. */
@@ -280,6 +285,17 @@ function withoutPositions(message: string): string {
   return message.replace(/ at position \d+(?: \(line \d+, col \d+\))?/g, " at position N");
 }
 
+/** How check()'s first error in a statement disagrees with a verdict of ClickHouse, or "" when they agree. */
+function disagreement(verdict: Verdict, statement: Statement, first: SyntaxError | undefined): string {
+  if (verdict.valid) return first ? `valid for ClickHouse, check() says ${first.message}` : "";
+  if (!first) return `check() accepts it, ClickHouse says ${verdict.message}`;
+  if (verdict.position === undefined) return "";
+  const at = utf16Offset(statement.text, verdict.position - 1);
+  const offset = first.start - statement.start;
+  if (offset === at && withoutPositions(first.message.replace(/\.$/, "")) === withoutPositions(verdict.message ?? "")) return "";
+  return `ClickHouse fails at ${at}: ${verdict.message}; check() at ${offset}: ${first.message}`;
+}
+
 /** A failure as "file:line: what | the statement". */
 function where(visit: Visit, statement: Statement | undefined, what: string): string {
   const sql = statement ? ` | ${statement.text.replace(/\s+/g, " ").slice(0, 150)}` : "";
@@ -294,6 +310,7 @@ function assertNone(failures: string[]): void {
 describe("ClickHouse test files in VS Code", () => {
   const visits: Visit[] = [];
   let labels = new Map<string, Verdict>();
+  let clickhouse: ClickHouseInfo = { version: "", gitHash: "" };
   const report: Record<string, unknown> = {};
 
   before(async () => {
@@ -303,9 +320,9 @@ describe("ClickHouse test files in VS Code", () => {
       const text = readFileSync(join(CORPUS, file), "utf8");
       return splitStatements(text).map((statement) => asWritten(text, statement));
     });
-    const cacheDir = resolve(ROOT, ".vscode-test", "corpus", "verdicts");
-    const labelled = await classify(sqls, { clickhouse: CLICKHOUSE, cacheDir, formatCheck: 0, jobs: 4, log: (line) => console.log(line) });
+    const labelled = await classify(sqls, { clickhouse: CLICKHOUSE, cacheDir: CACHE_DIR, formatCheck: 0, jobs: 4, log: (line) => console.log(line) });
     labels = labelled.verdicts;
+    clickhouse = labelled.info;
     const started = Date.now();
     for (const file of files) visits.push(await visit(file));
     const seconds = (Date.now() - started) / 1000;
@@ -331,8 +348,9 @@ describe("ClickHouse test files in VS Code", () => {
     assertNone(failures);
   });
 
-  it("agrees with ClickHouse on every statement", () => {
+  it("agrees with ClickHouse on every statement, apart from version gaps", async () => {
     const failures: string[] = [];
+    const suspects: { visit: Visit; statement: Statement; first: SyntaxError | undefined; problem: string }[] = [];
     const counts = { statements: 0, invalid: 0, positioned: 0, expectedErrors: 0, expectedErrorsReported: 0 };
     for (const visit of visits) {
       const { inside, before } = errorsByStatement(visit);
@@ -346,26 +364,36 @@ describe("ClickHouse test files in VS Code", () => {
           counts.expectedErrors++;
           if (first) counts.expectedErrorsReported++;
         }
-        if (verdict.valid) {
-          if (first) failures.push(where(visit, statement, `valid for ClickHouse, check() says ${first.message}`));
-          return;
-        }
-        counts.invalid++;
-        if (!first) failures.push(where(visit, statement, `check() accepts it, ClickHouse says ${verdict.message}`));
-        if (!first || verdict.position === undefined) return;
-        counts.positioned++;
-        const at = utf16Offset(statement.text, verdict.position - 1);
-        const offset = first.start - statement.start;
-        if (offset !== at || withoutPositions(first.message.replace(/\.$/, "")) !== withoutPositions(verdict.message ?? "")) {
-          failures.push(where(visit, statement, `ClickHouse fails at ${at}: ${verdict.message}; check() at ${offset}: ${first.message}`));
-        }
+        if (!verdict.valid) counts.invalid++;
+        if (!verdict.valid && first && verdict.position !== undefined) counts.positioned++;
+        const problem = disagreement(verdict, statement, first);
+        if (problem) suspects.push({ visit, statement, first, problem });
       });
     }
-    report.oracle = { ...counts, failures };
+    // A version gap: the build of the stored labels reads the statement as check() does, and this build reads it otherwise.
+    const stored = readCorpus(STORED_LABELS);
+    const reference = new Map(stored.header.gitHash === clickhouse.gitHash ? [] : stored.entries.map((e) => [e.sql, e]));
+    const bare = suspects.filter((s) => reference.has(s.statement.text)).map((s) => s.statement.text);
+    const options = { clickhouse: CLICKHOUSE, cacheDir: CACHE_DIR, formatCheck: 0, jobs: 4, log: () => {} };
+    const live = bare.length > 0 ? (await classify(bare, options)).verdicts : new Map<string, Verdict>();
+    const versionGaps: string[] = [];
+    for (const { visit, statement, first, problem } of suspects) {
+      const ref = reference.get(statement.text);
+      const now = live.get(statement.text);
+      if (ref && now && !sameVerdict(ref, now) && !disagreement(ref, statement, first)) {
+        const verdicts = `${clickhouse.version}: ${verdictText(now, statement.text)}; ${stored.header.clickhouse}: ${verdictText(ref, statement.text)}`;
+        versionGaps.push(where(visit, statement, `version gap, ${verdicts}`));
+      } else {
+        failures.push(where(visit, statement, problem));
+      }
+    }
+    report.oracle = { ...counts, failures, versionGaps };
     console.log(
       `oracle: ${counts.statements} statements, ${counts.invalid} invalid for ClickHouse (${counts.positioned} with a position); ` +
-        `${failures.length} disagreements; ${counts.expectedErrorsReported} of ${counts.expectedErrors} expected syntax errors reported`,
+        `${failures.length} disagreements and ${versionGaps.length} version gaps; ` +
+        `${counts.expectedErrorsReported} of ${counts.expectedErrors} expected syntax errors reported`,
     );
+    for (const gap of versionGaps) console.log(`  ${gap}`);
     assertNone(failures);
   });
 

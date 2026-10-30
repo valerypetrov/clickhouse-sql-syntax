@@ -15,7 +15,9 @@ import { CACHE_DIR, CORPUS_FILE, REPORT_FILE, SOURCE_NOTE, integerOption } from 
 const USAGE = `Usage: npm run oracle -w oracle [-- options]
 
 Without --clickhouse, compares check() with the labelled corpus in ${CORPUS_FILE}.
-With --clickhouse and --corpus, labels every statement of the tests with that binary first.
+With --clickhouse and --corpus, labels every statement of the tests with that binary first. Where the
+labelled corpus comes from another build that reads a statement as check() does, while this binary
+does not, the statement is listed as a version gap and left out of the numbers.
 
 Options:
   --file <file>         a labelled corpus to use instead (default: the one above)
@@ -67,7 +69,8 @@ async function liveCorpus(clickhouse: string, dir: string): Promise<Corpus> {
 
 const corpus = values.clickhouse && values.corpus ? await liveCorpus(values.clickhouse, values.corpus) : readCorpus(values.file);
 const name = values.clickhouse ? values.corpus! : values.file;
-const report = compare(corpus, check, name);
+// Live labels from another build are compared with the stored ones to find version gaps.
+const report = compare(corpus, check, name, values.clickhouse ? readCorpus(values.file) : undefined);
 console.log(formatReport(report, integerOption(values.examples, "--examples")));
 mkdirSync(dirname(values.report), { recursive: true });
 writeFileSync(values.report, JSON.stringify(report, null, 2) + "\n");

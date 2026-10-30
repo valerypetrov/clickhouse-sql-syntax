@@ -70,6 +70,32 @@ test("a message ending in its own period matches the corpus text without it", ()
   assert.equal(compare(corpus, fake, "test").metrics.messageMatch, 1);
 });
 
+test("a statement that another build reads as check() does is a version gap, not a disagreement", () => {
+  const live = corpusOf([
+    { sql: "SELECT new", valid: false, position: 8, message: "Expected end of query" },
+    { sql: "SELECT old", valid: true },
+    { sql: "SELECT bug", valid: true },
+  ]);
+  live.header.gitHash = "release";
+  const reference = corpusOf([
+    { sql: "SELECT new", valid: true },
+    { sql: "SELECT old", valid: false, position: 8, message: "Expected end of query" },
+    { sql: "SELECT bug", valid: true },
+  ]);
+  reference.header.clickhouse = "master";
+  const fake = (sql: string): Diagnostic[] => (sql === "SELECT new" ? [] : [error(7)]);
+  const report = compare(live, fake, "test", reference);
+  assert.deepEqual(report.versionGaps.map((c) => [c.sql, c.clickhouseVerdict, c.referenceVerdict]), [
+    ["SELECT new", "fails at 7: Expected end of query", "valid"],
+    ["SELECT old", "valid", "fails at 7: Expected end of query"],
+  ]);
+  assert.deepEqual([report.metrics.statements, report.metrics.versionGaps, report.falsePositives.length], [1, 2, 1]);
+  assert.match(formatReport(report, 3), /Version gaps.*ClickHouse master reads these as check\(\) does/);
+  // Labels of the same build have no gaps.
+  reference.header.gitHash = "release";
+  assert.equal(compare(live, fake, "test", reference).versionGaps.length, 0);
+});
+
 test("converts ClickHouse byte positions to UTF-16 offsets", () => {
   assert.equal(utf16Offset("SELECT 1", 1), 0);
   assert.equal(utf16Offset("SELECT 'é', (", 14), 12);
