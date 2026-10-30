@@ -322,3 +322,20 @@ describe("REFRESH intervals", () => {
     ["CREATE MATERIALIZED VIEW mv REFRESH EVERY 100 MILLISECOND ENGINE = Memory AS SELECT 1", 46, "Sub-second intervals are not supported here."],
   ]);
 });
+
+describe("Unsigned integers past UInt64", () => {
+  accepts([
+    "ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 18446744073709551615",
+    "ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 000018446744073709551615",
+    "SELECT x.18446744073709551616",
+  ]);
+
+  rejects([
+    ["ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 18446744073709551616", 47, "Expected unsigned integer"],
+    [
+      "CREATE TABLE x (s AggregateFunction(18446744073709551616()))",
+      36,
+      "Expected one of: unsigned integer, function, function name, compound identifier, identifier",
+    ],
+  ]);
+});
