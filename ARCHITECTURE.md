@@ -93,9 +93,9 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
 `complete()` takes the statement around the cursor and parses its tokens before the cursor, followed by a token
 that no parser accepts, so the parser records everything it tries there (`expectedAt()`). The keywords among those
 expectations are offered when the parser takes them there, which it does not for all of them, as for FETCH without
-ORDER BY or SYSTEM END (`acceptsKeyword()`); the other ones (an expression, a table, a data type, a format, a
-setting, ...) pick names from the generated lists and from the schema passed in. The parse stops after 50,000
-backtracks, so a very long statement gets no suggestions.
+ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks); the other ones (an
+expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and from the schema
+passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
 
 ## The VS Code extension
 

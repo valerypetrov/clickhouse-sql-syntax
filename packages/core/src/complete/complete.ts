@@ -11,7 +11,7 @@ import { SETTINGS } from "../generated/settings.js";
 import { TABLE_ENGINES } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
 import { split, type Unit } from "../format/index.js";
-import { acceptsKeyword, expectedAt } from "../parser/index.js";
+import { expectedAt, keywordFilter } from "../parser/index.js";
 import {
   type CompleteOptions,
   type CompletionCandidate,
@@ -272,8 +272,9 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     return out.sorted();
   }
 
+  const accepts = keywordFilter(sql, before, word.start);
   for (const variant of variants)
-    if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && acceptsKeyword(sql, before, word.start, variant))
+    if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && accepts(variant))
       out.add(keywordTier, { label: isLower(prefix) ? variant.toLowerCase() : variant, kind: "keyword" });
 
   if (has("access type")) {
