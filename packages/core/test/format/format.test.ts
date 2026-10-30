@@ -67,6 +67,7 @@ describe("format() keeps what it does not lay out", () => {
       "select CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'), cast([1,2], t)",
       "SELECT\n    CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'),\n    cast([1, 2], t)",
     );
+    formats("SELECT CAST([2,3],'Array(Int128)')", "SELECT CAST([2,3], 'Array(Int128)')");
   });
 
   test("INSERT data after VALUES", () => {
@@ -100,7 +101,9 @@ describe("format() keeps what it does not lay out", () => {
   });
 
   test("an INSERT that ends in its target", () => {
-    for (const sql of ["insert into", "insert into -- x", "insert into table", "insert into db.", "insert into {"]) formats(sql, sql);
+    const sqls = ["insert into", "insert into -- x", "insert into table", "insert into db.", "insert into {", "INSERT INTO {x"];
+    for (const sql of [...sqls, "EXPLAIN INSERT INTO", "WITH 1 AS x INSERT INTO"]) formats(sql, sql);
+    formats("SELECT 1; INSERT INTO", "SELECT 1;\n\nINSERT INTO");
   });
 
   test("a byte order mark at the start", () => {
@@ -145,6 +148,29 @@ describe("format() re-cases only the words that the parser reads as keywords", (
   for (const [input, expected] of cases) {
     test(input, () => formats(input, expected));
   }
+
+  test("in upper and lower case", () => {
+    // A statement and the part of it with a name that keeps its case.
+    const cases: [string, string][] = [
+      ["SELECT 1 WINDOW w AS (rows)", "(rows)"],
+      ["SELECT 1 WINDOW w AS (range)", "(range)"],
+      ["SELECT 1 WINDOW w AS (groups)", "(groups)"],
+      ["SYSTEM FLUSH LOGS ON CLUSTER default query_log", " default query_log"],
+      ["SYSTEM FLUSH LOGS ON CLUSTER all t", " all t"],
+      ["SYSTEM RELOAD DICTIONARY ON CLUSTER c d", " c d"],
+      ["SHOW TABLES FORMAT Null", " Null"],
+      ["SHOW TABLES FORMAT Values", " Values"],
+      ["BACKUP TABLE t TO Disk('b', 'x') SETTINGS base_backup = DEFAULT", " = DEFAULT"],
+      ["SET ROLE", " ROLE"],
+    ];
+    for (const [sql, name] of cases) {
+      for (const keywordCase of ["upper", "lower"] as const) {
+        const output = format(sql, { keywordCase });
+        assert.ok(output.includes(name), `${keywordCase}: ${output}`);
+        formats(sql, output, { keywordCase });
+      }
+    }
+  });
 
   test("the safety net rejects a re-cased word that is not a keyword", () => {
     const keywordAt = (start: number) => start === 0;

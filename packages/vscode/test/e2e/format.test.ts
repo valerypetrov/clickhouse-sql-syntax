@@ -113,6 +113,13 @@ describe("Formatting ClickHouse SQL", () => {
     assert.equal(editor.document.getText(), "insert into people format CSV\n1,O'Brien\n\nupdate metrics set value = 42 where id = 1;\nSELECT 1;");
   });
 
+  it("Format Selection after inline data that ends at an empty line changes only the selected statement", async () => {
+    const editor = await open("insert into t format CSV 1,2\n\nselect  1;\n");
+    editor.selection = new vscode.Selection(new vscode.Position(2, 0), new vscode.Position(2, 9));
+    await vscode.commands.executeCommand("editor.action.formatSelection");
+    assert.equal(editor.document.getText(), "insert into t format CSV 1,2\n\nSELECT 1;\n");
+  });
+
   it("keeps CRLF with line breaks in strings, in literals kept as written and after line comments", async () => {
     const sql = "-- head\r\nselect 'a\r\nb' as s, [1,\r\n2]::Array(UInt8) as a -- two\r\nfrom t;\r\nselect 2\r\n";
     const editor = await open(sql);
