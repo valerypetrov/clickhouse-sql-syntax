@@ -9,6 +9,8 @@ First release.
   highlighting by how the parser reads each word.
 - Syntax errors as you type, from `clickhouse-sql-syntax`.
 - Format Document and Format Selection, with the `clickhouseSql.format.keywordCase` setting.
+- Files longer than `clickhouseSql.maxFileSize`, 5,000,000 characters, are left alone with a message, instead of
+  slowing VS Code down.
 - Autocomplete, hover documentation and signature help for ClickHouse's keywords, functions, data types, settings,
   table engines, formats and table functions.
 - An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its

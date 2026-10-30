@@ -114,6 +114,13 @@
           "scope": "language-overridable",
           "description": "The case of keywords when formatting ClickHouse SQL."
         },
+        "clickhouseSql.maxFileSize": {
+          "type": "integer",
+          "default": 5000000,
+          "minimum": 0,
+          "scope": "application",
+          "description": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, completion, hover, signature help or server check, which would slow VS Code down."
+        },
         "clickhouseSql.server.enabled": {
           "type": "boolean",
           "default": false,

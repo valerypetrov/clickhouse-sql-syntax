@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { format, type KeywordCase, TokenKind, tokenize } from "clickhouse-sql-syntax";
+import { tooLarge } from "./size.js";
 
 /** Format Document and Format Selection for ClickHouse SQL. */
 export function registerFormatter(languageId: string): vscode.Disposable {
@@ -14,6 +15,7 @@ export function registerFormatter(languageId: string): vscode.Disposable {
 }
 
 function edits(document: vscode.TextDocument, options: vscode.FormattingOptions, range?: vscode.Range): vscode.TextEdit[] {
+  if (tooLarge(document)) return [];
   const keywordCase = vscode.workspace.getConfiguration("clickhouseSql.format", document).get<KeywordCase>("keywordCase", "upper");
   const text = document.getText();
   const formatted = formatText(text, options, keywordCase);

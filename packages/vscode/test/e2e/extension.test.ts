@@ -99,6 +99,31 @@ describe("ClickHouse SQL extension", () => {
     assert.equal(first!.range.start.line, 1, "the error is on the second line, after the comment");
   });
 
+  it("checks a file shortly after it opens, not while it opens", async () => {
+    const document = await vscode.workspace.openTextDocument({ language: LANGUAGE_ID, content: "SELECT (" });
+    assert.deepEqual(vscode.languages.getDiagnostics(document.uri), []);
+    assert.equal((await waitForCheck(document)).length, 1);
+  });
+
+  it("leaves a file longer than clickhouseSql.maxFileSize alone", async function () {
+    this.timeout(60_000);
+    // A syntax error, a function and its arguments on the first line of 6.5 million characters.
+    const editor = await untitled(`SELECT toDate(;\n${"-- a comment\n".repeat(500_000)}`);
+    const { uri } = editor.document;
+    const inName = new vscode.Position(0, 9);
+    const inArguments = new vscode.Position(0, 14);
+    // Longer than the delay of the check.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    assert.deepEqual(vscode.languages.getDiagnostics(uri), []);
+    assert.equal(await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", uri), undefined);
+    const options = { tabSize: 2, insertSpaces: true };
+    assert.deepEqual((await vscode.commands.executeCommand<vscode.TextEdit[]>("vscode.executeFormatDocumentProvider", uri, options)) ?? [], []);
+    const list = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", uri, inName);
+    assert.deepEqual(list.items.filter((item) => item.kind !== vscode.CompletionItemKind.Text), []);
+    assert.deepEqual(await vscode.commands.executeCommand("vscode.executeHoverProvider", uri, inName), []);
+    assert.equal(await vscode.commands.executeCommand("vscode.executeSignatureHelpProvider", uri, inArguments), undefined);
+  });
+
   it("leaves other languages alone", async () => {
     const other = await untitled("SELECT (", "sql");
     const ours = await untitled("SELECT (");

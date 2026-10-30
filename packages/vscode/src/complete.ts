@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete } from "clickhouse-sql-syntax";
+import { tooLarge } from "./size.js";
 
 /** Where the databases, tables and columns to complete at `offset` come from, such as a live server; a failure means none. */
 export type SchemaSource = (document: vscode.TextDocument, offset: number) => CompletionSchema | undefined | Promise<CompletionSchema | undefined>;
@@ -31,6 +32,7 @@ const OPENS_AFTER_SPACE = new Set(["from", "join", "into", "table", "format", "s
 export function registerCompletion(languageId: string, schema?: SchemaSource): vscode.Disposable {
   const provider: vscode.CompletionItemProvider = {
     async provideCompletionItems(document, position, _token, context) {
+      if (tooLarge(document)) return undefined;
       const text = document.getText();
       const offset = document.offsetAt(position);
       if (context.triggerCharacter === " " && !opensAfterSpace(text, offset)) return undefined;

@@ -25,6 +25,7 @@ Files ending in `.chsql` or `.clickhouse.sql` open as ClickHouse SQL. For other 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `clickhouseSql.format.keywordCase` | `upper` | The case of keywords when formatting: `upper`, `lower` or `preserve`. |
+| `clickhouseSql.maxFileSize` | `5000000` | Longer files, in characters, get none of the features; a user setting only. |
 | `clickhouseSql.server.enabled` | `false` | Turns the server check on. |
 | `clickhouseSql.server.url` | `http://localhost:8123` | The HTTP interface of the server. |
 | `clickhouseSql.server.user` | `default` | The ClickHouse user. Set its password with **ClickHouse SQL: Set Server Password**. |

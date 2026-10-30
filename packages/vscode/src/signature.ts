@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { type ArgumentInfo, describe, isSignificant, TokenKind as T, type Token, tokenize } from "clickhouse-sql-syntax";
+import { tooLarge } from "./size.js";
 
 /** The function call the cursor is in. */
 interface Call {
@@ -73,6 +74,7 @@ function labelRange(label: string, group: number, name: string): [number, number
 export function registerSignatureHelp(languageId: string): vscode.Disposable {
   const provider: vscode.SignatureHelpProvider = {
     provideSignatureHelp(document, position) {
+      if (tooLarge(document)) return undefined;
       const call = callAt(document.getText(), document.offsetAt(position));
       const description = call && describe(call.name, "function");
       if (!call || !description?.syntax) return undefined;

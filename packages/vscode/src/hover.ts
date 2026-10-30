@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import { complete, describe } from "clickhouse-sql-syntax";
+import { tooLarge } from "./size.js";
 
 /** The documentation of the function, setting, engine, format or table function under the mouse. */
 export function registerHover(languageId: string): vscode.Disposable {
   return vscode.languages.registerHoverProvider(languageId, {
     provideHover(document, position) {
+      if (tooLarge(document)) return undefined;
       const range = document.getWordRangeAtPosition(position);
       if (!range) return undefined;
       const word = document.getText(range);

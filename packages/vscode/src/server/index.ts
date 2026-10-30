@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { type Connection, ConnectionError, query, QueryError } from "./client.js";
 import { Schema } from "./schema.js";
 import { namedSpan, selectQueries, type Span } from "./statements.js";
+import { tooLarge } from "../size.js";
 
 const CHECK_DELAY_MS = 500;
 const RETRY_MS = 30_000;
@@ -130,6 +131,10 @@ class ServerCheck implements vscode.Disposable {
   schedule(document: vscode.TextDocument, delay = CHECK_DELAY_MS): void {
     this.cancel(document);
     if (document.languageId !== this.languageId) return;
+    if (tooLarge(document)) {
+      this.diagnostics.delete(document.uri);
+      return;
+    }
     this.timers.set(document, setTimeout(() => void this.run(document), delay));
   }
 

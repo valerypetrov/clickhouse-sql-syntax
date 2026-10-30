@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { type Role, type RoleSpan, roles, TokenKind, tokenize } from "clickhouse-sql-syntax";
+import { tooLarge } from "./size.js";
 
 /** The semantic token type of each role; package.json maps each type to the scope the grammar uses. */
 const TYPE_OF_ROLE: Record<Role, string> = {
@@ -93,11 +94,13 @@ export function registerSemanticTokens(languageId: string): vscode.Disposable {
 
   const provider: vscode.DocumentSemanticTokensProvider & vscode.DocumentRangeSemanticTokensProvider = {
     provideDocumentSemanticTokens(document) {
+      if (tooLarge(document)) return undefined;
       const result = tokensOf(document).tokens(document);
       return new vscode.SemanticTokens(result.data, result.id);
     },
     // Sends only what changed since the last result, which is little after a small edit.
     provideDocumentSemanticTokensEdits(document, previousId) {
+      if (tooLarge(document)) return undefined;
       const state = tokensOf(document);
       const previous = state.last;
       const result = state.tokens(document);
@@ -105,6 +108,7 @@ export function registerSemanticTokens(languageId: string): vscode.Disposable {
       return new vscode.SemanticTokensEdits([difference(previous.data, result.data)], result.id);
     },
     provideDocumentRangeSemanticTokens(document, range) {
+      if (tooLarge(document)) return undefined;
       return new vscode.SemanticTokens(tokensOf(document).tokens(document, range).data);
     },
   };

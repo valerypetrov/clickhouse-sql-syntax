@@ -6,11 +6,12 @@ import { registerHover } from "./hover.js";
 import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
+import { tooLarge } from "./size.js";
 
 export const LANGUAGE_ID = "clickhouse-sql";
 const CHECK_DELAY_MS = 300;
 
-/** Checks ClickHouse SQL documents when they open and shortly after each change. */
+/** Checks ClickHouse SQL documents shortly after they open and after each change. */
 export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
   const server = registerServer(context, LANGUAGE_ID);
@@ -24,6 +25,10 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   const validate = (document: vscode.TextDocument): void => {
     cancel(document);
     if (document.languageId !== LANGUAGE_ID) return;
+    if (tooLarge(document)) {
+      diagnostics.delete(document.uri);
+      return;
+    }
     const errors = check(document.getText());
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
   };
@@ -41,7 +46,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerSignatureHelp(LANGUAGE_ID),
     registerSemanticTokens(LANGUAGE_ID),
     diagnostics,
-    vscode.workspace.onDidOpenTextDocument(validate),
+    vscode.workspace.onDidOpenTextDocument(schedule),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
     vscode.workspace.onDidCloseTextDocument((document) => {
       cancel(document);
@@ -49,7 +54,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     }),
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );
-  vscode.workspace.textDocuments.forEach(validate);
+  vscode.workspace.textDocuments.forEach(schedule);
   return server;
 }
 
