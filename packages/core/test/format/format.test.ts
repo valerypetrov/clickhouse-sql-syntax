@@ -92,6 +92,10 @@ describe("format() keeps what it does not lay out", () => {
     formats("SELECT 1 FROM\n", "SELECT 1 FROM\n");
   });
 
+  test("an INSERT that ends in its target", () => {
+    for (const sql of ["insert into", "insert into -- x", "insert into table", "insert into db.", "insert into {"]) formats(sql, sql);
+  });
+
   test("empty and blank input", () => {
     assert.equal(format(""), "");
     assert.equal(format("  \n\t\n"), "  \n\t\n");
