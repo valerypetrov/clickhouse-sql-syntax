@@ -42,7 +42,8 @@ format("select a from t", { keywordCase: "lower", indentSize: 2 }); // "select a
 Each clause starts a line, lists of several items go one item per line, and subqueries are indented.
 Only whitespace and the case of keywords change: names, strings, numbers, comments and inline data stay as written,
 and a statement with a syntax error is left as it is. A word changes case only where `roles()` reads it as a keyword.
-Line breaks follow the first one between tokens, LF, CRLF or CR, and `format(format(sql))` equals `format(sql)`.
+Line breaks follow the first one between tokens, LF, CRLF or CR (LF where a line comment needs one to end), and
+`format(format(sql))` equals `format(sql)`.
 `split(sql)` gives the units that `format()` lays out one by one: each statement with its comments and inline data,
 or a paragraph of comments.
 

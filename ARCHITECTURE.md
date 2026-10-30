@@ -82,6 +82,7 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
    case of keywords only, and still passes `check()`.
 5. The line break of the output is the first one in whitespace that `format()` writes again. Strings, comments,
    literals kept as written, rejected statements and inline data decide it only when there is no such break.
+   A lone CR becomes LF when a line comment is followed by more text, since only "\n" ends a line comment.
 
 ## complete()
 
