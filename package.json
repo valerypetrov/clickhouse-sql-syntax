@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run build && tsc -p scripts/tsconfig.json && npm run test --workspaces --if-present",
+    "test": "npm run build && tsc -p scripts/tsconfig.json && tsx --test \"scripts/test/*.test.ts\" && npm run test --workspaces --if-present",
     "oracle": "npm run oracle -w oracle --",
     "oracle:format": "npm run oracle:format -w oracle --",
     "generate": "tsx scripts/generate-names.ts",
