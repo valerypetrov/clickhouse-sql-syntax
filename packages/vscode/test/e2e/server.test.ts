@@ -248,6 +248,18 @@ describe("ClickHouse server check", function () {
     assert.ok(sent.slice(before).some((request) => request.sql.includes("FROM system.tables")));
   });
 
+  // The server reads query parameters as escaped text, where \b is a backspace and a tab ends the value.
+  it("lists the tables and columns of names with a backslash, a tab or a line break", async () => {
+    await admin("CREATE DATABASE `odd\\\\db`");
+    const names = ["a\\b", "tab\there", "line\nbreak"];
+    for (const name of names) {
+      const quoted = name.replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
+      await admin(`CREATE TABLE \`odd\\\\db\`.\`${quoted}\` (x UInt8) ENGINE = Memory`);
+    }
+    assert.deepEqual(await api.schema.tables("odd\\db"), [...names].sort());
+    for (const name of names) assert.deepEqual(await api.schema.columns("odd\\db", name), [{ name: "x", type: "UInt8" }], name);
+  });
+
   it("completes the databases, tables and columns of the server", async () => {
     const columns = [
       ["Timestamp", "DateTime"],

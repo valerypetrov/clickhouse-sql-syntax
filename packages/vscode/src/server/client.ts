@@ -60,7 +60,7 @@ export async function query(
   url.searchParams.set("max_execution_time", String(Math.min(MAX_EXECUTION_TIME, connection.timeoutMs / 1000)));
   for (const [name, value] of Object.entries(LIMITS)) url.searchParams.set(name, value);
   if (connection.database) url.searchParams.set("database", connection.database);
-  for (const [name, value] of Object.entries(params)) url.searchParams.set(`param_${name}`, value);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(`param_${name}`, escaped(value));
 
   const timeout = AbortSignal.timeout(connection.timeoutMs);
   let response: Response;
@@ -93,6 +93,13 @@ export async function query(
   const noDatabase = code === UNKNOWN_DATABASE && /^Database `?(.*?)`? does not exist/.exec(message)?.[1] === connection.database;
   if (ACCOUNT_ERRORS.has(code) || refused || noDatabase) throw new ConnectionError(message);
   throw new QueryError(code, codeName, message);
+}
+
+const ESCAPES: Record<string, string> = { "\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r" };
+
+/** A value as the escaped text that the server reads query parameters from, as in TabSeparated. */
+function escaped(value: string): string {
+  return value.replace(/[\\\t\n\r]/g, (c) => ESCAPES[c]!);
 }
 
 /** The first line of a ClickHouse error, without "Code: N. DB::Exception: ", the error name and the version. */
