@@ -7,8 +7,11 @@ const CHECK_DELAY_MS = 500;
 const RETRY_MS = 30_000;
 const CACHE_SIZE = 1000;
 const PASSWORD_KEY = "clickhouseSql.server.password";
-// READONLY and UNKNOWN_QUERY_PARAMETER: what checking read-only and without parameters causes.
-const UNCHECKABLE = new Set([164, 456]);
+// READONLY and UNKNOWN_QUERY_PARAMETER: what checking read-only and without parameters causes;
+// TOO_MANY_ROWS, TIMEOUT_EXCEEDED, TOO_SLOW, MEMORY_LIMIT_EXCEEDED, TOO_MANY_BYTES, TOO_MANY_ROWS_OR_BYTES: the limits.
+const UNCHECKABLE = new Set([164, 456, 158, 159, 160, 241, 307, 396]);
+// A check sends no new query after this long, so that a file of slow queries costs little per change.
+const CHECK_BUDGET_MS = 10_000;
 
 /** What the extension exports: the schema for autocomplete, and the state of the connection. */
 export interface ServerApi {
@@ -183,8 +186,11 @@ class ServerCheck implements vscode.Disposable {
     if (!connection) return [];
     const text = document.getText();
     const found: vscode.Diagnostic[] = [];
+    const deadline = Date.now() + CHECK_BUDGET_MS;
     for (const query of selectQueries(text)) {
-      const error = await this.explain(connection, text.slice(query.start, query.end), signal);
+      const sql = text.slice(query.start, query.end);
+      if (Date.now() > deadline && !this.results.has(sql)) continue;
+      const error = await this.explain(connection, sql, signal);
       if (error) found.push(toDiagnostic(document, text, query, error));
     }
     return found;

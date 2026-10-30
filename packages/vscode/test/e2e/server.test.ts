@@ -23,7 +23,9 @@ const FIXED = QUERY.replace("message_key;", "message_keys;");
 interface Sent {
   sql: string;
   params: URLSearchParams;
+  /** 0 when the extension gave the request up. */
   status: number;
+  ms: number;
 }
 
 function config(dir: string, port: number): string {
@@ -90,6 +92,8 @@ async function replaceAll(editor: vscode.TextEditor, text: string): Promise<void
 
 describe("ClickHouse server check", function () {
   const sent: Sent[] = [];
+  /** The text of each request as it reaches the proxy, before the server answers. */
+  const arrived: string[] = [];
   let dir: string;
   let clickhouse: ChildProcess;
   let port: number;
@@ -129,21 +133,32 @@ describe("ClickHouse server check", function () {
       "CREATE TABLE logs.unique_message_keys_replicated (timestamp DateTime, component_type String, log_type String, message_keys Array(String)) ENGINE = MergeTree ORDER BY timestamp",
     );
 
-    // A proxy in front of the server shows every request that the extension makes.
+    // A proxy in front of the server shows every request that the extension makes, and closes the
+    // connection to the server when the extension closes its own.
     proxy = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(chunk as Buffer);
       const sql = Buffer.concat(chunks).toString();
-      const reply = await fetch(`http://127.0.0.1:${port}${request.url}`, {
-        method: request.method,
-        headers: { authorization: request.headers.authorization ?? "" },
-        body: sql,
-      });
-      const body = Buffer.from(await reply.arrayBuffer());
-      sent.push({ sql, params: new URL(request.url!, "http://proxy").searchParams, status: reply.status });
-      const code = reply.headers.get("X-ClickHouse-Exception-Code");
-      response.writeHead(reply.status, code ? { "X-ClickHouse-Exception-Code": code } : {});
-      response.end(body);
+      const params = new URL(request.url!, "http://proxy").searchParams;
+      const start = Date.now();
+      const upstream = new AbortController();
+      response.on("close", () => upstream.abort());
+      arrived.push(sql);
+      try {
+        const reply = await fetch(`http://127.0.0.1:${port}${request.url}`, {
+          method: request.method,
+          headers: { authorization: request.headers.authorization ?? "" },
+          body: sql,
+          signal: upstream.signal,
+        });
+        const body = Buffer.from(await reply.arrayBuffer());
+        sent.push({ sql, params, status: reply.status, ms: Date.now() - start });
+        const code = reply.headers.get("X-ClickHouse-Exception-Code");
+        response.writeHead(reply.status, code ? { "X-ClickHouse-Exception-Code": code } : {});
+        response.end(body);
+      } catch {
+        sent.push({ sql, params, status: 0, ms: Date.now() - start });
+      }
     });
     await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
 
@@ -260,6 +275,70 @@ describe("ClickHouse server check", function () {
       silent.closeAllConnections();
       silent.close();
     }
+  });
+
+  it("stops each query at the limits and sends no new one after 10 s, so that a file of sleeps cannot hold the server", async function () {
+    this.timeout(60_000);
+    // EXPLAIN QUERY TREE runs scalar subqueries, so that each of these takes 6 s without limits.
+    const queries = [1, 2, 3, 4, 5, 6, 7].map((i) => `SELECT ${i} WHERE 1 = (SELECT sleep(3)) AND 2 = (SELECT sleep(3) + 1)`);
+    const before = sent.length;
+    const explained = () => sent.slice(before).filter((request) => request.sql.includes("sleep(3)"));
+    const editor = await open(queries.join(";\n"));
+    await new Promise((resolve) => setTimeout(resolve, 14_000));
+    const first = explained();
+    assert.ok(first.length === 5 || first.length === 6, `${first.length} queries were sent`);
+    for (const request of first) assert.ok(request.ms < 2_500, `${request.sql} took ${request.ms} ms`);
+    assert.equal(api.connection.problem, undefined);
+    assert.deepEqual(serverDiagnostics(editor.document), []);
+
+    // The next change sends the rest.
+    await editor.edit((edit) => edit.insert(editor.document.positionAt(0), " "));
+    await until("the rest of the queries", () => explained().length === 7 || undefined);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    assert.deepEqual(serverDiagnostics(editor.document), []);
+
+    await admin("SYSTEM FLUSH LOGS");
+    const logged = await rows(
+      `SELECT exception_code, query_duration_ms < 2500 AS quick, Settings['readonly'] AS readonly,
+        Settings['max_execution_time'] AS max_execution_time, Settings['max_rows_to_read'] AS max_rows_to_read,
+        Settings['max_bytes_to_read'] AS max_bytes_to_read, Settings['max_result_rows'] AS max_result_rows,
+        Settings['max_memory_usage'] AS max_memory_usage,
+        Settings['cancel_http_readonly_queries_on_client_close'] AS cancel_http_readonly_queries_on_client_close
+      FROM system.query_log WHERE user = '${USER}' AND type != 'QueryStart' AND query LIKE '%(SELECT sleep(3)) AND %'`,
+    );
+    assert.deepEqual(logged, new Array(7).fill({
+      exception_code: 159,
+      quick: 1,
+      readonly: "1",
+      max_execution_time: "2",
+      max_rows_to_read: "10000000",
+      max_bytes_to_read: "1000000000",
+      max_result_rows: "1000000",
+      max_memory_usage: "1000000000",
+      cancel_http_readonly_queries_on_client_close: "1",
+    }));
+  });
+
+  it("stops on the server the query of a text that has changed", async function () {
+    this.timeout(30_000);
+    const query = [1, 2, 3, 4].map((i) => `${i} = (SELECT sleep(0.4) + ${i})`).join(" AND ");
+    const sql = `EXPLAIN QUERY TREE SELECT 0 WHERE ${query}`;
+    const editor = await open(`SELECT 0 WHERE ${query}`);
+    await until("the query to reach the server", () => arrived.includes(sql) || undefined);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await editor.edit((edit) => edit.insert(editor.document.positionAt(0), " "));
+    await until("the query to be explained again", () => sent.some((request) => request.sql === sql && request.status === 200) || undefined);
+
+    await admin("SYSTEM FLUSH LOGS");
+    const logged = await rows(
+      `SELECT exception_code, query_duration_ms FROM system.query_log
+      WHERE user = '${USER}' AND type != 'QueryStart' AND query = '${sql}' ORDER BY event_time_microseconds`,
+    );
+    assert.equal(logged.length, 2, JSON.stringify(logged));
+    // QUERY_WAS_CANCELLED after the sleep that was running, against 1.6 s for all four.
+    assert.equal(logged[0]!.exception_code, 394, JSON.stringify(logged));
+    assert.ok(Number(logged[0]!.query_duration_ms) < 1_200, JSON.stringify(logged));
+    assert.equal(logged[1]!.exception_code, 0, JSON.stringify(logged));
   });
 
   it("notes a wrong password once and shows no diagnostics for it", async () => {

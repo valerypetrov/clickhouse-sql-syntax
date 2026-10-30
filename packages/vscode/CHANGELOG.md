@@ -11,4 +11,6 @@ First release.
 - Format Document and Format Selection, with the `clickhouseSql.format.keywordCase` setting.
 - Autocomplete, hover documentation and signature help for ClickHouse's keywords, functions, data types, settings,
   table engines, formats and table functions.
-- An optional check against a ClickHouse server, with completion of its databases, tables and columns.
+- An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its
+  queries run with `readonly=1` and limits of 2 s, rows, bytes and memory each, and a check of a file sends no
+  new query after 10 s.
