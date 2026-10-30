@@ -120,9 +120,10 @@ describe("Formatting ClickHouse SQL", () => {
     assert.equal(editor.document.getText(), "insert into t format CSV 1,2\n\nSELECT 1;\n");
   });
 
-  it("Format Selection in the comment after a statement leaves the statement alone", async () => {
+  it("Format Selection of a word in the comment after a statement leaves the statement alone", async () => {
     const editor = await open("select  1; -- one\nselect  2;");
-    editor.selection = new vscode.Selection(new vscode.Position(0, 15), new vscode.Position(0, 15));
+    // An empty selection would stand for the whole line.
+    editor.selection = new vscode.Selection(new vscode.Position(0, 14), new vscode.Position(0, 17));
     await vscode.commands.executeCommand("editor.action.formatSelection");
     assert.equal(editor.document.getText(), "select  1; -- one\nselect  2;");
   });
