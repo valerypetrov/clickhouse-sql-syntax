@@ -78,13 +78,13 @@ test("the pull request lists the changes, the failed steps and the new syntax", 
     changes,
     live: { clickhouse: "26.11.2.5", metrics, falsePositives, versionGaps: [] },
     results: [
-      { name: "npm test", ok: true, seconds: 60 },
-      { name: "VS Code stress tests", ok: false, seconds: 300 },
+      { name: "npm test", ok: true, seconds: 60, reasons: [] },
+      { name: "VS Code stress tests", ok: false, seconds: 300, reasons: ["at the end: 61 ms"] },
     ],
     parsers: " src/Parsers/ParserDataType.cpp | 12 ++++++++----",
   });
   assert.match(body, /instead of v26\.10\.2\.103-stable/);
-  assert.match(body, /a draft, as 1 of 2 steps .* failed:\n- VS Code stress tests/);
+  assert.match(body, /a draft, as 1 of 2 steps .* failed:\n- VS Code stress tests\n {2}- at the end: 61 ms\n/);
   assert.match(body, /\| keywords \| 2 \| 1 \| 1 \|/);
   assert.match(body, /- New keywords: `C`\n- Removed keywords: `A`/);
   assert.match(body, /\| all tests of 26\.11\.2\.5 \| 10 \| 90\.00% \| 80\.00% \|/);

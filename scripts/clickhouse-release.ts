@@ -1,7 +1,7 @@
 // Fetches ClickHouse releases, runs the whole test suite with one, and updates the generated files for a new one.
 // Usage: npx tsx scripts/clickhouse-release.ts --help
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -306,6 +306,40 @@ export interface StepResult {
   name: string;
   ok: boolean;
   seconds: number;
+  /** The first assertion messages of a failed step. */
+  reasons: string[];
+}
+
+// Lines that say why a test failed, as node:test, mocha and the oracle print them.
+const REASON = /AssertionError \[\w+\]: (?!Expected values)(.*)|^(\w+ is [\d.]+, below the threshold .*)/;
+
+/** Runs a command with its output shown, and collects the lines that say why it failed. */
+function runStep(command: string[], env: Record<string, string> = {}): Promise<{ ok: boolean; reasons: string[] }> {
+  return new Promise((done) => {
+    const child = spawn(command[0]!, command.slice(1), { cwd: ROOT, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    const reasons = new Set<string>();
+    const watch = (from: Readable, to: NodeJS.WriteStream): void => {
+      let rest = "";
+      // A reason that ends with ":", such as "8 failures, the first ones:", takes the line after it too.
+      let more = false;
+      from.on("data", (chunk: Buffer) => {
+        to.write(chunk);
+        const lines = (rest + chunk.toString("utf8")).split("\n");
+        rest = lines.pop()!;
+        for (const raw of lines) {
+          const line = raw.replace(/\x1b\[[\d;]*m/g, "").trim();
+          const match = REASON.exec(line);
+          const reason = match ? (match[1] ?? match[2]!).trim() : more && line ? line : undefined;
+          if (reason === undefined || reasons.size >= 3) continue;
+          reasons.add(reason);
+          more = reason.endsWith(":");
+        }
+      });
+    };
+    watch(child.stdout, process.stdout);
+    watch(child.stderr, process.stderr);
+    child.on("close", (code) => done({ ok: code === 0, reasons: [...reasons] }));
+  });
 }
 
 /** Every test of CONTRIBUTING.md, with the server, corpus and stress tests, against one ClickHouse binary and its tests. */
@@ -334,16 +368,15 @@ function suiteSteps(clickhouse: string, corpus: string, out: string): { name: st
 }
 
 /** Runs every step, also after a failed one, and writes the results to <out>/suite.json and the job summary. */
-export function runSuite(clickhouse: string, corpus: string, out: string): StepResult[] {
+export async function runSuite(clickhouse: string, corpus: string, out: string): Promise<StepResult[]> {
   mkdirSync(join(out, "server"), { recursive: true });
   const results: StepResult[] = [];
   const actions = Boolean(process.env.GITHUB_ACTIONS);
   for (const step of suiteSteps(resolve(clickhouse), resolve(corpus), resolve(out))) {
     console.log(actions ? `::group::${step.name}` : `\n=== ${step.name}`);
     const started = performance.now();
-    const result = spawnSync(step.command[0]!, step.command.slice(1), { cwd: ROOT, env: { ...process.env, ...step.env }, stdio: "inherit" });
-    const ok = result.status === 0;
-    results.push({ name: step.name, ok, seconds: Math.round((performance.now() - started) / 1000) });
+    const { ok, reasons } = await runStep(step.command, step.env);
+    results.push({ name: step.name, ok, seconds: Math.round((performance.now() - started) / 1000), reasons: ok ? [] : reasons });
     if (actions) console.log("::endgroup::");
     console.log(`${ok ? "passed" : "FAILED"}: ${step.name} in ${results.at(-1)!.seconds} s`);
   }
@@ -404,6 +437,11 @@ export interface BodyInput {
   runUrl?: string;
 }
 
+function failure(step: StepResult): string {
+  const reasons = step.reasons.map((r) => `  - ${oneLine(r, 200).replaceAll("`", "'")}`);
+  return [`- ${step.name}`, ...reasons].join("\n");
+}
+
 export function pullRequestBody(input: BodyInput): string {
   const { release, previous, changes, stored, live, results } = input;
   const failed = results.filter((r) => !r.ok);
@@ -414,7 +452,7 @@ export function pullRequestBody(input: BodyInput): string {
     "",
     failed.length === 0
       ? `All ${results.length} steps of the test suite passed${run}.`
-      : `This is a draft, as ${failed.length} of ${results.length} steps of the test suite failed${run}:\n${failed.map((r) => `- ${r.name}`).join("\n")}`,
+      : `This is a draft, as ${failed.length} of ${results.length} steps of the test suite failed${run}:\n${failed.map(failure).join("\n")}`,
     "",
     "| List | Now | Added | Removed |",
     "| --- | --- | --- | --- |",
@@ -508,7 +546,7 @@ async function release(version: string | undefined, dryRun: boolean, out: string
   bumpVersions(target.version);
   const parsers = parsersDiff(src, previous.tag ?? previous.gitHash, target.tag);
   const reports = join(out, "reports");
-  const results = runSuite(clickhouse, corpus, reports);
+  const results = await runSuite(clickhouse, corpus, reports);
   const server = process.env.GITHUB_SERVER_URL;
   const runUrl = server ? `${server}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined;
   const body = pullRequestBody({
@@ -559,7 +597,7 @@ async function main(): Promise<void> {
     console.log(await fetchBinary(target, join(out, "bin")));
     console.log(checkoutSources(target.tag, join(out, "src")));
   } else if (command === "suite" && values.clickhouse && values.corpus) {
-    if (runSuite(values.clickhouse, values.corpus, out).some((r) => !r.ok)) process.exit(1);
+    if ((await runSuite(values.clickhouse, values.corpus, out)).some((r) => !r.ok)) process.exit(1);
   } else if (command === "release") {
     await release(values.version, values["dry-run"], out);
   } else {
