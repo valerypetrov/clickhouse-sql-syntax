@@ -18,7 +18,10 @@ const DIAGNOSTICS_MS = 300 * SCALE;
 const ROUND_TRIP_MS = 500 * SCALE;
 const TOOL_MS = 50 * SCALE;
 
-/** BROKEN and then 10,000 statements that ClickHouse accepts, from the oracle's corpus: about 1 MB. */
+/**
+ * BROKEN and then 10,000 statements that ClickHouse accepts, from the oracle's corpus: about 1 MB.
+ * A blank line ends each one, so inline data ends there, as in the test files.
+ */
 function corpusFile(): string {
   const extension = vscode.extensions.all.find((e) => e.packageJSON.name === LANGUAGE_ID)!;
   const corpus = gunzipSync(readFileSync(resolve(extension.extensionPath, "../../oracle/fixtures/corpus.jsonl.gz"))).toString("utf8");
@@ -30,7 +33,7 @@ function corpusFile(): string {
     .filter((entry) => entry.valid && !entry.mutation)
     .slice(0, 10_000)
     .map((entry) => entry.sql);
-  return BROKEN + statements.join(";\n") + ";\n";
+  return BROKEN + statements.join(";\n\n") + ";\n\n";
 }
 
 /** A fixed sequence of numbers in [0, 1) (mulberry32), so that every run makes the same edits. */
@@ -160,7 +163,7 @@ describe("A file of 10,000 statements, about 1 MB", function () {
   });
 
   it(`completes within ${TOOL_MS} ms at its end and in its middle`, async () => {
-    const half = sql.indexOf(";\n", sql.length / 2) + 2;
+    const half = sql.indexOf(";\n\n", sql.length / 2) + 3;
     const editor = await open(`${sql.slice(0, half)}${TYPING};\n${sql.slice(half)}${TYPING}`);
     const document = editor.document;
     const complete = (offset: number) => () =>
