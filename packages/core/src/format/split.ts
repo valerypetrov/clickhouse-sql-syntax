@@ -164,6 +164,8 @@ class Splitter {
   }
 
   private significantAfter(i: number): number {
+    // Past the end there is only the end of the stream.
+    i = Math.min(i, this.tokens.length - 1);
     while (!isSignificant(this.tokens[i]!.kind)) i++;
     return i;
   }
@@ -194,6 +196,8 @@ class Splitter {
         if (word === "INSERT" && depth === 0 && this.upper(this.significantAfter(j + 1)) === "INTO") {
           insert = true;
           j = this.skipTarget(this.significantAfter(j + 1));
+          // A statement that ends in its target, as `INSERT INTO db.` does, ends at its last token.
+          while (!isSignificant(this.tokens[j]!.kind) || this.tokens[j]!.kind === T.EndOfStream) j--;
           last = j;
         }
         continue;
@@ -265,7 +269,8 @@ class Splitter {
         const data = lastEnd > dataStart ? { start: dataStart, end: lastEnd, blankLine: false } : { start: -1, end: -1, blankLine: false };
         return { next: j + 1, end: token.end, data };
       }
-      if (kind !== T.Whitespace) lastEnd = token.end;
+      // The "\r" that ends a line comment is a part of the line break after it, as everywhere else.
+      if (kind !== T.Whitespace) lastEnd = kind === T.Comment && this.sql[token.end - 1] === "\r" ? token.end - 1 : token.end;
     }
   }
 
@@ -273,7 +278,8 @@ class Splitter {
   private formatDataEnd(nameEnd: number): StatementEnd {
     const blank = this.sql.indexOf("\n\n", nameEnd);
     if (blank === -1) {
-      const end = nameEnd + this.sql.slice(nameEnd).trimEnd().length;
+      // Data that runs to the end of the input keeps all of it, spaces and line breaks included.
+      const end = this.sql.length;
       const next = this.realign(this.sql.length);
       return { next, end, data: { start: nameEnd, end, blankLine: false } };
     }

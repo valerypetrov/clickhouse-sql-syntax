@@ -393,6 +393,12 @@ export function roles(sql: string): RoleSpan[] {
   return spans;
 }
 
+/** check() and roles() in one pass. */
+export function checkWithRoles(sql: string): { diagnostics: Diagnostic[]; spans: RoleSpan[] } {
+  const spans: RoleSpan[] = [];
+  return { diagnostics: checkAll(sql, spans), spans };
+}
+
 function checkAll(sql: string, spans?: RoleSpan[]): Diagnostic[] {
   const checker = new Checker(sql, spans !== undefined);
   const stream = new TokenStream(sql);

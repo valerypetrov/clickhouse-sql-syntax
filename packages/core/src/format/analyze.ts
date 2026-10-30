@@ -28,11 +28,13 @@ import {
   phrasesOf,
 } from "./words.js";
 
-/** A significant token of the statement. `up` is the upper-case text of a bare word, otherwise "". */
+/** A significant token of the statement. `up` is the upper-case text of a bare word that is not a name, otherwise "". */
 export interface Tok {
   kind: T;
   text: string;
   up: string;
+  /** The parser reads the word as a keyword. */
+  keyword?: boolean;
   start: number;
   end: number;
   /** Inline INSERT data with the whitespace before it, printed as written. */
@@ -195,7 +197,7 @@ class Analyzer {
   /** Marks `count` words from `i` as keywords and returns the index after them. */
   private kw(i: number, count = 1): number {
     for (let j = i; j < i + count; j++) {
-      if (KEYWORD_WORDS.has(this.word(j))) this.shape.keyword[j] = 1;
+      if (this.sig[j]?.keyword && KEYWORD_WORDS.has(this.word(j))) this.shape.keyword[j] = 1;
     }
     return i + count;
   }
@@ -310,7 +312,7 @@ class Analyzer {
         i = this.settings(this.kw(i), end);
       } else if (w === "VALUES") {
         // Script splitters read FORMAT Values by its exact spelling, so INSERT INTO table FORMAT Values keeps it.
-        i = this.word(i - 1) === "FORMAT" && this.sig[i]!.text === "Values" ? i + 1 : this.kw(i);
+        i = this.sig[i - 1]!.text.toUpperCase() === "FORMAT" && this.sig[i]!.text === "Values" ? i + 1 : this.kw(i);
         return this.sig[i]?.data ? i + 1 : i;
       } else if (w === "FORMAT") {
         i = this.name(this.kw(i));
@@ -934,12 +936,13 @@ class Analyzer {
     }
   }
 
-  /** CAST([1,2] AS T): ClickHouse reads the literal from how it is written, so it stays as it is. */
+  /** CAST([1,2] AS T) and CAST([1,2], 'T'): ClickHouse reads the literal from how it is written, so it stays as it is. */
   private castArgument(i: number, close: number): void {
     let j = i;
     if (this.is(j, T.Minus) || this.is(j, T.Plus)) j++;
     const end = OPENERS.has(this.kind(j)!) ? this.after(j) : j + 1;
-    if (this.word(end) !== "AS" || end > close) return;
+    const typed = this.word(end) === "AS" || (this.is(end, T.Comma) && this.is(end + 1, T.StringLiteral));
+    if (!typed || end > close) return;
     if (this.is(j, T.OpeningSquareBracket) || this.is(j, T.OpeningRoundBracket)) {
       if (j === i && this.literalGroup(j, end - 1)) this.shape.verbatim[j] = end - 1;
     } else if (j > i && this.is(j, T.Number)) {

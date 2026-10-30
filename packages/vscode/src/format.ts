@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { format, type KeywordCase, TokenKind, tokenize } from "clickhouse-sql-syntax";
+import { format, type KeywordCase, split, type Unit } from "clickhouse-sql-syntax";
 import { tooLarge } from "./size.js";
 
 /** Format Document and Format Selection for ClickHouse SQL. */
@@ -23,10 +23,10 @@ function edits(document: vscode.TextDocument, options: vscode.FormattingOptions,
     if (formatted === text) return [];
     return [vscode.TextEdit.replace(new vscode.Range(document.positionAt(0), document.positionAt(text.length)), formatted)];
   }
-  // format() keeps every token and comment, so the two texts line up token by token.
-  const before = pieces(text);
-  const after = pieces(formatted);
-  if (before.length !== after.length || before.some((t, i) => t.kind !== after[i]!.kind)) return [];
+  // split() knows where inline data ends, and format() keeps every unit, so the units of the two texts line up.
+  const before = split(text);
+  const after = split(formatted);
+  if (before.length !== after.length || before.some((u, i) => !u.statement !== !after[i]!.statement)) return [];
   const touched = statementsIn(before, document.offsetAt(range.start), document.offsetAt(range.end));
   if (!touched) return [];
   const [first, last] = touched;
@@ -53,28 +53,19 @@ function formatText(text: string, options: vscode.FormattingOptions, keywordCase
     .join("\n");
 }
 
-/** The tokens of a text without whitespace. */
-function pieces(text: string): { kind: TokenKind; start: number; end: number }[] {
-  return tokenize(text).filter((t) => t.kind !== TokenKind.Whitespace && t.kind !== TokenKind.EndOfStream);
-}
-
-/** The first and last piece of the statements that the offsets touch, statements ending at ";". */
-function statementsIn(tokens: { kind: TokenKind; start: number; end: number }[], from: number, to: number): [number, number] | undefined {
+/** The first and last unit of the statements that the offsets touch, each statement up to its ";". */
+function statementsIn(units: Unit[], from: number, to: number): [number, number] | undefined {
   let first = -1;
   let last = -1;
-  let start = -1;
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (start < 0 && token.kind !== TokenKind.Comment) start = i;
-    const ends = token.kind === TokenKind.Semicolon || i === tokens.length - 1;
-    if (!ends || start < 0) continue;
+  units.forEach((unit, i) => {
+    if (!unit.statement) return;
+    const { start, end } = unit.statement;
     // An empty range touches the statement it is in or at the edge of; a selection must overlap it.
-    const touches = from === to ? tokens[start]!.start <= to && token.end >= from : tokens[start]!.start < to && token.end > from;
+    const touches = from === to ? start <= to && end >= from : start < to && end > from;
     if (touches) {
-      if (first < 0) first = start;
+      if (first < 0) first = i;
       last = i;
     }
-    start = -1;
-  }
+  });
   return first < 0 ? undefined : [first, last];
 }

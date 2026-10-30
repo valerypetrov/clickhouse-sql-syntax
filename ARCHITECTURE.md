@@ -76,8 +76,13 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
    where `check()` ends them, inline data included.
 2. A unit whose statement `check()` rejects is returned as written.
 3. `analyze.ts` finds the clauses, lists and brackets of each statement, and `print.ts` lays them out as
-   `clickhouse format` does, re-casing only the words that are keywords where they stand.
-4. As a last check, a unit is returned as written unless the result has the same tokens and comments and still passes `check()`.
+   `clickhouse format` does. A word changes case only where `roles()` reads it as a keyword, and a word that
+   `roles()` reads as a name or a setting is never taken for a keyword.
+4. As a last check, a unit is returned as written unless the result has the same tokens and comments, changes the
+   case of keywords only, and still passes `check()`.
+5. The line break of the output is the first one in whitespace that `format()` writes again. Strings, comments,
+   literals kept as written, rejected statements and inline data decide it only when there is no such break.
+   A lone CR becomes LF when a line comment is followed by more text, since only "\n" ends a line comment.
 
 ## complete()
 
@@ -93,7 +98,8 @@ In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar.
-- `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation.
+- `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
+  matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`.
 - `server/`: the server check. `statements.ts` finds the SELECTs the server can explain: SELECT and WITH statements,
   and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`. `index.ts` sends each one as `EXPLAIN QUERY TREE`

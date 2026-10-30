@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import { check } from "../../src/parser/index.js";
 import { format } from "../../src/format/index.js";
+import { sameTokens } from "../../src/format/format.js";
 import { tokenize } from "../../src/lexer/index.js";
 import { type KeywordCase, TokenKind, isErrorKind } from "../../src/types.js";
 import { GOLDEN } from "./golden.js";
@@ -61,10 +62,20 @@ describe("format() keeps what it does not lay out", () => {
     formats("select [1,2]::Array(UInt8), - 1::Int8, CAST([ 1,2 ] AS Array(UInt8))", "SELECT\n    [1,2]::Array(UInt8),\n    - 1::Int8,\n    CAST([ 1,2 ] AS Array(UInt8))");
   });
 
+  test("the literal of CAST(x, 'T') too, but not of CAST(x, T)", () => {
+    formats(
+      "select CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'), cast([1,2], t)",
+      "SELECT\n    CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'),\n    cast([1, 2], t)",
+    );
+    formats("SELECT CAST([2,3],'Array(Int128)')", "SELECT CAST([2,3], 'Array(Int128)')");
+  });
+
   test("INSERT data after VALUES", () => {
     formats("insert into t values (1,'x;y'),( 2 ,  'it''s' );", "INSERT INTO t VALUES (1,'x;y'),( 2 ,  'it''s' );");
     formats("insert into t values\n(1), -- one\n(2);\nselect 1", "INSERT INTO t VALUES\n(1), -- one\n(2);\n\nSELECT 1");
     formats("insert into t format Values (1),(2)", "INSERT INTO t FORMAT Values (1),(2)");
+    // A table called format: script splitters still read FORMAT Values by its spelling.
+    formats("insert into table format Values (1);\nselect 1", "INSERT INTO TABLE format Values (1);\n\nSELECT 1");
   });
 
   test("INSERT data after FORMAT, up to an empty line", () => {
@@ -73,6 +84,10 @@ describe("format() keeps what it does not lay out", () => {
       "INSERT INTO t FORMAT CSV\n1,'a\n2,\"b;\"\n\nSELECT 1",
     );
     formats("insert into t format TSV 1\t2\n", "INSERT INTO t FORMAT TSV 1\t2\n");
+    // Data that runs to the end keeps every byte: an empty last column, spaces, its line breaks.
+    formats("INSERT INTO t FORMAT TSV\n1\t2\t\n", "INSERT INTO t FORMAT TSV\n1\t2\t\n");
+    formats("insert into t format CSV\n1,2\n  ", "INSERT INTO t FORMAT CSV\n1,2\n  ");
+    formats("INSERT INTO format FORMAT TabSeparated\r\n\tJKL\n", "INSERT INTO format FORMAT TabSeparated\r\n\tJKL\n");
     formats(
       "insert into t select * from input('a UInt8') format CSV\n1\n",
       "INSERT INTO t\nSELECT *\nFROM input('a UInt8')\nFORMAT CSV\n1\n",
@@ -82,11 +97,85 @@ describe("format() keeps what it does not lay out", () => {
   test("a statement that check() rejects, and only that one", () => {
     formats("select 1;select (  1;\nselect  2", "SELECT 1;\n\nselect (  1;\n\nSELECT 2");
     formats("SELECT 1 FROM\n", "SELECT 1 FROM\n");
+    formats("'\n", "'\n");
+  });
+
+  test("an INSERT that ends in its target", () => {
+    const sqls = ["insert into", "insert into -- x", "insert into table", "insert into db.", "insert into {", "INSERT INTO {x"];
+    for (const sql of [...sqls, "EXPLAIN INSERT INTO", "WITH 1 AS x INSERT INTO"]) formats(sql, sql);
+    formats("SELECT 1; INSERT INTO", "SELECT 1;\n\nINSERT INTO");
+  });
+
+  test("a byte order mark at the start", () => {
+    formats("\uFEFFselect 1\n", "\uFEFFSELECT 1\n");
   });
 
   test("empty and blank input", () => {
     assert.equal(format(""), "");
     assert.equal(format("  \n\t\n"), "  \n\t\n");
+  });
+});
+
+describe("format() re-cases only the words that the parser reads as keywords", () => {
+  // ClickHouse names are case-sensitive, so a name spelled like a keyword keeps its case.
+  const cases: [string, string][] = [
+    ["update metrics set value = 42 where id = 1", "UPDATE metrics SET value = 42 WHERE id = 1"],
+    ["select case offset when 0 then 'first' else 'later' end from kafka", "SELECT CASE offset WHEN 0 THEN 'first' ELSE 'later' END\nFROM kafka"],
+    ["select * except format from t", "SELECT * EXCEPT format\nFROM t"],
+    ["select URL, uniq(s) as all from hits group by URL order by all desc, URL", "SELECT\n    URL,\n    uniq(s) AS all\nFROM hits\nGROUP BY URL\nORDER BY\n    all DESC,\n    URL"],
+    ["select toDateTime('2017-01-01 00:00:00') + interval as mcs from t", "SELECT toDateTime('2017-01-01 00:00:00') + interval AS mcs\nFROM t"],
+    ["select 1 interpolate", "SELECT 1 interpolate"],
+    ["set final", "SET final"],
+    ["set limit", "SET limit"],
+    ["set readonly", "SET readonly"],
+    ["set compression", "SET compression"],
+    ["rename table x to disk", "RENAME TABLE x TO disk"],
+    ["truncate table sync", "TRUNCATE TABLE sync"],
+    ["drop table t, comment", "DROP TABLE t, comment"],
+    ["alter table t add index index a type minmax", "ALTER TABLE t ADD INDEX index a TYPE minmax"],
+    ["SELECT f(select)", "SELECT f(select)"],
+    ["select (with, a)", "SELECT (with, a)"],
+    ["SELECT CASE from WHEN 1 THEN 2 END FROM t", "SELECT CASE from WHEN 1 THEN 2 END\nFROM t"],
+    ["INSERT INTO t (null) VALUES (1)", "INSERT INTO t (null) VALUES (1)"],
+    ["SHOW TABLES FROM final", "SHOW TABLES FROM final"],
+    ["desc table cleanup", "DESC TABLE cleanup"],
+    ["exists table strict", "EXISTS TABLE strict"],
+    ["show create table pull", "SHOW CREATE TABLE pull"],
+    ["GRANT SELECT ON t TO all", "GRANT SELECT ON t TO all"],
+    ["select arrayMap(select -> select + 1, [1])", "SELECT arrayMap(select -> select + 1, [1])"],
+    ["select 1 key from t", "SELECT 1 key\nFROM t"],
+  ];
+  for (const [input, expected] of cases) {
+    test(input, () => formats(input, expected));
+  }
+
+  test("in upper and lower case", () => {
+    // A statement and the part of it with a name that keeps its case.
+    const cases: [string, string][] = [
+      ["SELECT 1 WINDOW w AS (rows)", "(rows)"],
+      ["SELECT 1 WINDOW w AS (range)", "(range)"],
+      ["SELECT 1 WINDOW w AS (groups)", "(groups)"],
+      ["SYSTEM FLUSH LOGS ON CLUSTER default query_log", " default query_log"],
+      ["SYSTEM FLUSH LOGS ON CLUSTER all t", " all t"],
+      ["SYSTEM RELOAD DICTIONARY ON CLUSTER c d", " c d"],
+      ["SHOW TABLES FORMAT Null", " Null"],
+      ["SHOW TABLES FORMAT Values", " Values"],
+      ["BACKUP TABLE t TO Disk('b', 'x') SETTINGS base_backup = DEFAULT", " = DEFAULT"],
+      ["SET ROLE", " ROLE"],
+    ];
+    for (const [sql, name] of cases) {
+      for (const keywordCase of ["upper", "lower"] as const) {
+        const output = format(sql, { keywordCase });
+        assert.ok(output.includes(name), `${keywordCase}: ${output}`);
+        formats(sql, output, { keywordCase });
+      }
+    }
+  });
+
+  test("the safety net rejects a re-cased word that is not a keyword", () => {
+    const keywordAt = (start: number) => start === 0;
+    assert.equal(sameTokens("update metrics", "UPDATE metrics", keywordAt), true);
+    assert.equal(sameTokens("update metrics", "UPDATE METRICS", keywordAt), false);
   });
 });
 
@@ -188,6 +277,36 @@ describe("format() keeps the line endings of the input", () => {
 
   test("LF when the first line break is LF", () => {
     assert.equal(format("select 1;\nselect 2;\r\n"), "SELECT 1;\n\nSELECT 2;\n");
+  });
+
+  test("from line breaks between tokens, not those in strings and literals kept as written", () => {
+    formats("select 'a\nb' as s, c\r\nfrom t\r\n", "SELECT\r\n    'a\nb' AS s,\r\n    c\r\nFROM t\r\n");
+    formats("SELECT\r\n[(0.0, 0.0),\n(1.0, 1.0)]::Ring AS g FORMAT JSON", "SELECT [(0.0, 0.0),\n(1.0, 1.0)]::Ring AS g\r\nFORMAT JSON");
+  });
+
+  test("CR alone", () => {
+    formats("select a, b\rfrom t\r", "SELECT\r    a,\r    b\rFROM t\r");
+    formats("-- x\r", "-- x\r");
+  });
+
+  test("LF instead of a lone CR that would leave a line comment open", () => {
+    // A line comment ends only at "\n": after "-- c\r\r" the next statement would be a part of the comment.
+    formats("select 1;\rselect 2; -- c\nselect 3", "SELECT 1;\n\nSELECT 2; -- c\n\nSELECT 3");
+  });
+
+  test("a CR at the end that is not a line break of a line comment", () => {
+    formats("select 1;\r\n'abc\r", "SELECT 1;\r\n\r\n'abc\r");
+    formats("select 1;\r\ninsert into t values (1) -- c\n", "SELECT 1;\r\n\r\nINSERT INTO t VALUES (1) -- c\r\n");
+  });
+
+  test("mixed line breaks", () => {
+    formats("\nSELECT -- c\r\nx, y", "SELECT -- c\r\n    x,\r\n    y");
+    formats("\r\nSELECT /* a\nb */ 1\n", "SELECT /* a\nb */ 1\n");
+    formats("SELECT '\n' AS x\r\nFROM t", "SELECT '\n' AS x\r\nFROM t");
+  });
+
+  test("the CR at the end of a line comment is a part of the line break after it", () => {
+    formats("select\na -- c\r\nfrom t where x", "SELECT a -- c\nFROM t\nWHERE x");
   });
 });
 
