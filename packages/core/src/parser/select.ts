@@ -693,7 +693,7 @@ function parseCursorObject(p: P): boolean {
   return true;
 }
 
-/** ParserStreamSettings: [BOUNDED] [UNORDERED] [CURSOR {...}] [WATERMARK FOR col AS expr [IDLE_TIMEOUT ...]]. */
+/** ParserStreamSettings: [BOUNDED] [UNORDERED] [CURSOR {...}] [WATERMARK FOR col AS expr [IDLE TIMEOUT ...]]. */
 function parseStreamSettings(p: P): Ast | null {
   return base(p, "STREAM Settings", () => {
     kw(p, "BOUNDED");
@@ -704,7 +704,7 @@ function parseStreamSettings(p: P): Ast | null {
       if (!parseIdentifier(p)) return null;
       if (!kw(p, "AS")) return null;
       if (!parseExpression(p)) return null;
-      if (kw(p, "IDLE_TIMEOUT")) {
+      if (kw(p, "IDLE TIMEOUT")) {
         if (!kw(p, "INTERVAL")) return null;
         if (!parseUnsignedInteger(p)) return null;
         if (parseIntervalKind(p) === null) return null;
