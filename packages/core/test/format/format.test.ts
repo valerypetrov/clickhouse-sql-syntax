@@ -83,6 +83,10 @@ describe("format() keeps what it does not lay out", () => {
       "INSERT INTO t FORMAT CSV\n1,'a\n2,\"b;\"\n\nSELECT 1",
     );
     formats("insert into t format TSV 1\t2\n", "INSERT INTO t FORMAT TSV 1\t2\n");
+    // Data that runs to the end keeps every byte: an empty last column, spaces, its line breaks.
+    formats("INSERT INTO t FORMAT TSV\n1\t2\t\n", "INSERT INTO t FORMAT TSV\n1\t2\t\n");
+    formats("insert into t format CSV\n1,2\n  ", "INSERT INTO t FORMAT CSV\n1,2\n  ");
+    formats("INSERT INTO format FORMAT TabSeparated\r\n\tJKL\n", "INSERT INTO format FORMAT TabSeparated\r\n\tJKL\n");
     formats(
       "insert into t select * from input('a UInt8') format CSV\n1\n",
       "INSERT INTO t\nSELECT *\nFROM input('a UInt8')\nFORMAT CSV\n1\n",
@@ -92,6 +96,7 @@ describe("format() keeps what it does not lay out", () => {
   test("a statement that check() rejects, and only that one", () => {
     formats("select 1;select (  1;\nselect  2", "SELECT 1;\n\nselect (  1;\n\nSELECT 2");
     formats("SELECT 1 FROM\n", "SELECT 1 FROM\n");
+    formats("'\n", "'\n");
   });
 
   test("an INSERT that ends in its target", () => {
@@ -252,6 +257,17 @@ describe("format() keeps the line endings of the input", () => {
   test("CR alone", () => {
     formats("select a, b\rfrom t\r", "SELECT\r    a,\r    b\rFROM t\r");
     formats("-- x\r", "-- x\r");
+  });
+
+  test("LF instead of a lone CR that would leave a line comment open", () => {
+    // A line comment ends only at "\n": after "-- c\r\r" the next statement would be a part of the comment.
+    formats("select 1;\rselect 2; -- c\nselect 3", "SELECT 1;\n\nSELECT 2; -- c\n\nSELECT 3");
+  });
+
+  test("mixed line breaks", () => {
+    formats("\nSELECT -- c\r\nx, y", "SELECT -- c\r\n    x,\r\n    y");
+    formats("\r\nSELECT /* a\nb */ 1\n", "SELECT /* a\nb */ 1\n");
+    formats("SELECT '\n' AS x\r\nFROM t", "SELECT '\n' AS x\r\nFROM t");
   });
 
   test("the CR at the end of a line comment is a part of the line break after it", () => {

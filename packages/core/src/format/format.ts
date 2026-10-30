@@ -27,7 +27,10 @@ export function format(sql: string, options: FormatOptions = {}): string {
     if (k > 0) out += units[k - 1]!.data.blankLine ? "\n\n" : eol + eol;
     out += formatUnit(sql, u, parts[k]!, keywordCase, unit, eol);
   });
-  if (/[\r\n]$/.test(sql)) out += eol;
+  // A line break after the last unit, or the "\r" that ends its last line comment, ends the output too.
+  const last = units[units.length - 1]!;
+  const gap = sql.slice(last.end);
+  if (/[\r\n]$/.test(gap) || (gap === "" && last.tokens[last.tokens.length - 1]?.kind === T.Comment && sql.endsWith("\r"))) out += eol;
   return out;
 }
 
@@ -66,11 +69,18 @@ function formatUnit(sql: string, unit: Unit, part: Part | null, keywordCase: Key
   return text;
 }
 
-/**
- * The line break of the output: the first one in whitespace that format() writes again, else in whitespace
- * that it keeps, else in inline data, else "\n". The "\r" that ends a line comment starts the break after it.
- */
+/** The line break of the output; "\r" alone only when no line comment needs a "\n" to end before more text. */
 function lineEnd(sql: string, units: Unit[], parts: (Part | null)[]): string {
+  const eol = firstLineBreak(sql, units, parts);
+  const lineComment = (t: Token): boolean => t.kind === T.Comment && !sql.startsWith("/*", t.start) && t.end < sql.length;
+  return eol === "\r" && units.some((u) => u.tokens.some(lineComment)) ? "\n" : eol;
+}
+
+/**
+ * The first line break in whitespace that format() writes again, else in whitespace that it keeps, else in
+ * inline data, else "\n". The "\r" that ends a line comment starts the break after it.
+ */
+function firstLineBreak(sql: string, units: Unit[], parts: (Part | null)[]): string {
   let kept: string | undefined;
   let data: string | undefined;
   const breakAfter = (previous: Token | undefined, from: number, to: number): string | undefined => {

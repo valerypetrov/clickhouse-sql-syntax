@@ -277,7 +277,8 @@ class Splitter {
   private formatDataEnd(nameEnd: number): StatementEnd {
     const blank = this.sql.indexOf("\n\n", nameEnd);
     if (blank === -1) {
-      const end = nameEnd + this.sql.slice(nameEnd).trimEnd().length;
+      // Data that runs to the end of the input keeps all of it, spaces and line breaks included.
+      const end = this.sql.length;
       const next = this.realign(this.sql.length);
       return { next, end, data: { start: nameEnd, end, blankLine: false } };
     }
