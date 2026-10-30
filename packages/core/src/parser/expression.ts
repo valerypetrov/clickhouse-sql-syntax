@@ -1494,7 +1494,8 @@ function tryParseOperand(layers: Layer[], p: P): Action {
 
   if (isArrayConstructorWithKeyword(p)) {
     p.i += 2;
-    p.mark(p.i - 2, "keyword");
+    // ClickHouse colours ARRAY as the name that an earlier attempt read it as.
+    p.mark(p.i - 2, "identifier");
     layers.push(new ArrayLayer());
     return Action.Operand;
   }

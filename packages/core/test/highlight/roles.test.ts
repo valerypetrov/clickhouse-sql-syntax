@@ -162,8 +162,9 @@ describe("statements that do not parse", () => {
 
 test("an attempt the parser gave up leaves no role behind", () => {
   // Each word is first tried as something else: a DATE literal, a SHARED path, a function, a keyword.
+  // SHARED keeps the role of a name, as ClickHouse colours it.
   assertRoles("SELECT date, x::JSON(SHARED a UInt64), count, INTERVAL 1 DAY", [
-    ["date", "identifier"], ["JSON", "type"], ["SHARED", "keyword"], ["a", "identifier"], ["UInt64", "type"],
+    ["date", "identifier"], ["JSON", "type"], ["SHARED", "identifier"], ["a", "identifier"], ["UInt64", "type"],
     ["count", "identifier"], ["INTERVAL", "keyword"], ["DAY", "keyword"],
   ]);
 });

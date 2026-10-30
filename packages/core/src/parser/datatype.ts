@@ -97,6 +97,8 @@ function parseObjectArgument(p: P): Ast | null {
     if (!plainPath) {
       p.restore(begin);
       if (kwQuiet(p, "SHARED") && parseCompoundIdentifier(p) && parseDataType(p)) shared = true;
+      // ClickHouse colours SHARED as the name that the first reading took it for.
+      if (shared) p.mark(begin, "identifier", begin + 1);
     }
     if (!shared && !plainPath) {
       if (!hasIdentifier) return null;
@@ -142,6 +144,8 @@ export function parseDataType(p: P): Ast | null {
       return null;
     }
     let suffix = "";
+    // SIGNED and UNSIGNED stay keywords, as ClickHouse reads them.
+    let typeEnd = -1;
     if (upper === "NATIONAL") {
       for (const word of ["CHARACTER LARGE OBJECT", "CHARACTER VARYING", "CHAR VARYING", "CHARACTER", "CHAR"]) {
         if (kwQuiet(p, word)) {
@@ -156,6 +160,7 @@ export function parseDataType(p: P): Ast | null {
       if (kwQuiet(p, "PRECISION")) suffix = "PRECISION";
     } else if (INTEGER_TYPE_NAMES.has(upper)) {
       // MySQL compatibility: INT(11) UNSIGNED.
+      typeEnd = p.i;
       if (kw(p, "SIGNED")) suffix = "SIGNED";
       else if (kw(p, "UNSIGNED")) suffix = "UNSIGNED";
       else if (p.kind() === T.OpeningRoundBracket) {
@@ -163,12 +168,13 @@ export function parseDataType(p: P): Ast | null {
         if (p.kind() === T.Number) p.i++;
         if (p.kind() !== T.ClosingRoundBracket) return null;
         p.i++;
+        typeEnd = p.i;
         if (kw(p, "SIGNED")) suffix = "SIGNED";
         else if (kw(p, "UNSIGNED")) suffix = "UNSIGNED";
       }
     }
     if (suffix) typeName = upper + " " + suffix;
-    p.mark(begin, "type");
+    p.mark(begin, "type", suffix && typeEnd >= 0 ? typeEnd : p.i);
     if (p.kind() === T.OpeningRoundBracket) {
       if (upper === "ARRAY") typeName = "Array";
       else if (upper === "MAP") typeName = "Map";
