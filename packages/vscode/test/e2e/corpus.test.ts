@@ -10,7 +10,7 @@ import * as vscode from "vscode";
 import { classify, type ClickHouseInfo, type Verdict } from "../../../../oracle/src/clickhouse.js";
 import { sameVerdict, verdictText } from "../../../../oracle/src/compare.js";
 import { readCorpus } from "../../../../oracle/src/corpus.js";
-import { expectsSyntaxError, sha1, usesOtherDialect } from "../../../../oracle/src/extract.js";
+import { expectsSyntaxError, needsXRay, sha1, usesOtherDialect } from "../../../../oracle/src/extract.js";
 import { type Statement, splitStatements } from "../../../../oracle/src/split.js";
 
 const LANGUAGE_ID = "clickhouse-sql";
@@ -67,7 +67,7 @@ function pickFiles(): { files: string[]; kinds: number } {
     .filter((name) => name.endsWith(".sql"))
     .map((name) => ({ name, key: sha1(name), text: readFileSync(join(CORPUS, name), "utf8") }))
     // VS Code does not open a file with NUL bytes as text.
-    .filter((file) => !usesOtherDialect(file.text) && !file.text.includes("\0"))
+    .filter((file) => !usesOtherDialect(file.text) && !needsXRay(file.text) && !file.text.includes("\0"))
     .sort((a, b) => (a.key < b.key ? -1 : 1))
     .map(({ name, text }) => ({ name, crlf: text.includes("\r\n"), statements: splitStatements(text) }));
   const kinds = (file: (typeof all)[number]): string[] => file.statements.flatMap((s) => kindOf(s.text) ?? []);
