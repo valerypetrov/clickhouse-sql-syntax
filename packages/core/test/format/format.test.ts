@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { gunzipSync } from "node:zlib";
 
 import { check } from "../../src/parser/index.js";
 import { format } from "../../src/format/index.js";
@@ -56,6 +58,49 @@ describe("format() keeps what it does not lay out", () => {
       "SELECT\n    'it''s -- not a comment',\n    $tag$ x; -- y $tag$,\n    $$z$$,\n    1e-3,\n    0x1F,\n    1_000,\n    {p: Array(String)}\nFROM t",
     );
     formats("select 'a\nb' as s", "SELECT 'a\nb' AS s");
+  });
+
+  test("query parameters wherever they are, as ClickHouse reads the type from its text", () => {
+    for (const sql of [
+      "SELECT {a:Identifier}.{b:Dynamic(max_types=2)}",
+      "SELECT 1 .{x:x}",
+      "ALTER TABLE tbl (UPDATE x = 1 WHERE {p:Time64(0)})",
+      "SELECT x FROM a STREAM WATERMARK FOR x AS f({p:Dynamic(max_types=6)})",
+      "SELECT 1 LIMIT UNTIL {p:Dynamic(max_types=10)}",
+      "ATTACH TABLE x UUID 'c0d9e426-805d-a116-8c7d-e0c53859a441' AS REPLICATED (x Array ALIAS ({x:Array()}))",
+      "(FROM (x, x) JOIN x USING (1) ARRAY JOIN (({x:x})))",
+      "SELECT * APPLY lambda(tuple(x), isNull(x)) EXCEPT STRICT (`a`), toInt16OrNull({p:DateTime64(7)}) FROM t",
+    ]) {
+      const parameters = sql.match(/\{[^{}]*\}/g)!;
+      const output = format(sql);
+      for (const parameter of parameters) assert.ok(output.includes(parameter), `${sql}\n${output}`);
+    }
+  });
+
+  // A query parameter with spaces in place of each number of statements of ClickHouse's tests.
+  test("query parameters in place of the numbers of ClickHouse's tests", () => {
+    const parameter = "{p : Dynamic( max_types=2 )}";
+    const statements = gunzipSync(readFileSync(new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url)))
+      .toString("utf8")
+      .split("\n")
+      .slice(1)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { sql: string; valid: boolean })
+      .filter((entry) => entry.valid && entry.sql.length < 2000)
+      .map((entry) => entry.sql);
+    let tried = 0;
+    const changed: string[] = [];
+    for (const sql of statements) {
+      const numbers = tokenize(sql).filter((t) => t.kind === TokenKind.Number);
+      if (numbers.length === 0) continue;
+      const number = numbers[sql.length % numbers.length]!;
+      const replaced = sql.slice(0, number.start) + parameter + sql.slice(number.end);
+      if (check(replaced).length > 0) continue;
+      tried++;
+      if (!format(replaced).includes(parameter)) changed.push(replaced);
+    }
+    assert.ok(tried > 3000, `only ${tried} statements`);
+    assert.deepEqual(changed, []);
   });
 
   test("literals that ClickHouse casts from their text", () => {
