@@ -118,7 +118,7 @@
           "type": "boolean",
           "default": false,
           "scope": "machine",
-          "markdownDescription": "Check names, functions and types against a ClickHouse server, and complete its databases, tables and columns. Each SELECT, and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`, is sent as `EXPLAIN QUERY TREE` with `readonly=1`, so nothing is executed; the names come from `system.databases`, `system.tables` and `system.columns`."
+          "markdownDescription": "Check names, functions and types against a ClickHouse server, and complete its databases, tables and columns. Each SELECT, and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`, is sent as `EXPLAIN QUERY TREE` with `readonly=1`, so nothing is changed; the server still runs its scalar subqueries, within limits of 2 s, rows, bytes and memory. The names come from `system.databases`, `system.tables` and `system.columns`."
         },
         "clickhouseSql.server.url": {
           "type": "string",
