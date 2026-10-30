@@ -79,7 +79,8 @@ export async function query(
 
 /** The first line of a ClickHouse error, without "Code: N. DB::Exception: ", the error name and the version. */
 export function parseError(body: string): { message: string; codeName: string | undefined } {
-  let message = body.split("\n")[0]!.replace(/^Code: \d+\. DB::Exception: /, "").replace(/ \(version [^)]*\)$/, "");
+  // Official builds give "(version 26.10.2.103 (official build))", with brackets inside.
+  let message = body.split("\n")[0]!.replace(/^Code: \d+\. DB::Exception: /, "").replace(/ \(version [^()]*(?:\([^()]*\))?\)$/, "");
   const name = / \(([A-Z][A-Z0-9_]*)\)$/.exec(message);
   if (name) message = message.slice(0, name.index);
   return { message, codeName: name?.[1] };

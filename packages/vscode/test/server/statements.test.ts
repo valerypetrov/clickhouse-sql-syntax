@@ -100,6 +100,8 @@ describe("parseError", () => {
     const body =
       "Code: 47. DB::Exception: Unknown expression identifier `x`. In scope SELECT x. (UNKNOWN_IDENTIFIER) (version 26.11.1.1)\n";
     assert.deepEqual(parseError(body), { message: "Unknown expression identifier `x`. In scope SELECT x.", codeName: "UNKNOWN_IDENTIFIER" });
+    const official = "Code: 47. DB::Exception: Unknown expression identifier `x`. (UNKNOWN_IDENTIFIER) (version 26.10.2.103 (official build))";
+    assert.deepEqual(parseError(official), { message: "Unknown expression identifier `x`.", codeName: "UNKNOWN_IDENTIFIER" });
     assert.deepEqual(parseError("Code: 516. DB::Exception: u: Authentication failed. (AUTHENTICATION_FAILED)\nstack"), {
       message: "u: Authentication failed.",
       codeName: "AUTHENTICATION_FAILED",
