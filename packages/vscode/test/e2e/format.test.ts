@@ -95,6 +95,34 @@ describe("Formatting ClickHouse SQL", () => {
     assert.equal(formatted, format(sql));
   });
 
+  it("re-cases only the words that ClickHouse reads as keywords", async () => {
+    const sql = "update metrics set value = 42 where id = 1;\nselect case offset when 0 then 'first' else 'later' end from kafka;\nselect * except format from t";
+    const editor = await open(sql);
+    const formatted = await formatDocument(editor);
+    assert.equal(
+      formatted,
+      "UPDATE metrics SET value = 42 WHERE id = 1;\n\nSELECT CASE offset WHEN 0 THEN 'first' ELSE 'later' END\nFROM kafka;\n\nSELECT * EXCEPT format\nFROM t",
+    );
+  });
+
+  it("Format Selection after inline data with a quote in it changes only the selected statement", async () => {
+    const sql = "insert into people format CSV\n1,O'Brien\n\nupdate metrics set value = 42 where id = 1;\nselect  1;";
+    const editor = await open(sql);
+    editor.selection = new vscode.Selection(new vscode.Position(4, 8), new vscode.Position(4, 9));
+    await vscode.commands.executeCommand("editor.action.formatSelection");
+    assert.equal(editor.document.getText(), "insert into people format CSV\n1,O'Brien\n\nupdate metrics set value = 42 where id = 1;\nSELECT 1;");
+  });
+
+  it("keeps CRLF with line breaks in strings, in literals kept as written and after line comments", async () => {
+    const sql = "-- head\r\nselect 'a\r\nb' as s, [1,\r\n2]::Array(UInt8) as a -- two\r\nfrom t;\r\nselect 2\r\n";
+    const editor = await open(sql);
+    assert.equal(editor.document.eol, vscode.EndOfLine.CRLF);
+    const formatted = await formatDocument(editor);
+    assert.equal(formatted, format(sql));
+    assert.equal(formatted, "-- head\r\nSELECT\r\n    'a\r\nb' AS s,\r\n    [1,\r\n2]::Array(UInt8) AS a -- two\r\nFROM t;\r\n\r\nSELECT 2\r\n");
+    assert.equal(await formatDocument(editor), formatted);
+  });
+
   it("keeps the CRLF line breaks of a document", async () => {
     const sql = "select a,b -- two columns\r\nfrom t;\r\nselect 2\r\n";
     const editor = await open(sql);
