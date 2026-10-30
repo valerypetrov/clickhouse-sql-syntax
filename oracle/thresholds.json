@@ -1,7 +1,7 @@
 {
-  "verdictAgreement": 0.9945,
+  "verdictAgreement": 0.995,
   "validAcceptedRate": 1,
-  "invalidRejectedRate": 0.9718,
+  "invalidRejectedRate": 0.9744,
   "positionMatch": 1,
   "messageMatch": 1
 }

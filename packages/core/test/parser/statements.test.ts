@@ -133,22 +133,36 @@ describe("Other statements", () => {
   ]);
 });
 
-// Builds with XRay take an instrumentation point, others only ON CLUSTER; errors follow the latter.
+// As the official Linux builds parse it, which have XRay; the binary labels of macOS builds take only ON CLUSTER.
+// From ClickHouse's tests 03642, 04141, 04146, 04147, 04295 and 04296.
 describe("SYSTEM INSTRUMENT", () => {
   accepts([
     "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 0 1 2",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 0.1 0.5",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY -1",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY nan 1",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 0 inf",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 1e20",
+    "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 9223372036854776 9223372036854776",
     "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' LOG EXIT 'this is a log printed at exit'",
     "SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' PROFILE",
     "SYSTEM INSTRUMENT REMOVE ALL",
+    "SYSTEM INSTRUMENT REMOVE 'executeQuery'",
+    "SYSTEM INSTRUMENT REMOVE 5",
     "SYSTEM INSTRUMENT REMOVE (SELECT id FROM system.instrumentation WHERE handler = 'log')",
-    "SYSTEM INSTRUMENT ADD ON CLUSTER c",
-    "SYSTEM INSTRUMENT REMOVE",
   ]);
 
   rejects([
-    ["SYSTEM INSTRUMENT ADD 'f' SLEEP ENTRY", 22, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
-    ["SYSTEM INSTRUMENT ADD 'f' SLEEP MIDDLE 1", 22, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
-    ["SYSTEM INSTRUMENT REMOVE xyz", 25, "Expected one of: ON, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SYSTEM INSTRUMENT REMOVE", 24, "Expected one of: SELECT or EXPLAIN subquery, literal, NULL, number, Bool, TRUE, FALSE, string literal, identifier, instrumentation point: subquery, literal, or ALL"],
+    ["SYSTEM INSTRUMENT REMOVE  ;", 26, "Expected one of: SELECT or EXPLAIN subquery, literal, NULL, number, Bool, TRUE, FALSE, string literal, identifier, instrumentation point: subquery, literal, or ALL"],
+    ["SYSTEM INSTRUMENT REMOVE 3.2", 28, "Expected String or UInt64 literal for instrumentation point"],
+    ["SYSTEM INSTRUMENT REMOVE xyz", 28, "Expected ALL"],
+    ["SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' LOG ENTRY NULL", 65, "Expected string, integer, or float literal argument"],
+    ["SYSTEM INSTRUMENT ADD 'QueryMetricLog::startQuery' SLEEP ENTRY 9223372036854775808", 82, "Expected integer literal not exceeding Int64 maximum"],
+    ["SYSTEM INSTRUMENT ADD 'f' SLEEP ENTRY", 37, "Expected one of: literal, NULL, number, Bool, TRUE, FALSE, string literal, at least one argument (string, integer, or float literal)"],
+    ["SYSTEM INSTRUMENT ADD 'f' SLEEP MIDDLE 1", 39, "Expected entry type (ENTRY or EXIT)"],
+    ["SYSTEM INSTRUMENT ADD ON CLUSTER c", 22, "Expected one of: literal, NULL, number, Bool, TRUE, FALSE, string literal, function name (string literal)"],
+    ["SYSTEM INSTRUMENT ADD 1 LOG ENTRY 'x'", 22, "Bad get: has UInt64, requested String"],
   ]);
 });
 

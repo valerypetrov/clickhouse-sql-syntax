@@ -13,7 +13,7 @@ import {
   parseUnsignedInteger,
 } from "./elements.js";
 import { parseSetQuery } from "./set.js";
-import { base, Expected, kw, lookahead, P, ParseError, peekKw, T, tok, tokQuiet } from "./state.js";
+import { base, kw, P, peekKw, T, tok, tokQuiet } from "./state.js";
 
 /** ASTSystemQuery::Type in enum order without the background verbs, as typeToString spells them. */
 const TYPES = [
@@ -186,8 +186,8 @@ function parseMerges(p: P): boolean {
   return true;
 }
 
-/** SYSTEM INSTRUMENT ADD|REMOVE as builds with XRay parse it. */
-function parseInstrumentWithXRay(p: P, add: boolean): boolean {
+/** SYSTEM INSTRUMENT ADD|REMOVE as the official builds parse it, which have XRay; others take only ON CLUSTER. */
+function parseInstrument(p: P, add: boolean): boolean {
   if (!add) {
     if (parseSubquery(p)) return true;
     const point = parseLiteral(p);
@@ -240,33 +240,6 @@ function parseInstrumentWithXRay(p: P, add: boolean): boolean {
     return false;
   }
   return true;
-}
-
-/**
- * SYSTEM INSTRUMENT ADD|REMOVE: builds without XRay take only ON CLUSTER, builds with it take the
- * instrumentation point. Either form is accepted; errors follow the build without XRay.
- */
-function parseInstrument(p: P, add: boolean): boolean {
-  const maxIndex = p.maxIndex;
-  const end = lookahead(
-    p,
-    () => {
-      try {
-        return parseInstrumentWithXRay(p, add) ? p.i : -1;
-      } catch (error) {
-        if (error instanceof ParseError) return -1;
-        throw error;
-      }
-    },
-    new Expected(),
-  );
-  if (end >= 0) {
-    p.i = end;
-    return true;
-  }
-  // Errors are reported as the build without XRay reports them.
-  p.maxIndex = maxIndex;
-  return parseOnCluster(p);
 }
 
 /** What follows the type of a SYSTEM query. */

@@ -47,7 +47,7 @@ const classifyOptions = {
 };
 
 const extracted = extractCorpus(values.corpus, { maxLength: integerOption(values["max-length"], "--max-length", 1) });
-log(`${extracted.files} files, ${extracted.skippedFiles.length} in other dialects skipped, ${extracted.total} statements, ${extracted.statements.length} unique`);
+log(`${extracted.files} files, ${extracted.skippedFiles.length} in other dialects or for XRay skipped, ${extracted.total} statements, ${extracted.statements.length} unique`);
 
 async function label(sqls: string[]): Promise<ClassifyResult> {
   const result = await classify(sqls, classifyOptions);

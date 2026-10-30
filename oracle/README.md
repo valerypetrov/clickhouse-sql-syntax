@@ -51,7 +51,8 @@ npm run corpus -w oracle -- --clickhouse /path/to/clickhouse --corpus /path/to/C
 
 This splits every test file the way `clickhouse-client` does: at `;`, with the inline data of an
 `INSERT` kept whole (VALUES data runs to a `;` outside brackets, other data to the first empty
-line). It skips files in other dialects (Kusto, PRQL, ...), removes duplicates, and labels each
+line). It skips files in other dialects (Kusto, PRQL, ...) and the tests tagged `use-xray`, whose
+SYSTEM INSTRUMENT only builds with XRay parse as `check()` does, removes duplicates, and labels each
 statement:
 
 1. In bulk, with `formatQueryOrNull()` in one `clickhouse local --implicit_select=0` process per
