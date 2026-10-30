@@ -244,6 +244,18 @@ describe("complete()", () => {
     assert.ok(labels("SELECT 'abc' |").includes("FROM"));
   });
 
+  test("finds the statement around the cursor after inline data, as check() does", () => {
+    assert.ok(labels("INSERT INTO hits FORMAT TSV 1\n\nSELECT |").includes("DISTINCT"));
+    assert.ok(labels("INSERT INTO hits FORMAT TSV it's\n\nSELECT * FROM hits WHERE |").includes("url"));
+    assert.ok(labels("EXPLAIN INSERT INTO hits FORMAT TSV 1\n\nSEL|").includes("SELECT"));
+    assert.ok(labels("INSERT INTO hits FORMAT TSV 1\n\n|").includes("SELECT"));
+    assert.ok(labels("INSERT INTO hits VALUES (1); SEL|").includes("SELECT"));
+    assert.deepEqual(labels("INSERT INTO hits FORMAT TSV |"), []);
+    assert.deepEqual(labels("INSERT INTO hits FORMAT TSV 1\n|"), []);
+    assert.deepEqual(labels("INSERT INTO hits VALUES (1, 2) |"), []);
+    assert.deepEqual(labels("INSERT INTO hits FORMAT CS|"), ["CSV", "CSVWithNames", "CSVWithNamesAndTypes"]);
+  });
+
   test("completes the word the cursor is in, from its start to the cursor", () => {
     assert.ok(labels("SELECT co|unt() FROM hits").includes("count"));
     assert.ok(labels("SELECT |count() FROM hits").includes("url"));
