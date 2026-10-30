@@ -31,6 +31,10 @@ check("SELECT a FROM t GROUP a");
 Only syntax is checked, as `clickhouse format` does: unknown tables, functions or settings are fine,
 and the inline data of `INSERT ... VALUES` and `INSERT ... FORMAT` is skipped.
 
+`roles(sql)` gives what the parser reads each word of the valid statements as, and `checkWithRoles(sql, cache?)`
+gives both in one pass. A `ParseCache` given to it keeps the statements it checked, so that a later call parses only
+the ones that changed, with the same result; an editor keeps one per document.
+
 ### format(sql, options?)
 
 ```ts
