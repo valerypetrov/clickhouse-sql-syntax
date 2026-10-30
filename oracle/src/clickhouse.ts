@@ -112,7 +112,8 @@ export function errorSummary(message: string): string {
     const maybe = /Maybe you meant: [^.]*\. $/.exec(before);
     return message.slice(maybe ? maybe.index : expected);
   }
-  return message.replace(/^Syntax error(?: \(query\))?: failed at position \d+ \([^)]*\)(?: \(line \d+, col \d+\))?: /, "");
+  // With nothing expected ClickHouse writes only where it failed, and the token there may hold a ")".
+  return /^Syntax error(?: \([^)]*\))?: failed at position \d+ \(/.test(message) ? "Syntax error" : message;
 }
 
 /** Bulk check with formatQueryOrNull(); a chunk that fails as a whole is split until the culprit is found. */
