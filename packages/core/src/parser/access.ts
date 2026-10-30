@@ -23,7 +23,7 @@ import {
   parseUnsignedInteger,
 } from "./elements.js";
 import { parseExpression, parseIntervalKind, subParser } from "./expression.js";
-import { ACCESS_TYPE_KEYWORDS, PARAMETER_ACCESS_TYPES, SOURCE_ACCESS_TYPES, SOURCE_NAMES } from "./privileges.js";
+import { ACCESS_TYPE_KEYWORDS, NO_ACCESS_TYPES, PARAMETER_ACCESS_TYPES, SOURCE_ACCESS_TYPES, SOURCE_NAMES } from "./privileges.js";
 import { attempt, base, kw, listUtil, P, peekKw, T, tok } from "./state.js";
 
 /** [ON CLUSTER c], moving back if ON is not followed by a cluster. */
@@ -420,7 +420,7 @@ function parseParameterRegExp(p: P): string | null {
 }
 
 /** access types ON what: a table, *.*, db.*, or a parameter for the global privileges that take one. */
-function parseAccessRightsAroundOn(p: P): boolean {
+function parseAccessRightsAroundOn(p: P, keywords?: string[]): boolean {
   const flags: { keyword: string; columns: boolean }[] = [];
   const parsedFlags = listUtil(
     p,
@@ -464,12 +464,17 @@ function parseAccessRightsAroundOn(p: P): boolean {
     wildcard = name.wildcard;
     table = name.table;
   }
-  return !flags.some((flag) => (wildcard || !table) && flag.columns);
+  if (flags.some((flag) => (wildcard || !table) && flag.columns)) return false;
+  keywords?.push(...flags.map((flag) => flag.keyword));
+  return true;
 }
 
-/** parseAccessRightsElementsWithoutOptions: SELECT(a) ON db.t, INSERT ON *.*, ... */
-function parseAccessRightsElements(p: P): boolean {
-  return attempt(p, () => listUtil(p, () => parseAccessRightsAroundOn(p), undefined, false)) !== null;
+/** parseAccessRightsElementsWithoutOptions: SELECT(a) ON db.t, INSERT ON *.*, ...; `keywords` gets their access types. */
+function parseAccessRightsElements(p: P, keywords?: string[]): boolean {
+  const found: string[] = [];
+  const ok = attempt(p, () => listUtil(p, () => parseAccessRightsAroundOn(p, found), undefined, false)) !== null;
+  if (ok) keywords?.push(...found);
+  return ok;
 }
 
 // --- Authentication ------------------------------------------------------------------------------
@@ -1253,9 +1258,10 @@ export function parseShowAccessQuery(p: P): Ast | null {
 
 // --- GRANT, REVOKE, CHECK GRANT, SET ROLE and EXECUTE AS ----------------------------------------
 
-/** CURRENT GRANTS (rights) or CURRENT GRANTS ON table. */
-function parseCurrentGrants(p: P): boolean {
-  if (tok(p, T.OpeningRoundBracket)) return parseAccessRightsElements(p) && tok(p, T.ClosingRoundBracket);
+/** CURRENT GRANTS (rights) or CURRENT GRANTS ON table, which grants ALL there. */
+function parseCurrentGrants(p: P, keywords: string[]): boolean {
+  if (tok(p, T.OpeningRoundBracket)) return parseAccessRightsElements(p, keywords) && tok(p, T.ClosingRoundBracket);
+  keywords.push("ALL");
   return kw(p, "ON") && parseDatabaseAndTableNameOrAsterisks(p) !== null;
 }
 
@@ -1272,13 +1278,13 @@ export function parseGrantQuery(p: P): Ast | null {
       if (kw(p, "GRANT OPTION FOR")) grantOption = true;
       else if (kw(p, "ADMIN OPTION FOR")) adminOption = true;
     }
-    let rights = false;
+    // The access types granted; NONE, USAGE and NO PRIVILEGES add no rights.
+    const keywords: string[] = [];
     let roles = false;
     if (!revoke && kw(p, "CURRENT GRANTS")) {
-      if (!parseCurrentGrants(p)) return null;
-      rights = true;
-    } else if (parseAccessRightsElements(p)) {
-      rights = true;
+      if (!parseCurrentGrants(p, keywords)) return null;
+    } else if (parseAccessRightsElements(p, keywords)) {
+      // GRANT rights.
     } else if (attempt(p, () => parseRolesOrUsersSet(p, { params: true, all: revoke }))) {
       roles = true;
     } else {
@@ -1298,7 +1304,7 @@ export function parseGrantQuery(p: P): Ast | null {
     }
     if (!cluster) parseOnCluster(p);
     if (grantOption && roles) p.fail("GRANT OPTION should be specified for access types");
-    if (adminOption && rights) p.fail("ADMIN OPTION should be specified for roles");
+    if (adminOption && keywords.some((keyword) => !NO_ACCESS_TYPES.has(keyword))) p.fail("ADMIN OPTION should be specified for roles");
     return new Ast("GrantQuery");
   });
 }
