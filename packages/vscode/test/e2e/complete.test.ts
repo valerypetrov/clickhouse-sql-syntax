@@ -75,7 +75,8 @@ describe("Completion, hover and signature help", () => {
       return editor.document.getText() !== "SELECT toDat";
     }, "the suggestion to be inserted");
     assert.equal(editor.document.getText(), "SELECT toDate()");
-    assert.equal(editor.document.offsetAt(editor.selection.active), "SELECT toDate(".length);
+    // The cursor can move a moment after the text changes.
+    await until(() => editor.document.offsetAt(editor.selection.active) === "SELECT toDate(".length, "the cursor inside the brackets");
 
     const help = await vscode.commands.executeCommand<vscode.SignatureHelp>(
       "vscode.executeSignatureHelpProvider",
