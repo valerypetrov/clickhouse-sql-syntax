@@ -75,7 +75,7 @@
           "match": "(?<![A-Za-z0-9_$])(?:[xX]'[0-9A-Fa-f]*'|[bB]'[01]*')"
         },
         {
-          "match": "('(?:[^'\\\\]|\\\\.|'')*')([ \\t]+)((?:[A-Za-z0-9_]|\\$(?=[A-Za-z0-9_]))[A-Za-z0-9_$]*)([ \\t]+)((?i:TO))([ \\t]+)((?i:YYYY|MCS|DD|HH|MI|MM|MS|NS|QQ|SS|WK|WW|YY|D|H|M|N|Q|S)(?![A-Za-z0-9_$]))",
+          "match": "((?<!['\\\\])'(?>(?:[^'\\\\]|\\\\.|'')*)')([ \\t]+)((?:[A-Za-z0-9_]|\\$(?=[A-Za-z0-9_]))[A-Za-z0-9_$]*)([ \\t]+)((?i:TO))([ \\t]+)((?i:YYYY|MCS|DD|HH|MI|MM|MS|NS|QQ|SS|WK|WW|YY|D|H|M|N|Q|S)(?![A-Za-z0-9_$]))",
           "captures": {
             "1": {
               "name": "string.quoted.single.sql"
@@ -92,7 +92,7 @@
           }
         },
         {
-          "match": "('(?:[^'\\\\]|\\\\.|'')*')([ \\t]+)((?i:YYYY|MCS|DD|HH|MI|MM|MS|NS|QQ|SS|WK|WW|YY|D|H|M|N|Q|S)(?![A-Za-z0-9_$]))",
+          "match": "((?<!['\\\\])'(?>(?:[^'\\\\]|\\\\.|'')*)')([ \\t]+)((?i:YYYY|MCS|DD|HH|MI|MM|MS|NS|QQ|SS|WK|WW|YY|D|H|M|N|Q|S)(?![A-Za-z0-9_$]))",
           "captures": {
             "1": {
               "name": "string.quoted.single.sql"
@@ -235,7 +235,7 @@
     },
     "punctuation": {
       "name": "punctuation.sql",
-      "match": "[()\\[\\]{},.;]|\\\\G"
+      "match": "[()\\[\\]{},.;]|\\\\[G]"
     },
     "words": {
       "patterns": [

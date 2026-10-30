@@ -59,3 +59,22 @@ test(`the grammar tokenizes each line of the corpus within ${MAX_LINE_MS} ms`, a
   for (const { ms, where, length } of slowest) t.diagnostic(`${ms.toFixed(1)} ms: ${where}, ${length} characters`);
   assert.ok(slowest[0]!.ms < MAX_LINE_MS, `${slowest[0]!.where} took ${slowest[0]!.ms.toFixed(0)} ms`);
 });
+
+// A search from each quote or backslash to the end of the line once made these lines take seconds.
+const REPEATED = ["'", "\\", "\\'", "a\\"];
+const MAX_REPEATED_MS = 400;
+
+test(`the grammar tokenizes lines of ${MAX_LINE_LENGTH} repeated characters within ${MAX_REPEATED_MS} ms`, async (t) => {
+  const grammar = await loadGrammar();
+  grammar.tokenizeLine2("SELECT 1", INITIAL);
+  const slow: string[] = [];
+  for (const unit of REPEATED) {
+    const line = unit.repeat(MAX_LINE_LENGTH / unit.length);
+    const start = performance.now();
+    grammar.tokenizeLine2(line, INITIAL);
+    const ms = performance.now() - start;
+    t.diagnostic(`${JSON.stringify(unit)}: ${ms.toFixed(1)} ms`);
+    if (ms > MAX_REPEATED_MS) slow.push(`${JSON.stringify(unit)} took ${ms.toFixed(0)} ms`);
+  }
+  assert.deepEqual(slow, []);
+});

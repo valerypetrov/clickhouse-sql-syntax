@@ -17,7 +17,8 @@ const UNIT_ABBREVIATIONS = "D DD H HH M MCS MI MM MS N NS Q QQ S SS WK WW YY YYY
 // Words that start a line before a column, as in WHERE date = today(), or before a type, as in FORMAT JSON.
 const NOT_COLUMNS = [...CLAUSE_WORDS.filter((word) => word !== "KEY"), "FORMAT", "SET", "WHERE"];
 const QUOTED_NAME = '`(?:[^`\\\\]|\\\\.|``)*`|"(?:[^"\\\\]|\\\\.|"")*"';
-const STRING_ON_ONE_LINE = "'(?:[^'\\\\]|\\\\.|'')*'";
+// Atomic, and never from a quote inside a run of quotes or after a backslash, so that a line of them takes linear time.
+const STRING_ON_ONE_LINE = "(?<!['\\\\])'(?>(?:[^'\\\\]|\\\\.|'')*)'";
 // Keywords that may follow AS, as in CREATE VIEW v AS SELECT.
 const KEYWORDS_AFTER_AS = [
   ...CONSTANTS,
@@ -184,7 +185,8 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
       },
       punctuation: {
         name: "punctuation.sql",
-        match: "[()\\[\\]{},.;]|\\\\G",
+        // \\[G], not \\G: vscode-oniguruma takes any "\G" for an anchor and then searches the whole line at each token.
+        match: "[()\\[\\]{},.;]|\\\\[G]",
       },
       words: {
         patterns: [
