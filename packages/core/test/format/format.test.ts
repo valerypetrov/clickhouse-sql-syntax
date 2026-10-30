@@ -230,6 +230,20 @@ describe("format() keeps the line endings of the input", () => {
   test("LF when the first line break is LF", () => {
     assert.equal(format("select 1;\nselect 2;\r\n"), "SELECT 1;\n\nSELECT 2;\n");
   });
+
+  test("from line breaks between tokens, not those in strings and literals kept as written", () => {
+    formats("select 'a\nb' as s, c\r\nfrom t\r\n", "SELECT\r\n    'a\nb' AS s,\r\n    c\r\nFROM t\r\n");
+    formats("SELECT\r\n[(0.0, 0.0),\n(1.0, 1.0)]::Ring AS g FORMAT JSON", "SELECT [(0.0, 0.0),\n(1.0, 1.0)]::Ring AS g\r\nFORMAT JSON");
+  });
+
+  test("CR alone", () => {
+    formats("select a, b\rfrom t\r", "SELECT\r    a,\r    b\rFROM t\r");
+    formats("-- x\r", "-- x\r");
+  });
+
+  test("the CR at the end of a line comment is a part of the line break after it", () => {
+    formats("select\na -- c\r\nfrom t where x", "SELECT a -- c\nFROM t\nWHERE x");
+  });
 });
 
 describe("format() speed", () => {
