@@ -16,7 +16,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
   const server = registerServer(context, LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
-  // The statements of each document parsed once, for its diagnostics and semantic tokens.
+  // The statements of each document parsed once, for its diagnostics, semantic tokens and hover.
   const caches = new Map<string, ParseCache>();
   const cacheOf = (document: vscode.TextDocument): ParseCache => {
     const key = document.uri.toString();
@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   context.subscriptions.push(
     registerFormatter(LANGUAGE_ID),
     registerCompletion(LANGUAGE_ID, (document, offset) => server.schema.completion(document.getText(), offset)),
-    registerHover(LANGUAGE_ID),
+    registerHover(LANGUAGE_ID, cacheOf),
     registerSignatureHelp(LANGUAGE_ID),
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
     diagnostics,
