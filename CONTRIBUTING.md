@@ -58,6 +58,39 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 `npm run build`, `npm test` and the oracle thresholds with Node.js 22 and 24, then the VS Code tests of the packed
 `.vsix` in the current stable VS Code and in 1.90.0.
 
+## Full Linux pipeline
+
+`.github/workflows/full-linux.yml` runs every test of this page on Linux, the opt-in ones too, on every push to `main`,
+every pull request and by hand. It tests against the ClickHouse release that `testTag` in `data/clickhouse-version.json`
+names, with the tests of that release, and keeps the packed `.vsix` as a build artifact. The same runs here with:
+
+```sh
+npx tsx scripts/clickhouse-release.ts fetch --out <dir>   # that release, and its tests in <dir>/src
+npx tsx scripts/clickhouse-release.ts suite --clickhouse <dir>/bin/clickhouse --corpus <dir>/src/tests/queries/0_stateless
+```
+
+The generated files and the stored labels can come from a newer ClickHouse than the release, as now from master. A
+statement that the build of the stored labels reads as `check()` does, and the release reads otherwise, is a version
+gap: the oracle and the corpus tests list it apart and do not fail on it. The oracle on the release's tests fails below
+`oracle/thresholds.json`, as `npm test` does. The runner is slower than a desktop, so the workflow sets
+`STRESS_TIME_SCALE=3`, which multiplies the time budgets of the stress tests.
+
+## ClickHouse release pipeline
+
+`.github/workflows/clickhouse-release.yml` looks for a new stable ClickHouse release every day: a newer year.month than
+`version` in `data/clickhouse-version.json`, or the first release of its year.month when that is a master build. Patch
+releases only backport fixes, so they do not count. For a new release it regenerates the generated files, the grammar
+and the stored labels, bumps the patch versions of both packages, runs the whole suite above with that release, and
+opens a pull request `clickhouse-<version>`, a draft when a step fails. The pull request lists the changes of the
+generated lists, the oracle's numbers, the statements the release accepts and `check()` rejects, and the changes in
+`src/Parsers`.
+
+- By hand, `version` updates for any release, and `dry_run` only shows the pull request in the summary of the run.
+- `npx tsx scripts/clickhouse-release.ts release --dry-run [--version <x.y.z.w>]` does the same in your working tree.
+- To skip a release, close its pull request and keep its branch.
+- GitHub does not start the other workflows on a pull request that a workflow opened; close and reopen it to start them.
+- It needs **Allow GitHub Actions to create and approve pull requests** in Settings, Actions, General.
+
 ## Conventions
 
 - Plain, readable TypeScript in strict mode, as ES modules; relative imports end in `.js`.
