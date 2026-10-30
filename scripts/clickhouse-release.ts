@@ -279,7 +279,7 @@ function bumpPatch(version: string): string {
 }
 
 /** Bumps the patch versions of the library and the extension, and notes the release in the changelog. */
-function bumpVersions(clickhouse: string): { core: string; vscode: string } {
+function bumpVersions(clickhouse: string): void {
   const edit = (file: string, change: (json: Record<string, any>) => void): void => {
     const path = join(ROOT, file);
     const json = JSON.parse(readFileSync(path, "utf8")) as Record<string, any>;
@@ -300,7 +300,6 @@ function bumpVersions(clickhouse: string): { core: string; vscode: string } {
   writeFileSync(changelog, text);
   const readme = join(ROOT, "README.md");
   writeFileSync(readme, readFileSync(readme, "utf8").replaceAll(`clickhouse-sql-${versions.oldVscode}.vsix`, `clickhouse-sql-${versions.vscode}.vsix`));
-  return versions;
 }
 
 export interface StepResult {
@@ -318,7 +317,7 @@ function suiteSteps(clickhouse: string, corpus: string, out: string): { name: st
     { name: "oracle on the stored labels", command: ["npm", "run", "oracle", "--", "--report", join(out, "oracle-stored.json")] },
     {
       name: "oracle on the tests of this ClickHouse",
-      command: ["npm", "run", "oracle", "--", "--clickhouse", clickhouse, "--corpus", corpus, "--report", join(out, "oracle-live.json")],
+      command: ["npm", "run", "oracle", "--", "--clickhouse", clickhouse, "--corpus", corpus, "--report", join(out, "oracle-live.json"), "--check-thresholds"],
     },
     {
       name: "format oracle on the tests of this ClickHouse",

@@ -1,16 +1,16 @@
 // Runs check() over a labelled corpus and reports how often it agrees with ClickHouse.
 // Run it with `npm run oracle -w oracle -- --help`.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 
 import { check } from "clickhouse-sql-syntax";
 
 import { classify } from "./clickhouse.js";
-import { compare, formatReport } from "./compare.js";
+import { type Metrics, compare, formatReport } from "./compare.js";
 import { type Corpus, readCorpus } from "./corpus.js";
 import { extractCorpus } from "./extract.js";
-import { CACHE_DIR, CORPUS_FILE, REPORT_FILE, SOURCE_NOTE, integerOption } from "./paths.js";
+import { CACHE_DIR, CORPUS_FILE, REPORT_FILE, SOURCE_NOTE, THRESHOLDS_FILE, integerOption } from "./paths.js";
 
 const USAGE = `Usage: npm run oracle -w oracle [-- options]
 
@@ -24,6 +24,7 @@ Options:
   --clickhouse <binary> a ClickHouse binary to label the statements with
   --corpus <dir>        tests/queries/0_stateless of a ClickHouse checkout
   --report <file>       where to write the JSON report (default: ${REPORT_FILE})
+  --check-thresholds    fail when a rate falls below ${THRESHOLDS_FILE}, as npm test does for the stored corpus
   --examples <n>        examples to print per section (default: 5)
   --jobs <n>            parallel ClickHouse processes, 1 to 4 (default: 4)`;
 
@@ -33,6 +34,7 @@ const { values } = parseArgs({
     clickhouse: { type: "string" },
     corpus: { type: "string" },
     report: { type: "string", default: REPORT_FILE },
+    "check-thresholds": { type: "boolean", default: false },
     examples: { type: "string", default: "5" },
     jobs: { type: "string", default: "4" },
     help: { type: "boolean", default: false },
@@ -75,3 +77,10 @@ console.log(formatReport(report, integerOption(values.examples, "--examples")));
 mkdirSync(dirname(values.report), { recursive: true });
 writeFileSync(values.report, JSON.stringify(report, null, 2) + "\n");
 console.log(`\nReport written to ${values.report}`);
+
+if (values["check-thresholds"]) {
+  const thresholds = JSON.parse(readFileSync(THRESHOLDS_FILE, "utf8")) as Partial<Record<keyof Metrics, number>>;
+  const below = Object.entries(thresholds).filter(([name, minimum]) => !(report.metrics[name as keyof Metrics] >= minimum!));
+  for (const [name, minimum] of below) console.log(`${name} is ${report.metrics[name as keyof Metrics]}, below the threshold ${minimum}`);
+  process.exit(below.length > 0 ? 1 : 0);
+}

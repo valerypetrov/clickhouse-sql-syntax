@@ -21,6 +21,10 @@ To compare with every statement of a ClickHouse checkout instead of the committe
 npm run oracle -w oracle -- --clickhouse /path/to/clickhouse --corpus /path/to/ClickHouse/tests/queries/0_stateless
 ```
 
+When the binary is another build than the one that labelled `fixtures/`, a statement that the labels there read
+as `check()` does, while the binary reads it otherwise, is a version gap: it is listed with both verdicts and left out
+of the numbers. `--check-thresholds` fails when a rate falls below `thresholds.json`.
+
 `npm run oracle -w oracle -- --help` lists the other options.
 
 ## The corpus
