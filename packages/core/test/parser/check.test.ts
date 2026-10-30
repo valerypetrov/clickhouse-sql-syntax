@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { gunzipSync } from "node:zlib";
 
-import { check } from "../../src/parser/index.js";
+import { check, checkWithRoles, ParseCache } from "../../src/parser/index.js";
 
 /** start and message of every diagnostic. */
 function errors(sql: string): [number, string][] {
@@ -140,5 +142,43 @@ describe("check()", () => {
   test("reports too deep nesting instead of overflowing the stack", () => {
     const sql = "SELECT " + "(".repeat(2000) + "1" + ")".repeat(2000);
     assert.deepEqual(errors(sql), [[991, "Maximum parse depth (1000) exceeded. Consider rising max_parser_depth parameter."]]);
+  });
+});
+
+// The VS Code extension keeps one cache per document for its diagnostics and semantic tokens.
+describe("checkWithRoles() with a ParseCache", () => {
+  const HEAVY = "SELECT((((((((((SELECT(((((((((SELECT((((((((((SELECT(((((((((SELECT((((((((((SELECT(((((((((SELECT 1+)))))))))))))))))))))))))))))))))))))))))))))))))))))))))";
+  const statements = gunzipSync(readFileSync(new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url)))
+    .toString("utf8")
+    .split("\n")
+    .slice(1)
+    .filter(Boolean)
+    .map((line) => (JSON.parse(line) as { sql: string }).sql);
+
+  test("gives what it gives without one, whatever filled the cache", () => {
+    const cache = new ParseCache();
+    for (let k = 0; k < 40; k++) {
+      const text = `${statements.slice(k * 100, k * 100 + 100).join(";\n")}\n`;
+      // The semantic tokens check the pieces between ';', the diagnostics the whole text, then an edit follows.
+      for (const piece of text.split(/(?<=;)/)) checkWithRoles(piece, cache);
+      const at = (k * 7919) % text.length;
+      for (const sql of [text, `${text.slice(0, at)} x${text.slice(at)}`]) assert.deepEqual(checkWithRoles(sql, cache), checkWithRoles(sql));
+    }
+  });
+
+  test("parses a statement once, and keeps the warning where checking ran out of time", () => {
+    const sql = `SELECT 1;\n${HEAVY};\nSELECT 2;\n${HEAVY.replace("1+", "2+")};\n${HEAVY.replace("1+", "3+")};\nSELECT 3`;
+    const cache = new ParseCache();
+    const start = performance.now();
+    const first = checkWithRoles(sql, cache);
+    const firstMs = performance.now() - start;
+    assert.deepEqual(first, checkWithRoles(sql));
+    assert.match(first.diagnostics.at(-1)!.message, /^Not checked/);
+    const edited = sql.replace("SELECT 2", "SELECT 22");
+    const again = performance.now();
+    const cached = checkWithRoles(edited, cache);
+    const againMs = performance.now() - again;
+    assert.deepEqual(cached, checkWithRoles(edited));
+    assert.ok(againMs < firstMs / 5, `${firstMs.toFixed(0)} ms and then ${againMs.toFixed(0)} ms`);
   });
 });

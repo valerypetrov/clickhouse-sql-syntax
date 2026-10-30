@@ -9,7 +9,7 @@ export * from "./types.js";
 export { DATA_TYPES, type DataTypeName } from "./generated/data-types.js";
 export { KEYWORDS } from "./generated/keywords.js";
 export { SYSTEM_COMMANDS } from "./highlight/index.js";
-export { roles, type Role, type RoleSpan } from "./parser/index.js";
+export { checkWithRoles, ParseCache, roles, type Role, type RoleSpan } from "./parser/index.js";
 export type { Unit } from "./format/index.js";
 export { check, complete, describe, format, highlight, split, tokenize };
 

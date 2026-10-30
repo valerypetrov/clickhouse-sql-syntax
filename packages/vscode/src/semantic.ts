@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { type Role, type RoleSpan, roles, TokenKind, tokenize } from "clickhouse-sql-syntax";
+import { checkWithRoles, type ParseCache, type Role, type RoleSpan, TokenKind, tokenize } from "clickhouse-sql-syntax";
 import { tooLarge } from "./size.js";
 
 /** The semantic token type of each role; package.json maps each type to the scope the grammar uses. */
@@ -32,6 +32,8 @@ class DocumentTokens {
   private byText = new Map<string, RoleSpan[]>();
   last?: Result;
 
+  constructor(private readonly cache: ParseCache) {}
+
   /** Tokens of the whole document, or of the pieces that overlap `range`. */
   tokens(document: vscode.TextDocument, range?: vscode.Range): Result {
     const text = document.getText();
@@ -43,7 +45,7 @@ class DocumentTokens {
     for (const [start, end] of pieces(text)) {
       if (end <= from || start >= to) continue;
       const piece = text.slice(start, end);
-      const spans = this.byText.get(piece) ?? roles(piece);
+      const spans = this.byText.get(piece) ?? checkWithRoles(piece, this.cache).spans;
       byText.set(piece, spans);
       for (const span of spans) {
         const length = span.end - span.start;
@@ -83,12 +85,12 @@ class LineCounter {
 }
 
 /** Semantic tokens from the parser's roles, so that a keyword used as a name is coloured as a name. */
-export function registerSemanticTokens(languageId: string): vscode.Disposable {
+export function registerSemanticTokens(languageId: string, cacheOf: (document: vscode.TextDocument) => ParseCache): vscode.Disposable {
   const documents = new Map<string, DocumentTokens>();
   const tokensOf = (document: vscode.TextDocument): DocumentTokens => {
     const key = document.uri.toString();
     let found = documents.get(key);
-    if (!found) documents.set(key, (found = new DocumentTokens()));
+    if (!found) documents.set(key, (found = new DocumentTokens(cacheOf(document))));
     return found;
   };
 

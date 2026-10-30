@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { check, type Diagnostic as SyntaxError } from "clickhouse-sql-syntax";
+import { checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
 import { registerFormatter } from "./format.js";
 import { registerHover } from "./hover.js";
@@ -16,6 +16,14 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
   const server = registerServer(context, LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
+  // The statements of each document parsed once, for its diagnostics and semantic tokens.
+  const caches = new Map<string, ParseCache>();
+  const cacheOf = (document: vscode.TextDocument): ParseCache => {
+    const key = document.uri.toString();
+    let cache = caches.get(key);
+    if (!cache) caches.set(key, (cache = new ParseCache()));
+    return cache;
+  };
 
   const cancel = (document: vscode.TextDocument): void => {
     clearTimeout(pending.get(document));
@@ -29,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
       diagnostics.delete(document.uri);
       return;
     }
-    const errors = check(document.getText());
+    const errors = checkWithRoles(document.getText(), cacheOf(document)).diagnostics;
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
   };
 
@@ -44,13 +52,14 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerCompletion(LANGUAGE_ID, (document, offset) => server.schema.completion(document.getText(), offset)),
     registerHover(LANGUAGE_ID),
     registerSignatureHelp(LANGUAGE_ID),
-    registerSemanticTokens(LANGUAGE_ID),
+    registerSemanticTokens(LANGUAGE_ID, cacheOf),
     diagnostics,
     vscode.workspace.onDidOpenTextDocument(schedule),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
     vscode.workspace.onDidCloseTextDocument((document) => {
       cancel(document);
       diagnostics.delete(document.uri);
+      caches.delete(document.uri.toString());
     }),
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );

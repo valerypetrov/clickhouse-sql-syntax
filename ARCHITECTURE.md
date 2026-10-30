@@ -60,6 +60,10 @@ There is no AST of names, types or meaning: an unknown function is fine, a mispl
 ClickHouse, nesting deeper than 1000 levels and more than 1,000,000 backtracks in one statement are errors. All the
 statements of one call share 2,000,000 backtracks; where they run out, a warning says the rest was not checked.
 
+`checkWithRoles()` takes a `ParseCache` of statements checked before, by their text from where they begin to their
+first `;`. It keeps a statement only when nothing after that `;` decided its result, so no inline data, and a hit
+costs the backtracks of the parse it stands for, so the result is the same as without the cache.
+
 ## roles() and highlight()
 
 While a statement parses, the parser marks what it read each word as: a keyword, identifier, function, type,
@@ -97,7 +101,8 @@ backtracks, so a very long statement gets no suggestions.
 
 In `packages/vscode/src`:
 
-- `extension.ts`: diagnostics from `check()`, 300 ms after the last change.
+- `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
+  statements parsed, so that the diagnostics and the semantic tokens parse a statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
