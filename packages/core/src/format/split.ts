@@ -269,7 +269,8 @@ class Splitter {
         const data = lastEnd > dataStart ? { start: dataStart, end: lastEnd, blankLine: false } : { start: -1, end: -1, blankLine: false };
         return { next: j + 1, end: token.end, data };
       }
-      if (kind !== T.Whitespace) lastEnd = token.end;
+      // The "\r" that ends a line comment is a part of the line break after it, as everywhere else.
+      if (kind !== T.Whitespace) lastEnd = kind === T.Comment && this.sql[token.end - 1] === "\r" ? token.end - 1 : token.end;
     }
   }
 

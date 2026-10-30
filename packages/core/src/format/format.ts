@@ -31,7 +31,8 @@ export function format(sql: string, options: FormatOptions = {}): string {
   // A line break after the last unit, or the "\r" that ends its last line comment, ends the output too.
   const last = units[units.length - 1]!;
   const gap = sql.slice(last.end);
-  if (/[\r\n]$/.test(gap) || (gap === "" && last.tokens[last.tokens.length - 1]?.kind === T.Comment && sql.endsWith("\r"))) out += eol;
+  const lastToken = last.tokens[last.tokens.length - 1];
+  if (/[\r\n]$/.test(gap) || (lastToken?.kind === T.Comment && lastToken.end === sql.length && sql.endsWith("\r"))) out += eol;
   return out;
 }
 
@@ -61,7 +62,8 @@ function prepare(sql: string, unit: Unit): Part | null {
 function formatUnit(sql: string, unit: Unit, part: Part | null, keywordCase: KeywordCase, indent: string, eol: string): string {
   let original = sql.slice(unit.start, unit.end);
   // A line comment at the end keeps its "\r", which the eol written after the unit would double.
-  if (eol !== "\n") original = original.replace(/\r$/, "");
+  const last = unit.tokens[unit.tokens.length - 1];
+  if (eol !== "\n" && last?.kind === T.Comment && last.end === unit.end) original = original.replace(/\r$/, "");
   if (!part) return original;
   const text = print(part.piece, part.shape, keywordCase, indent, eol);
   // A last safety net: the same tokens and comments, only keywords re-cased, and still valid.

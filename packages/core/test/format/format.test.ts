@@ -294,6 +294,11 @@ describe("format() keeps the line endings of the input", () => {
     formats("select 1;\rselect 2; -- c\nselect 3", "SELECT 1;\n\nSELECT 2; -- c\n\nSELECT 3");
   });
 
+  test("a CR at the end that is not a line break of a line comment", () => {
+    formats("select 1;\r\n'abc\r", "SELECT 1;\r\n\r\n'abc\r");
+    formats("select 1;\r\ninsert into t values (1) -- c\n", "SELECT 1;\r\n\r\nINSERT INTO t VALUES (1) -- c\r\n");
+  });
+
   test("mixed line breaks", () => {
     formats("\nSELECT -- c\r\nx, y", "SELECT -- c\r\n    x,\r\n    y");
     formats("\r\nSELECT /* a\nb */ 1\n", "SELECT /* a\nb */ 1\n");
