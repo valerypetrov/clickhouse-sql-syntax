@@ -1,0 +1,64 @@
+name: ClickHouse release
+
+# Once a day, looks for a new stable ClickHouse release; for one, regenerates everything that comes from ClickHouse,
+# runs every test and opens a pull request clickhouse-<version>, a draft when a test fails.
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "A release such as 26.10.2.103, to update for even when it is not new; empty for the newest stable one"
+        required: false
+        default: ""
+      dry_run:
+        description: "Only print the pull request in the summary of the run"
+        type: boolean
+        default: false
+  push:
+    branches: [ci-dev]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: clickhouse-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Update for a new ClickHouse release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event_name == 'push' && '26.10.2.103' || inputs.version }}
+          DRY_RUN: ${{ github.event_name == 'push' || inputs.dry_run }}
+        run: |
+          args=(--out "$RUNNER_TEMP/clickhouse")
+          if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          npx tsx scripts/clickhouse-release.ts release "${args[@]}"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: clickhouse-release
+          path: |
+            ${{ runner.temp }}/clickhouse/pr-body.md
+            ${{ runner.temp }}/clickhouse/changes.patch
+            ${{ runner.temp }}/clickhouse/reports/*.json
+          if-no-files-found: ignore

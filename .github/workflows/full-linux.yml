@@ -1,0 +1,79 @@
+name: Full Linux
+
+# Every test of CONTRIBUTING.md, the opt-in ones too, against the ClickHouse release named by testTag in
+# data/clickhouse-version.json and the tests of that release.
+on:
+  push:
+    branches: [main, ci-dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Find the ClickHouse release and the VS Code version
+        id: versions
+        run: |
+          echo "CLICKHOUSE_DIR=$RUNNER_TEMP/clickhouse" >> "$GITHUB_ENV"
+          echo "tag=$(jq -r .testTag data/clickhouse-version.json)" >> "$GITHUB_OUTPUT"
+          echo "vscode=$(curl -sSf https://update.code.visualstudio.com/api/releases/stable | jq -r '.[0]')" >> "$GITHUB_OUTPUT"
+      - name: Restore ClickHouse ${{ steps.versions.outputs.tag }}
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CLICKHOUSE_DIR }}
+          key: clickhouse-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.tag }}
+      - name: Restore VS Code ${{ steps.versions.outputs.vscode }}
+        uses: actions/cache@v5
+        with:
+          path: packages/vscode/.vscode-test/vscode-*
+          key: vscode-${{ runner.os }}-${{ steps.versions.outputs.vscode }}
+      - name: Restore the verdicts of ClickHouse
+        uses: actions/cache@v5
+        with:
+          path: |
+            oracle/.cache
+            packages/vscode/.vscode-test/corpus/verdicts
+          key: verdicts-${{ steps.versions.outputs.tag }}-${{ github.sha }}
+          restore-keys: verdicts-${{ steps.versions.outputs.tag }}-
+      - run: npm ci
+      - name: Download ClickHouse ${{ steps.versions.outputs.tag }} and its tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npx tsx scripts/clickhouse-release.ts fetch --tag "${{ steps.versions.outputs.tag }}" --out "$CLICKHOUSE_DIR"
+      - run: npm run build
+      - name: Run every test
+        run: >-
+          npx tsx scripts/clickhouse-release.ts suite --clickhouse "$CLICKHOUSE_DIR/bin/clickhouse"
+          --corpus "$CLICKHOUSE_DIR/src/tests/queries/0_stateless" --out "$RUNNER_TEMP/reports"
+      - name: Package the extension
+        run: npm run package:vscode
+      - uses: actions/upload-artifact@v7
+        with:
+          name: clickhouse-sql-vsix
+          path: packages/vscode/*.vsix
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports
+          path: |
+            ${{ runner.temp }}/reports/*.json
+            packages/vscode/out/corpus-report.json
+          if-no-files-found: ignore
