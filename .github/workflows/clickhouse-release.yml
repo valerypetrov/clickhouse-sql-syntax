@@ -15,16 +15,14 @@ on:
         description: "Only print the pull request in the summary of the run"
         type: boolean
         default: false
-  push:
-    branches: [ci-dev]
 
 permissions:
   contents: write
   pull-requests: write
 
 concurrency:
-  group: clickhouse-release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: clickhouse-release
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -49,8 +47,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.event_name == 'push' && '26.10.2.103' || inputs.version }}
-          DRY_RUN: ${{ github.event_name == 'push' || inputs.dry_run }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(--out "$RUNNER_TEMP/clickhouse")
           if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi

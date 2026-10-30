@@ -4,7 +4,7 @@ name: Full Linux
 # data/clickhouse-version.json and the tests of that release.
 on:
   push:
-    branches: [main, ci-dev]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
