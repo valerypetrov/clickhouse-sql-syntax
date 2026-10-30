@@ -51,12 +51,14 @@ export function registerServer(context: vscode.ExtensionContext, languageId: str
 
 function serverSettings() {
   const config = vscode.workspace.getConfiguration("clickhouseSql.server");
+  // The user's settings only: a workspace could otherwise send its SQL, and the user name, to another server.
+  const fromUser = <T>(key: string, fallback: T): T => config.inspect<T>(key)?.globalValue ?? fallback;
   return {
-    enabled: config.get("enabled", false),
-    url: config.get("url", "http://localhost:8123"),
-    user: config.get("user", "default"),
-    database: config.get("database", ""),
-    timeoutMs: config.get("timeoutMs", 5000),
+    enabled: fromUser("enabled", false),
+    url: fromUser("url", "http://localhost:8123"),
+    user: fromUser("user", "default"),
+    database: fromUser("database", ""),
+    timeoutMs: fromUser("timeoutMs", 5000),
   };
 }
 

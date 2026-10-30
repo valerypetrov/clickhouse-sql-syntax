@@ -1,6 +1,6 @@
 import * as assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -339,6 +339,47 @@ describe("ClickHouse server check", function () {
     assert.equal(logged[0]!.exception_code, 394, JSON.stringify(logged));
     assert.ok(Number(logged[0]!.query_duration_ms) < 1_200, JSON.stringify(logged));
     assert.equal(logged[1]!.exception_code, 0, JSON.stringify(logged));
+  });
+
+  it("takes the server settings from the user, never from the workspace", async function () {
+    this.timeout(30_000);
+    assert.ok(vscode.workspace.isTrusted, "VS Code applies the settings of a trusted workspace");
+    const elsewhere: string[] = [];
+    const other = createServer((request, response) => {
+      elsewhere.push(request.url!);
+      response.end("ok");
+    });
+    await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
+    const file = join(vscode.workspace.workspaceFolders![0]!.uri.fsPath, ".vscode", "settings.json");
+    const original = readFileSync(file, "utf8");
+    const keywordCase = () => vscode.workspace.getConfiguration("clickhouseSql.format").get("keywordCase");
+    try {
+      const workspace = {
+        ...JSON.parse(original),
+        // A setting that a workspace may change, to know when VS Code has read the file.
+        "clickhouseSql.format.keywordCase": "lower",
+        "clickhouseSql.server.enabled": true,
+        "clickhouseSql.server.url": `http://127.0.0.1:${(other.address() as AddressInfo).port}`,
+        "clickhouseSql.server.user": "someone",
+        "clickhouseSql.server.database": "elsewhere",
+        "clickhouseSql.server.timeoutMs": 100,
+      };
+      writeFileSync(file, JSON.stringify(workspace));
+      await until("the workspace settings to be read", () => keywordCase() === "lower" || undefined);
+      const sql = "SELECT 'with the settings of the user'";
+      const before = sent.length;
+      await open(sql);
+      const request = await until("the query to be explained", () => sent.slice(before).find((r) => r.sql === `EXPLAIN QUERY TREE ${sql}`));
+      assert.equal(request.status, 200);
+      assert.equal(request.params.get("database"), null);
+      assert.equal(request.params.get("max_execution_time"), "2");
+      assert.equal(api.connection.problem, undefined);
+      assert.deepEqual(elsewhere, []);
+    } finally {
+      writeFileSync(file, original);
+      other.close();
+      await until("the workspace settings to be read again", () => keywordCase() === "upper" || undefined);
+    }
   });
 
   it("notes a wrong password once and shows no diagnostics for it", async () => {

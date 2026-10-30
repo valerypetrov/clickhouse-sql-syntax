@@ -31,6 +31,8 @@ Files ending in `.chsql` or `.clickhouse.sql` open as ClickHouse SQL. For other 
 | `clickhouseSql.server.database` | empty | The database of table names without one; empty means the user's default. |
 | `clickhouseSql.server.timeoutMs` | `5000` | How long to wait for the server, in milliseconds. |
 
+The `clickhouseSql.server` settings count only in your user settings, never in a workspace's.
+
 **ClickHouse SQL: Refresh Schema** reads the server's databases, tables and columns again.
 
 The server check sends only `EXPLAIN QUERY TREE` of your SELECTs and reads of `system.databases`, `system.tables` and `system.columns`, always with `readonly=1`; the password stays in VS Code's secret storage.

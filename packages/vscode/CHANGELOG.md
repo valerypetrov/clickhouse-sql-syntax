@@ -13,4 +13,5 @@ First release.
   table engines, formats and table functions.
 - An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its
   queries run with `readonly=1` and limits of 2 s, rows, bytes and memory each, and a check of a file sends no
-  new query after 10 s.
+  new query after 10 s. Its settings count only in the user settings, so that a workspace cannot send its SQL
+  to another server.
