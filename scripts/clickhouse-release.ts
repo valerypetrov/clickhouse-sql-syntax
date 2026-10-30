@@ -493,7 +493,7 @@ export function pullRequestBody(input: BodyInput): string {
 }
 
 /** Commits the changes on a branch clickhouse-<version>, pushes it and opens a pull request to main. */
-function openPullRequest(release: Release, body: string, draft: boolean, out: string): void {
+export function openPullRequest(release: Release, body: string, draft: boolean, out: string): void {
   const branch = `clickhouse-${release.version}`;
   const bot = { GIT_AUTHOR_NAME: "github-actions[bot]", GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com" };
   const identity = { ...bot, GIT_COMMITTER_NAME: bot.GIT_AUTHOR_NAME, GIT_COMMITTER_EMAIL: bot.GIT_AUTHOR_EMAIL };
@@ -503,7 +503,14 @@ function openPullRequest(release: Release, body: string, draft: boolean, out: st
   run("git", ["push", "-q", "origin", `HEAD:refs/heads/${branch}`]);
   writeFileSync(join(out, "pr-body.md"), body);
   const title = `Update for ClickHouse ${release.version}`;
-  const url = output("gh", ["pr", "create", "--base", "main", "--head", branch, "--title", title, "--body-file", join(out, "pr-body.md"), ...(draft ? ["--draft"] : [])]);
+  let url: string;
+  try {
+    url = output("gh", ["pr", "create", "--base", "main", "--head", branch, "--title", title, "--body-file", join(out, "pr-body.md"), ...(draft ? ["--draft"] : [])]);
+  } catch (error) {
+    // The branch marks the release as handled, so it goes when its pull request could not be opened.
+    run("git", ["push", "-q", "origin", "--delete", branch]);
+    throw error;
+  }
   console.log(`Opened ${url.trim()}`);
   summary(`Opened ${url.trim()}`);
 }
