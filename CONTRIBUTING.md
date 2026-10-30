@@ -73,7 +73,7 @@ The generated files and the stored labels can come from a newer ClickHouse than 
 statement that the build of the stored labels reads as `check()` does, and the release reads otherwise, is a version
 gap: the oracle and the corpus tests list it apart and do not fail on it. The oracle on the release's tests fails below
 `oracle/thresholds.json`, as `npm test` does. The runner is slower than a desktop, so the workflow sets
-`STRESS_TIME_SCALE=3`, which multiplies the time budgets of the stress tests.
+`STRESS_TIME_SCALE=5`, which multiplies the time budgets of the stress tests.
 
 ## ClickHouse release pipeline
 

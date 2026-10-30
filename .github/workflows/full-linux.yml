@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      # The runner took twice as long as a desktop for completion and semantic tokens, and paused up to 4 times as long.
-      STRESS_TIME_SCALE: 3
+      # The runner ran up to 3 times slower than a desktop, and paused up to 8 times as long.
+      STRESS_TIME_SCALE: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
