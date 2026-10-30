@@ -62,6 +62,13 @@ describe("format() keeps what it does not lay out", () => {
     formats("select [1,2]::Array(UInt8), - 1::Int8, CAST([ 1,2 ] AS Array(UInt8))", "SELECT\n    [1,2]::Array(UInt8),\n    - 1::Int8,\n    CAST([ 1,2 ] AS Array(UInt8))");
   });
 
+  test("the literal of CAST(x, 'T') too, but not of CAST(x, T)", () => {
+    formats(
+      "select CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'), cast([1,2], t)",
+      "SELECT\n    CAST([1.5,2.5,  3.5], 'Array(Decimal64(2))'),\n    cast([1, 2], t)",
+    );
+  });
+
   test("INSERT data after VALUES", () => {
     formats("insert into t values (1,'x;y'),( 2 ,  'it''s' );", "INSERT INTO t VALUES (1,'x;y'),( 2 ,  'it''s' );");
     formats("insert into t values\n(1), -- one\n(2);\nselect 1", "INSERT INTO t VALUES\n(1), -- one\n(2);\n\nSELECT 1");

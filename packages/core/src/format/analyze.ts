@@ -936,12 +936,13 @@ class Analyzer {
     }
   }
 
-  /** CAST([1,2] AS T): ClickHouse reads the literal from how it is written, so it stays as it is. */
+  /** CAST([1,2] AS T) and CAST([1,2], 'T'): ClickHouse reads the literal from how it is written, so it stays as it is. */
   private castArgument(i: number, close: number): void {
     let j = i;
     if (this.is(j, T.Minus) || this.is(j, T.Plus)) j++;
     const end = OPENERS.has(this.kind(j)!) ? this.after(j) : j + 1;
-    if (this.word(end) !== "AS" || end > close) return;
+    const typed = this.word(end) === "AS" || (this.is(end, T.Comma) && this.is(end + 1, T.StringLiteral));
+    if (!typed || end > close) return;
     if (this.is(j, T.OpeningSquareBracket) || this.is(j, T.OpeningRoundBracket)) {
       if (j === i && this.literalGroup(j, end - 1)) this.shape.verbatim[j] = end - 1;
     } else if (j > i && this.is(j, T.Number)) {
