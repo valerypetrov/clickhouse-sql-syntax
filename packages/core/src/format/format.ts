@@ -3,7 +3,7 @@
  * whitespace and the case of keywords. Invalid statements are returned as they are.
  */
 import { tokenize } from "../lexer/index.js";
-import { check } from "../parser/index.js";
+import { check, checkWithRoles, type Role } from "../parser/index.js";
 import { type FormatOptions, type KeywordCase, TokenKind as T } from "../types.js";
 import { analyze, type Tok } from "./analyze.js";
 import { type Note, type Piece, print } from "./print.js";
@@ -31,20 +31,30 @@ export function format(sql: string, options: FormatOptions = {}): string {
   return out;
 }
 
+/** Roles of words that are names or literals, never keywords. */
+const NAME_ROLES = new Set<Role | undefined>(["identifier", "setting", "parameter", "number"]);
+
 function formatUnit(sql: string, unit: Unit, keywordCase: KeywordCase, indent: string, eol: string): string {
   let original = sql.slice(unit.start, unit.end);
   // A line comment at the end keeps its "\r", which the eol written after the unit would double.
   if (eol === "\r\n") original = original.replace(/\r$/, "");
-  if (unit.statement && check(sql.slice(unit.statement.start, unit.statement.end)).length > 0) return original;
-  const piece = toPiece(sql, unit, eol);
+  // The role of each word as the parser reads it, by its offset in sql.
+  const roles = new Map<number, Role>();
+  if (unit.statement) {
+    const { diagnostics, spans } = checkWithRoles(sql.slice(unit.statement.start, unit.statement.end));
+    if (diagnostics.length > 0) return original;
+    for (const span of spans) roles.set(unit.statement.start + span.start, span.role);
+  }
+  const piece = toPiece(sql, unit, eol, roles);
   const text = print(piece, analyze(piece.sig), keywordCase, indent, eol);
-  // A last safety net: the same tokens and comments, and still valid.
-  if (!sameTokens(original, text) || (unit.statement && check(text).length > 0)) return original;
+  // A last safety net: the same tokens and comments, only keywords re-cased, and still valid.
+  const keywordAt = (offset: number): boolean => roles.get(unit.start + offset) === "keyword";
+  if (!sameTokens(original, text, keywordAt) || (unit.statement && check(text).length > 0)) return original;
   return text;
 }
 
 /** The significant tokens of a unit with the comments around them. */
-function toPiece(sql: string, unit: Unit, eol: string): Piece {
+function toPiece(sql: string, unit: Unit, eol: string, roles: Map<number, Role>): Piece {
   const sig: Tok[] = [];
   const notes: Note[][] = [[]];
   const gaps: number[] = [];
@@ -72,7 +82,9 @@ function toPiece(sql: string, unit: Unit, eol: string): Piece {
       breaks = 0;
       separated = true;
     } else if (token.kind !== T.EndOfStream) {
-      sig.push({ kind: token.kind, text, up: token.kind === T.BareWord ? text.toUpperCase() : "", start: token.start, end: token.end });
+      const role = roles.get(token.start);
+      const up = token.kind === T.BareWord && !NAME_ROLES.has(role) ? text.toUpperCase() : "";
+      sig.push({ kind: token.kind, text, up, keyword: role === "keyword", start: token.start, end: token.end });
       gaps.push(separated ? 1 : 0);
       notes.push([]);
       breaks = 0;
@@ -84,8 +96,8 @@ function toPiece(sql: string, unit: Unit, eol: string): Piece {
   return { sig, notes, gap: Uint8Array.from(gaps), sql };
 }
 
-/** Whether two texts have the same tokens, apart from whitespace and the case of keywords. */
-function sameTokens(a: string, b: string): boolean {
+/** Whether two texts have the same tokens, apart from whitespace and the case of the keywords that keywordAt() finds in a. */
+export function sameTokens(a: string, b: string, keywordAt: (start: number) => boolean): boolean {
   const x = tokenize(a).filter((t) => t.kind !== T.Whitespace);
   const y = tokenize(b).filter((t) => t.kind !== T.Whitespace);
   if (x.length !== y.length) return false;
@@ -100,7 +112,7 @@ function sameTokens(a: string, b: string): boolean {
       q = q.replace(/\r$/, "");
     }
     if (p === q) continue;
-    if (s.kind !== T.BareWord || p.toUpperCase() !== q.toUpperCase() || !KEYWORD_WORDS.has(p.toUpperCase())) return false;
+    if (s.kind !== T.BareWord || p.toUpperCase() !== q.toUpperCase() || !KEYWORD_WORDS.has(p.toUpperCase()) || !keywordAt(s.start)) return false;
   }
   return true;
 }

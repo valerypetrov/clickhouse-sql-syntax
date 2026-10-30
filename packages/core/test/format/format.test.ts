@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import { check } from "../../src/parser/index.js";
 import { format } from "../../src/format/index.js";
+import { sameTokens } from "../../src/format/format.js";
 import { tokenize } from "../../src/lexer/index.js";
 import { type KeywordCase, TokenKind, isErrorKind } from "../../src/types.js";
 import { GOLDEN } from "./golden.js";
@@ -87,6 +88,46 @@ describe("format() keeps what it does not lay out", () => {
   test("empty and blank input", () => {
     assert.equal(format(""), "");
     assert.equal(format("  \n\t\n"), "  \n\t\n");
+  });
+});
+
+describe("format() re-cases only the words that the parser reads as keywords", () => {
+  // ClickHouse names are case-sensitive, so a name spelled like a keyword keeps its case.
+  const cases: [string, string][] = [
+    ["update metrics set value = 42 where id = 1", "UPDATE metrics SET value = 42 WHERE id = 1"],
+    ["select case offset when 0 then 'first' else 'later' end from kafka", "SELECT CASE offset WHEN 0 THEN 'first' ELSE 'later' END\nFROM kafka"],
+    ["select * except format from t", "SELECT * EXCEPT format\nFROM t"],
+    ["select URL, uniq(s) as all from hits group by URL order by all desc, URL", "SELECT\n    URL,\n    uniq(s) AS all\nFROM hits\nGROUP BY URL\nORDER BY\n    all DESC,\n    URL"],
+    ["select toDateTime('2017-01-01 00:00:00') + interval as mcs from t", "SELECT toDateTime('2017-01-01 00:00:00') + interval AS mcs\nFROM t"],
+    ["select 1 interpolate", "SELECT 1 interpolate"],
+    ["set final", "SET final"],
+    ["set limit", "SET limit"],
+    ["set readonly", "SET readonly"],
+    ["set compression", "SET compression"],
+    ["rename table x to disk", "RENAME TABLE x TO disk"],
+    ["truncate table sync", "TRUNCATE TABLE sync"],
+    ["drop table t, comment", "DROP TABLE t, comment"],
+    ["alter table t add index index a type minmax", "ALTER TABLE t ADD INDEX index a TYPE minmax"],
+    ["SELECT f(select)", "SELECT f(select)"],
+    ["select (with, a)", "SELECT (with, a)"],
+    ["SELECT CASE from WHEN 1 THEN 2 END FROM t", "SELECT CASE from WHEN 1 THEN 2 END\nFROM t"],
+    ["INSERT INTO t (null) VALUES (1)", "INSERT INTO t (null) VALUES (1)"],
+    ["SHOW TABLES FROM final", "SHOW TABLES FROM final"],
+    ["desc table cleanup", "DESC TABLE cleanup"],
+    ["exists table strict", "EXISTS TABLE strict"],
+    ["show create table pull", "SHOW CREATE TABLE pull"],
+    ["GRANT SELECT ON t TO all", "GRANT SELECT ON t TO all"],
+    ["select arrayMap(select -> select + 1, [1])", "SELECT arrayMap(select -> select + 1, [1])"],
+    ["select 1 key from t", "SELECT 1 key\nFROM t"],
+  ];
+  for (const [input, expected] of cases) {
+    test(input, () => formats(input, expected));
+  }
+
+  test("the safety net rejects a re-cased word that is not a keyword", () => {
+    const keywordAt = (start: number) => start === 0;
+    assert.equal(sameTokens("update metrics", "UPDATE metrics", keywordAt), true);
+    assert.equal(sameTokens("update metrics", "UPDATE METRICS", keywordAt), false);
   });
 });
 

@@ -28,11 +28,13 @@ import {
   phrasesOf,
 } from "./words.js";
 
-/** A significant token of the statement. `up` is the upper-case text of a bare word, otherwise "". */
+/** A significant token of the statement. `up` is the upper-case text of a bare word that is not a name, otherwise "". */
 export interface Tok {
   kind: T;
   text: string;
   up: string;
+  /** The parser reads the word as a keyword. */
+  keyword?: boolean;
   start: number;
   end: number;
   /** Inline INSERT data with the whitespace before it, printed as written. */
@@ -195,7 +197,7 @@ class Analyzer {
   /** Marks `count` words from `i` as keywords and returns the index after them. */
   private kw(i: number, count = 1): number {
     for (let j = i; j < i + count; j++) {
-      if (KEYWORD_WORDS.has(this.word(j))) this.shape.keyword[j] = 1;
+      if (this.sig[j]?.keyword && KEYWORD_WORDS.has(this.word(j))) this.shape.keyword[j] = 1;
     }
     return i + count;
   }
