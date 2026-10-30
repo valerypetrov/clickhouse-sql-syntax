@@ -36,7 +36,8 @@ export async function grammarScopes(sql: string): Promise<(string | undefined)[]
     const line = parts[i]!;
     const result = loaded.tokenizeLine(line, ruleStack);
     for (const token of result.tokens) {
-      const scope = token.scopes[token.scopes.length - 1];
+      // A meta scope only marks a piece, such as the inside of a quoted name, and has no colour.
+      const scope = token.scopes.filter((name) => !name.startsWith("meta.")).at(-1);
       if (scope === ROOT_SCOPE) continue;
       for (let j = token.startIndex; j < Math.min(token.endIndex, line.length); j++) scopes[offset + j] = scope;
     }

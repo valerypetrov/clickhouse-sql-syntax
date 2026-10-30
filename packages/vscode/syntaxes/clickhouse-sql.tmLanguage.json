@@ -124,6 +124,7 @@
       "patterns": [
         {
           "name": "variable.other.sql",
+          "contentName": "meta.quoted-name.sql",
           "begin": "\"",
           "end": "\"",
           "applyEndPatternLast": 1,
@@ -135,6 +136,7 @@
         },
         {
           "name": "variable.other.sql",
+          "contentName": "meta.quoted-name.sql",
           "begin": "`",
           "end": "`",
           "applyEndPatternLast": 1,
@@ -146,6 +148,7 @@
         },
         {
           "name": "variable.other.sql",
+          "contentName": "meta.quoted-name.sql",
           "begin": "“",
           "end": "”"
         }
@@ -155,7 +158,12 @@
       "match": "(?:^|(?<=[(,]))[ \\t]*(?!(?i:MATERIALIZED|INTERPOLATE|STATISTICS|ARGUMENTS|EPHEMERAL|INTERSECT|PARTITION|DESCRIBE|DISTINCT|INTERVAL|LIFETIME|PREWHERE|SETTINGS|BETWEEN|COLUMNS|DEFAULT|EXPLAIN|LATERAL|QUALIFY|EXCEPT|FILTER|FORMAT|HAVING|LAYOUT|OFFSET|ROLLUP|SELECT|SOURCE|VALUES|ALIAS|APPLY|CHECK|CODEC|ILIKE|LIMIT|UNION|USING|WHERE|WHERE|CASE|CUBE|ELSE|FROM|JOIN|LIKE|OVER|SETS|SOME|THEN|WHEN|WITH|ALL|AND|NOT|SET|TOP|TTL|AS|BY|IN|ON|OR)(?![A-Za-z0-9_$]))((?![0-9])(?:[A-Za-z0-9_]|\\$(?=[A-Za-z0-9_]))[A-Za-z0-9_$]*|`(?:[^`\\\\]|\\\\.|``)*`|\"(?:[^\"\\\\]|\\\\.|\"\")*\")([ \\t]+)((?:SimpleAggregateFunction|IntervalMicrosecond|IntervalMillisecond|IntervalNanosecond|AggregateFunction|IntervalQuarter|MultiLineString|IntervalMinute|IntervalSecond|LowCardinality|IntervalMonth|IntervalHour|IntervalWeek|IntervalYear|MultiPolygon|FixedString|IntervalDay|LineString|MultiPoint|BFloat16|GEOMETRY|Geometry|Nullable|Dynamic|Float32|Float64|Nothing|Polygon|UInt128|UInt256|Variant|Enum16|Int128|Int256|Nested|String|UInt16|UInt32|UInt64|Array|Enum8|Int16|Int32|Int64|Point|Tuple|UInt8|IPv4|IPv6|Int8|QBit|Ring|UUID|Map|(?i:DateTime32|DateTime64|Decimal128|Decimal256|MEDIUMBLOB|MEDIUMTEXT|CHARACTER|Decimal32|Decimal64|MEDIUMINT|PRECISION|TIMESTAMP|VARBINARY|DateTime|LONGBLOB|LONGTEXT|NATIONAL|NVARCHAR|SMALLINT|TINYBLOB|TINYTEXT|UNSIGNED|VARCHAR2|Decimal|INTEGER|NUMERIC|TINYINT|VARCHAR|VARYING|boolean|BIGINT|BINARY|DOUBLE|Date32|OBJECT|SIGNED|SINGLE|Time64|BYTEA|FIXED|FLOAT|INET4|INET6|LARGE|NCHAR|BLOB|BYTE|Bool|CHAR|CLOB|Date|ENUM|Enum|INT1|JSON|REAL|TEXT|Time|YEAR|bool|BIT|DEC|INT|SET)))(?![A-Za-z0-9_$])",
       "captures": {
         "1": {
-          "name": "variable.other.sql"
+          "name": "variable.other.sql",
+          "patterns": [
+            {
+              "include": "#quoted-identifiers"
+            }
+          ]
         },
         "3": {
           "name": "storage.type.sql"

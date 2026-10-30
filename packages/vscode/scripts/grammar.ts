@@ -17,6 +17,8 @@ const UNIT_ABBREVIATIONS = "D DD H HH M MCS MI MM MS N NS Q QQ S SS WK WW YY YYY
 // Words that start a line before a column, as in WHERE date = today(), or before a type, as in FORMAT JSON.
 const NOT_COLUMNS = [...CLAUSE_WORDS.filter((word) => word !== "KEY"), "FORMAT", "SET", "WHERE"];
 const QUOTED_NAME = '`(?:[^`\\\\]|\\\\.|``)*`|"(?:[^"\\\\]|\\\\.|"")*"';
+// The inside of a quoted name: package.json makes it a string to VS Code, which then pairs no bracket in it.
+const QUOTED_NAME_CONTENT = "meta.quoted-name.sql";
 // Atomic, and never from a quote inside a run of quotes or after a backslash, so that a line of them takes linear time.
 const STRING_ON_ONE_LINE = "(?<!['\\\\])'(?>(?:[^'\\\\]|\\\\.|'')*)'";
 // Keywords that may follow AS, as in CREATE VIEW v AS SELECT.
@@ -129,9 +131,9 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
       },
       "quoted-identifiers": {
         patterns: [
-          quoted("variable.other.sql", '"'),
-          quoted("variable.other.sql", "`"),
-          { name: "variable.other.sql", begin: "\u201C", end: "\u201D" },
+          quoted("variable.other.sql", '"', QUOTED_NAME_CONTENT),
+          quoted("variable.other.sql", "`", QUOTED_NAME_CONTENT),
+          { name: "variable.other.sql", contentName: QUOTED_NAME_CONTENT, begin: "\u201C", end: "\u201D" },
         ],
       },
       // A name and its data type at the start of a line or after "(" or ",": (d Date, s String).
@@ -140,7 +142,7 @@ export function buildGrammar(keywords: readonly string[], dataTypes: readonly Da
           `(?:^|(?<=[(,]))[ \\t]*(?!(?i:${alternation(NOT_COLUMNS)})${WORD_AFTER})((?![0-9])${NAME}|${QUOTED_NAME})` +
           `([ \\t]+)(${anyType})${WORD_AFTER}`,
         captures: {
-          1: { name: "variable.other.sql" },
+          1: { name: "variable.other.sql", patterns: [{ include: "#quoted-identifiers" }] },
           3: { name: "storage.type.sql" },
         },
       },
@@ -290,9 +292,10 @@ function phrases(items: Iterable<string>): string {
 }
 
 // A quoted token that may span lines, with backslash escapes and a doubled quote inside.
-function quoted(name: string, quote: string): object {
+function quoted(name: string, quote: string, contentName?: string): object {
   return {
     name,
+    ...(contentName ? { contentName } : {}),
     begin: quote,
     end: quote,
     applyEndPatternLast: 1,

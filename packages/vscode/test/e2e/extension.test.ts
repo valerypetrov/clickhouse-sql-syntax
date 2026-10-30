@@ -149,6 +149,24 @@ describe("ClickHouse SQL extension", () => {
     await waitForDiagnostics(document.uri, (found) => found.length === 0);
   });
 
+  // From ClickHouse's test 01666_blns_long: a column list where names hold brackets.
+  it("pairs no bracket inside a quoted name", async () => {
+    const editor = await untitled('CREATE TABLE t ("(null)" String, `a)` String, \u201Cb(\u201D UInt8) ENGINE = Memory;\nSELECT "x(" FROM t');
+    const text = editor.document.getText();
+    const pairOf = async (open: number): Promise<number[]> => {
+      // The grammar tokenizes in the background, so the first answer may come before it.
+      const deadline = Date.now() + WAIT_MS;
+      for (;;) {
+        editor.selection = new vscode.Selection(editor.document.positionAt(open), editor.document.positionAt(open));
+        await vscode.commands.executeCommand("editor.action.selectToBracket", { selectBrackets: true });
+        const found = [editor.document.offsetAt(editor.selection.start), editor.document.offsetAt(editor.selection.end)];
+        if (found[1] !== open || Date.now() > deadline) return found;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    };
+    assert.deepEqual(await pairOf(text.indexOf("(")), [text.indexOf("("), text.indexOf(") ENGINE") + 1]);
+  });
+
   it("colours the editor with the TextMate grammar", async () => {
     const uri = fixture("sample.chsql");
     const text = (await vscode.workspace.openTextDocument(uri)).getText();

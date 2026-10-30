@@ -1,9 +1,10 @@
 import * as assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { highlight } from "clickhouse-sql-syntax";
 import { GRAMMAR_PATH, grammarText } from "../../scripts/generate-grammar.js";
-import { grammarScopes, grammarTokens } from "./textmate.js";
+import { grammarScopes, grammarTokens, loadGrammar } from "./textmate.js";
 
 test("the committed grammar is what the generator writes", () => {
   assert.equal(readFileSync(GRAMMAR_PATH, "utf8"), grammarText(), "run `npm run generate -w packages/vscode`");
@@ -237,6 +238,23 @@ const CASES: [string, [string, string][]][] = [
     ],
   ],
 ];
+
+// VS Code pairs the brackets of tokens whose type is not string or comment; package.json gives the type.
+test("the brackets inside quoted names have the token type of a string", async () => {
+  const { contributes } = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as {
+    contributes: { grammars: { tokenTypes?: Record<string, string> }[] };
+  };
+  const stringScopes = Object.entries(contributes.grammars[0]!.tokenTypes ?? {}).flatMap(([scope, type]) => (type === "string" ? [scope] : []));
+  const grammar = await loadGrammar();
+  // From ClickHouse's test 01666_blns_long: a column list where a name holds brackets.
+  for (const line of ['CREATE TABLE t ("(null)" String, `a(b` String, \u201Cc)d\u201D UInt8)', 'SELECT "x(" FROM t', "(\"(\" String"]) {
+    for (const token of grammar.tokenizeLine(line, null).tokens) {
+      const text = line.slice(token.startIndex, token.endIndex);
+      if (!/[()]/.test(text) || token.scopes.includes("punctuation.sql")) continue;
+      assert.ok(token.scopes.some((scope) => stringScopes.includes(scope)), `${JSON.stringify(text)} in ${line}: ${token.scopes.join(" ")}`);
+    }
+  }
+});
 
 describe("grammar scopes", () => {
   for (const [sql, expected] of CASES) {
