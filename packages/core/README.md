@@ -41,8 +41,10 @@ format("select a from t", { keywordCase: "lower", indentSize: 2 }); // "select a
 `keywordCase` is `"upper"` (the default), `"lower"` or `"preserve"`, and `indentSize` is 4 by default.
 Each clause starts a line, lists of several items go one item per line, and subqueries are indented.
 Only whitespace and the case of keywords change: names, strings, numbers, comments and inline data stay as written,
-and a statement with a syntax error is left as it is. Line breaks follow the first one of the input, LF or CRLF,
-and `format(format(sql))` equals `format(sql)`.
+and a statement with a syntax error is left as it is. A word changes case only where `roles()` reads it as a keyword.
+Line breaks follow the first one between tokens, LF, CRLF or CR, and `format(format(sql))` equals `format(sql)`.
+`split(sql)` gives the units that `format()` lays out one by one: each statement with its comments and inline data,
+or a paragraph of comments.
 
 ### complete(sql, offset, options?) and describe(name, kind?)
 
