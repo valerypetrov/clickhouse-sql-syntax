@@ -237,6 +237,17 @@ describe("complete()", () => {
     assert.ok(!labels("SELECT 1 SETTINGS max_threads = |").some((label) => label.startsWith("max_")));
   });
 
+  test("offers privileges where GRANT, REVOKE and CHECK GRANT take one", () => {
+    for (const text of ["GRANT |", "CHECK GRANT |", "REVOKE |", "GRANT SELECT, |", "CREATE USER u IDENTIFIED BY 'p' GRANTS (|"]) {
+      const found = labels(text);
+      for (const privilege of ["SELECT", "INSERT", "ALTER UPDATE", "SHOW TABLES"]) assert.ok(found.includes(privilege), `${text} ${privilege}`);
+    }
+    assert.deepEqual(labels("GRANT SEL|"), ["SELECT"]);
+    assert.ok(labels("grant alter|").includes("alter update"));
+    assert.deepEqual(labels("grant address|"), ["addressToLine", "addressToLineWithInlines", "addressToSymbol"]);
+    assert.ok(!labels("GRANT SELECT |").includes("INSERT"));
+  });
+
   test("offers data types where a type is expected", () => {
     const column = at("CREATE TABLE t (a |");
     assert.ok(column.some((c) => c.label === "UInt64" && c.kind === "data type"));

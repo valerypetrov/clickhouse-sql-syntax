@@ -6,6 +6,7 @@ import { COMBINATORS } from "../generated/combinators.js";
 import { DATA_TYPES } from "../generated/data-types.js";
 import { FORMATS } from "../generated/formats.js";
 import { FUNCTIONS } from "../generated/functions.js";
+import { PRIVILEGES } from "../generated/privileges.js";
 import { SETTINGS } from "../generated/settings.js";
 import { TABLE_ENGINES } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
@@ -274,6 +275,12 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   for (const variant of variants)
     if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && acceptsKeyword(sql, before, word.start, variant))
       out.add(keywordTier, { label: isLower(prefix) ? variant.toLowerCase() : variant, kind: "keyword" });
+
+  if (has("access type")) {
+    // Only names in capitals are found in any case, so addressToLine keeps its own.
+    for (const { name } of PRIVILEGES)
+      out.add(keywordTier, { label: isLower(prefix) && isUpper(name) ? name.toLowerCase() : name, kind: "keyword", detail: "privilege" });
+  }
 
   const previous = before[before.length - 1];
   const previousWord = previous?.kind === T.BareWord ? sql.slice(previous.start, previous.end).toLowerCase() : "";
