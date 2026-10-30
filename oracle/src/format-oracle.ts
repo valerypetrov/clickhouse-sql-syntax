@@ -461,7 +461,13 @@ if (values["update-sample"]) {
   console.log(`Wrote ${statements.length} verified statements to ${SAMPLE}`);
 }
 
-const broken =
-  runs.reduce((sum, r) => sum + Object.values(r.failures).reduce((n, list) => n + list.length, 0), 0) +
-  Object.values(fileFailures).reduce((n, list) => n + list.length, 0);
-process.exit(broken > 0 ? 1 : 0);
+const failed = [
+  ...runs.flatMap((r) =>
+    (Object.entries(FAILURES) as [Failure, string][]).flatMap(([kind, title]) => (r.failures[kind].length > 0 ? [`${title} (${r.failures[kind].length}, ${r.keywordCase})`] : [])),
+  ),
+  ...(Object.entries(FILE_FAILURES) as [FileFailure, string][]).flatMap(([kind, title]) =>
+    fileFailures[kind].length > 0 ? [`${title} (${fileFailures[kind].length}, whole files)`] : [],
+  ),
+];
+if (failed.length > 0) console.log(`Failed: ${failed.join("; ")}`);
+process.exit(failed.length > 0 ? 1 : 0);

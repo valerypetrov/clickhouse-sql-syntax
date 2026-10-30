@@ -311,7 +311,7 @@ export interface StepResult {
 }
 
 // Lines that say why a test failed, as node:test, mocha and the oracle print them.
-const REASON = /AssertionError \[\w+\]: (?!Expected values)(.*)|^(\w+ is [\d.]+, below the threshold .*)/;
+const REASON = /AssertionError \[\w+\]: (?!Expected values)(.*)|^(\w+ is [\d.]+, below the threshold .*)|^Failed: (.*)/;
 
 /** Runs a command with its output shown, and collects the lines that say why it failed. */
 function runStep(command: string[], env: Record<string, string> = {}): Promise<{ ok: boolean; reasons: string[] }> {
@@ -329,7 +329,7 @@ function runStep(command: string[], env: Record<string, string> = {}): Promise<{
         for (const raw of lines) {
           const line = raw.replace(/\x1b\[[\d;]*m/g, "").trim();
           const match = REASON.exec(line);
-          const reason = match ? (match[1] ?? match[2]!).trim() : more && line ? line : undefined;
+          const reason = match ? (match[1] ?? match[2] ?? match[3]!).trim() : more && line ? line : undefined;
           if (reason === undefined || reasons.size >= 3) continue;
           reasons.add(reason);
           more = reason.endsWith(":");
@@ -483,11 +483,13 @@ export function pullRequestBody(input: BodyInput): string {
       ? `Statements that ClickHouse ${release.version} accepts and \`check()\` rejects, the new syntax to port (${live!.falsePositives.length}):\n\n${syntax.join("\n")}`
       : `\`check()\` accepts every statement of the tests that ClickHouse ${release.version} accepts.`,
     "",
-    `Changes in \`src/Parsers\` since ${from}:`,
+    `<details><summary>Changes in <code>src/Parsers</code> since ${from}: ${input.parsers.split("\n").at(-1)?.trim() || "none"}</summary>`,
     "",
     "```",
     input.parsers || "(none)",
     "```",
+    "",
+    "</details>",
   );
   return lines.join("\n") + "\n";
 }

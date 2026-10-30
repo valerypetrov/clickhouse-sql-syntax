@@ -89,5 +89,5 @@ test("the pull request lists the changes, the failed steps and the new syntax", 
   assert.match(body, /- New keywords: `C`\n- Removed keywords: `A`/);
   assert.match(body, /\| all tests of 26\.11\.2\.5 \| 10 \| 90\.00% \| 80\.00% \|/);
   assert.match(body, /- CREATE TABLE, at `SHARED`: 2\n {2}- `a\.sql:1`: `CREATE TABLE t \(j JSON\(SHARED 4\)\)`/);
-  assert.match(body, /ParserDataType\.cpp/);
+  assert.match(body, /<summary>Changes in <code>src\/Parsers<\/code> since v26\.10\.2\.103-stable: .*ParserDataType\.cpp/s);
 });
