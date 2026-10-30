@@ -73,6 +73,8 @@ describe("format() keeps what it does not lay out", () => {
     formats("insert into t values (1,'x;y'),( 2 ,  'it''s' );", "INSERT INTO t VALUES (1,'x;y'),( 2 ,  'it''s' );");
     formats("insert into t values\n(1), -- one\n(2);\nselect 1", "INSERT INTO t VALUES\n(1), -- one\n(2);\n\nSELECT 1");
     formats("insert into t format Values (1),(2)", "INSERT INTO t FORMAT Values (1),(2)");
+    // A table called format: script splitters still read FORMAT Values by its spelling.
+    formats("insert into table format Values (1);\nselect 1", "INSERT INTO TABLE format Values (1);\n\nSELECT 1");
   });
 
   test("INSERT data after FORMAT, up to an empty line", () => {

@@ -312,7 +312,7 @@ class Analyzer {
         i = this.settings(this.kw(i), end);
       } else if (w === "VALUES") {
         // Script splitters read FORMAT Values by its exact spelling, so INSERT INTO table FORMAT Values keeps it.
-        i = this.word(i - 1) === "FORMAT" && this.sig[i]!.text === "Values" ? i + 1 : this.kw(i);
+        i = this.sig[i - 1]!.text.toUpperCase() === "FORMAT" && this.sig[i]!.text === "Values" ? i + 1 : this.kw(i);
         return this.sig[i]?.data ? i + 1 : i;
       } else if (w === "FORMAT") {
         i = this.name(this.kw(i));
