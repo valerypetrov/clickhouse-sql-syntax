@@ -51,15 +51,15 @@ function formatText(text: string, options: vscode.FormattingOptions, keywordCase
     .join("\n");
 }
 
-/** The first and last unit of the statements that the offsets touch, from a statement to the comments after it. */
+/** The first and last unit of the statements that the offsets touch, each statement up to its ";". */
 function statementsIn(units: Unit[], from: number, to: number): [number, number] | undefined {
   let first = -1;
   let last = -1;
   units.forEach((unit, i) => {
     if (!unit.statement) return;
-    const start = unit.statement.start;
+    const { start, end } = unit.statement;
     // An empty range touches the statement it is in or at the edge of; a selection must overlap it.
-    const touches = from === to ? start <= to && unit.end >= from : start < to && unit.end > from;
+    const touches = from === to ? start <= to && end >= from : start < to && end > from;
     if (touches) {
       if (first < 0) first = i;
       last = i;
