@@ -195,9 +195,8 @@ class ServerCheck implements vscode.Disposable {
     const found: vscode.Diagnostic[] = [];
     const deadline = Date.now() + CHECK_BUDGET_MS;
     for (const query of selectQueries(text)) {
-      const sql = text.slice(query.start, query.end);
-      if (Date.now() > deadline && !this.results.has(sql)) continue;
-      const error = await this.explain(connection, sql, signal);
+      if (Date.now() > deadline && !this.results.has(query.sql)) continue;
+      const error = await this.explain(connection, query.sql, signal);
       if (error) found.push(toDiagnostic(document, text, query, error));
     }
     return found;

@@ -5,7 +5,7 @@ import { namedSpan, selectQueries } from "../../src/server/statements.js";
 
 /** The texts selectQueries() would send to the server. */
 function queries(text: string): string[] {
-  return selectQueries(text).map((q) => text.slice(q.start, q.end));
+  return selectQueries(text).map((q) => q.sql);
 }
 
 /** The text of the span namedSpan() finds for `message` in the only query of `text`. */
@@ -17,11 +17,7 @@ function named(text: string, message: string): string | undefined {
 
 describe("selectQueries", () => {
   test("takes SELECT and WITH statements whole", () => {
-    assert.deepEqual(queries("SELECT 1; with 1 AS x select x;\n-- note\nSELECT 2 FORMAT JSON"), [
-      "SELECT 1",
-      "with 1 AS x select x",
-      "SELECT 2 FORMAT JSON",
-    ]);
+    assert.deepEqual(queries("SELECT 1; with 1 AS x select x;\n-- note\nSELECT 2"), ["SELECT 1", "with 1 AS x select x", "SELECT 2"]);
   });
 
   test("takes the SELECT of CREATE ... AS SELECT and INSERT ... SELECT", () => {
@@ -47,6 +43,30 @@ describe("selectQueries", () => {
 
   test("leaves out INTO OUTFILE, which only the client can do", () => {
     assert.deepEqual(queries("SELECT 1 INTO OUTFILE 'x.csv' FORMAT CSV"), ["SELECT 1"]);
+  });
+
+  // EXPLAIN would write its own output in that format, which GeoJSON or Template cannot do.
+  test("leaves out the FORMAT and keeps the SETTINGS, which readonly=1 refuses", () => {
+    assert.deepEqual(
+      queries(
+        [
+          "SELECT 1 FORMAT GeoJSON;",
+          "SELECT 2 FORMAT Template SETTINGS format_template_row = 'x';",
+          "SELECT 3 SETTINGS a = 1 FORMAT `JSON` SETTINGS b = 2;",
+          "SELECT 4 SETTINGS max_threads = 1 INTO OUTFILE 'x' AND STDOUT COMPRESSION 'gz' LEVEL 3 FORMAT CSV SETTINGS c = 3;",
+          "SELECT format, (SELECT 1 SETTINGS d = 4) FROM t FORMAT Pretty;",
+          "SELECT format f FROM t",
+        ].join("\n"),
+      ),
+      [
+        "SELECT 1",
+        "SELECT 2 SETTINGS format_template_row = 'x'",
+        "SELECT 3 SETTINGS a = 1 SETTINGS b = 2",
+        "SELECT 4 SETTINGS max_threads = 1 SETTINGS c = 3",
+        "SELECT format, (SELECT 1 SETTINGS d = 4) FROM t",
+        "SELECT format f FROM t",
+      ],
+    );
   });
 
   test("never reads the inline data of an INSERT as statements", () => {
