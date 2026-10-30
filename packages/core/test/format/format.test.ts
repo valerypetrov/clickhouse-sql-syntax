@@ -103,6 +103,10 @@ describe("format() keeps what it does not lay out", () => {
     for (const sql of ["insert into", "insert into -- x", "insert into table", "insert into db.", "insert into {"]) formats(sql, sql);
   });
 
+  test("a byte order mark at the start", () => {
+    formats("\uFEFFselect 1\n", "\uFEFFSELECT 1\n");
+  });
+
   test("empty and blank input", () => {
     assert.equal(format(""), "");
     assert.equal(format("  \n\t\n"), "  \n\t\n");

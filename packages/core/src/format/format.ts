@@ -21,7 +21,8 @@ export function format(sql: string, options: FormatOptions = {}): string {
   const units = split(sql);
   const parts = units.map((u) => prepare(sql, u));
   const eol = lineEnd(sql, units, parts);
-  let out = "";
+  // A byte order mark is whitespace to the lexer, but it stays at the start.
+  let out = sql.startsWith("\uFEFF") ? "\uFEFF" : "";
   units.forEach((u, k) => {
     // Inline data that ended at an empty line needs that "\n\n" to end there again.
     if (k > 0) out += units[k - 1]!.data.blankLine ? "\n\n" : eol + eol;
