@@ -49,7 +49,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.event_name == 'push' && '26.10.2.103' || inputs.version }}
+          VERSION: ${{ github.event_name == 'push' && '26.9.25.15' || inputs.version }}
           DRY_RUN: ${{ github.event_name == 'push' || inputs.dry_run }}
         run: |
           args=(--out "$RUNNER_TEMP/clickhouse")
