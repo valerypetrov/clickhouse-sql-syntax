@@ -153,18 +153,20 @@ describe("ClickHouse SQL extension", () => {
   it("pairs no bracket inside a quoted name", async () => {
     const editor = await untitled('CREATE TABLE t ("(null)" String, `a)` String, \u201Cb(\u201D UInt8) ENGINE = Memory;\nSELECT "x(" FROM t');
     const text = editor.document.getText();
-    const pairOf = async (open: number): Promise<number[]> => {
-      // The grammar tokenizes in the background, so the first answer may come before it.
+    const pairOf = async (open: number, close: number): Promise<number[]> => {
+      // Until the grammar tokenizes, which VS Code 1.90 does after the first answer, the brackets in quoted names pair too.
       const deadline = Date.now() + WAIT_MS;
       for (;;) {
         editor.selection = new vscode.Selection(editor.document.positionAt(open), editor.document.positionAt(open));
         await vscode.commands.executeCommand("editor.action.selectToBracket", { selectBrackets: true });
         const found = [editor.document.offsetAt(editor.selection.start), editor.document.offsetAt(editor.selection.end)];
-        if (found[1] !== open || Date.now() > deadline) return found;
+        if (found[1] === close || Date.now() > deadline) return found;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     };
-    assert.deepEqual(await pairOf(text.indexOf("(")), [text.indexOf("("), text.indexOf(") ENGINE") + 1]);
+    const open = text.indexOf("(");
+    const close = text.indexOf(") ENGINE") + 1;
+    assert.deepEqual(await pairOf(open, close), [open, close]);
   });
 
   it("colours the editor with the TextMate grammar", async () => {
