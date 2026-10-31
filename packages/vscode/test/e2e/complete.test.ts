@@ -125,4 +125,33 @@ describe("Completion, hover and signature help", () => {
     assert.match(await hover(text.indexOf("max_threads") + 2), /The maximum number of query processing threads/);
     assert.equal(await hover(text.indexOf("FROM") + 1), "");
   });
+
+  it("shows the documentation of what the parser reads as a call where no expression goes", async () => {
+    const { editor } = await open(
+      [
+        "INSERT INTO FUNCTION file('a.csv', 'CSV', 'x UInt8') SELECT 1;",
+        "SELECT * FROM remote('h', view(SELECT * FROM numbers(10)));",
+        "CREATE TABLE t (s AggregateFunction(quantile(0.5), UInt8)) ENGINE = Memory;",
+        "CREATE DICTIONARY d (a UInt8) PRIMARY KEY a SOURCE(CLICKHOUSE(PORT tcpPort() DB currentDatabase() TABLE 't')) LIFETIME(0) LAYOUT(FLAT());",
+        "SELECT timestamp('2020-01-01'), DATE('2020-01-01');|",
+      ].join("\n"),
+    );
+    const text = editor.document.getText();
+    const hover = async (name: string) => {
+      const position = editor.document.positionAt(text.indexOf(`${name}(`) + 1);
+      const hovers = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", editor.document.uri, position);
+      return hovers.flatMap((h) => h.contents.map((c) => (c as vscode.MarkdownString).value)).join("\n");
+    };
+    assert.match(await hover("file"), /^A table engine which provides a table-like interface to SELECT from and INSERT into files/);
+    assert.match(await hover("view"), /^Turns a subquery into a table/);
+    for (const [name, syntax] of [
+      ["quantile", "quantile(level)(expr)"],
+      ["tcpPort", "tcpPort()"],
+      ["currentDatabase", "currentDatabase()"],
+      ["timestamp", "timestamp(expr[, expr_time])"],
+      ["DATE", "DATE(expr)"],
+    ]) {
+      assert.ok((await hover(name!)).startsWith(`\`\`\`sql\n${syntax}\n\`\`\``), name);
+    }
+  });
 });

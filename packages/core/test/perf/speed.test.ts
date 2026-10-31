@@ -9,7 +9,10 @@ import { check, complete, format, highlight, roles, tokenize } from "../../src/i
 
 const CORPUS = new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url);
 
-/** 10,000 statements that ClickHouse accepts, from the oracle's sample of its tests: about 1 MB. */
+/**
+ * 10,000 statements that ClickHouse accepts, from the oracle's sample of its tests: about 1 MB.
+ * A blank line ends each one, so inline data ends there, as in the test files.
+ */
 function corpusFile(): string {
   const statements = gunzipSync(readFileSync(CORPUS))
     .toString("utf8")
@@ -21,7 +24,7 @@ function corpusFile(): string {
     .slice(0, 10_000)
     .map((entry) => entry.sql);
   assert.equal(statements.length, 10_000);
-  return statements.join(";\n") + ";\n";
+  return statements.join(";\n\n") + ";\n\n";
 }
 
 /** One SELECT of 1 MB with a long list of columns, some of them computed. */
@@ -71,7 +74,7 @@ describe("completion speed", () => {
   // Completion parses only the statement at the cursor, so in a file of many statements it is quick.
   test("within 150 ms at the end and in the middle of 10,000 statements", (t) => {
     const sql = INPUTS["10,000 statements"];
-    const half = sql.indexOf(";\n", sql.length / 2) + 2;
+    const half = sql.indexOf(";\n\n", sql.length / 2) + 3;
     const typed = `${sql.slice(0, half)}SELECT * FROM t WHERE to;\n${sql.slice(half)}SELECT * FROM t WHERE to`;
     const middle = half + "SELECT * FROM t WHERE to".length;
     for (const [where, offset] of [["end", typed.length], ["middle", middle]] as const) {

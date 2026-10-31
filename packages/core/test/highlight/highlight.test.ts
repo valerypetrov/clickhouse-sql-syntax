@@ -211,6 +211,19 @@ describe("bare words", () => {
       ["ENGINE", "keyword.other.sql"],
       ["Join", "entity.name.function.sql"],
     ]);
+    // As ClickHouse's highlightQuery() takes it, whatever separates the engine from its arguments.
+    assertScopes("CREATE TABLE t (a Int8) ENGINE=URL\n('http://x', CSV)", [["URL", "entity.name.function.sql"]]);
+  });
+
+  // highlightQuery() of ClickHouse colours these words so: an attempt that read them as names leaves its colour.
+  test("ARRAY[...] and the SHARED of JSON are names, as ClickHouse colours them", () => {
+    assertScopes("SELECT ARRAY[1, 2], array[]", [["ARRAY", "variable.other.sql"], ["array", "variable.other.sql"]]);
+    assertScopes("CREATE TABLE t_log (json JSON(SHARED a UInt64)) ENGINE = Log", [
+      ["JSON", "storage.type.sql"],
+      ["SHARED", "variable.other.sql"],
+      ["a", "variable.other.sql"],
+      ["UInt64", "storage.type.sql"],
+    ]);
   });
 
   test("SYSTEM commands are keywords, and what follows them is a name", () => {
@@ -252,12 +265,16 @@ describe("data types", () => {
     ]);
   });
 
-  test("multi-word types", () => {
-    assertScopes("SELECT x::DOUBLE PRECISION, y::INT UNSIGNED", [
+  test("multi-word types, with SIGNED and UNSIGNED as keywords, as in ClickHouse", () => {
+    assertScopes("SELECT x::DOUBLE PRECISION, y::INT UNSIGNED, z::INT(11) SIGNED, w::INT() UNSIGNED", [
       ["DOUBLE", "storage.type.sql"],
       ["PRECISION", "storage.type.sql"],
       ["INT", "storage.type.sql"],
-      ["UNSIGNED", "storage.type.sql"],
+      ["UNSIGNED", "keyword.other.sql"],
+      ["INT", "storage.type.sql"],
+      ["SIGNED", "keyword.other.sql"],
+      ["INT", "storage.type.sql"],
+      ["UNSIGNED", "keyword.other.sql"],
     ]);
   });
 

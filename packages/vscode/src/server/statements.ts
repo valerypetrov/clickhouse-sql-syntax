@@ -1,4 +1,4 @@
-import { check, isSignificant, type Token, TokenKind as T, tokenize } from "clickhouse-sql-syntax";
+import { check, isSignificant, roles, type Token, TokenKind as T, tokenize } from "clickhouse-sql-syntax";
 
 /** A piece of the document, by offsets. */
 export interface Span {
@@ -6,20 +6,57 @@ export interface Span {
   end: number;
 }
 
+/** A SELECT of the document, and the text of it to explain. */
+export interface Query extends Span {
+  sql: string;
+}
+
 /**
  * The SELECT queries the server can analyze without running anything: SELECT and WITH statements,
  * and the SELECT of CREATE ... AS SELECT and INSERT ... SELECT. Statements with syntax errors are left out.
  */
-export function selectQueries(text: string): Span[] {
-  const queries: Span[] = [];
-  const valid = (span: Span) => check(text.slice(span.start, span.end)).length === 0;
+export function selectQueries(text: string): Query[] {
+  const queries: Query[] = [];
+  const valid = (sql: string) => check(sql).length === 0;
   for (const statement of statements(text)) {
     const select = selectPart(text, statement);
     if (!select?.length) continue;
     const query = spanOf(select);
-    if (valid(spanOf(statement)) && valid(query)) queries.push(query);
+    const whole = spanOf(statement);
+    const sql = withoutOutput(text, select);
+    if (valid(text.slice(whole.start, whole.end)) && valid(text.slice(query.start, query.end)) && valid(sql)) queries.push({ ...query, sql });
   }
   return queries;
+}
+
+/**
+ * The text of a query without INTO OUTFILE, which only the client can do, and FORMAT, which EXPLAIN
+ * would write its own output in. Its SETTINGS stay, so that readonly=1 still refuses them.
+ */
+function withoutOutput(text: string, toks: Token[]): string {
+  const { start, end } = spanOf(toks);
+  const words = toks.map((t) => word(text, t));
+  if (!words.includes("FORMAT") && !words.includes("INTO")) return text.slice(start, end);
+  const keywords = new Set(roles(text.slice(start, end)).flatMap((r) => (r.role === "keyword" ? [start + r.start] : [])));
+  const kept = toks.map(() => true);
+  let depth = 0;
+  for (let i = 0, outfile = false; i < toks.length; i++) {
+    const keyword = depth === 0 && keywords.has(toks[i]!.start) ? words[i] : undefined;
+    depth += nesting(toks[i]!);
+    if (keyword === "INTO" && words[i + 1] === "OUTFILE") outfile = true;
+    else if (keyword === "SETTINGS") outfile = false;
+    if (keyword === "FORMAT") kept[i] = kept[++i] = false;
+    else kept[i] = !outfile;
+  }
+  // The runs of kept tokens, as they are written.
+  const runs: string[] = [];
+  for (let i = 0; i < toks.length; i++) {
+    if (!kept[i]) continue;
+    const first = i;
+    while (kept[i + 1]) i++;
+    runs.push(text.slice(toks[first]!.start, toks[i]!.end));
+  }
+  return runs.join(" ");
 }
 
 function spanOf(toks: Token[]): Span {
@@ -96,9 +133,8 @@ function selectPart(text: string, toks: Token[]): Token[] | undefined {
     const w = word(text, toks[i]);
     const next = word(text, toks[i + 1]);
     if (first === "SELECT" || first === "WITH") {
-      // WITH ... INSERT is an INSERT; INTO OUTFILE is for clickhouse-client, and the server refuses it.
+      // WITH ... INSERT is an INSERT.
       if (w === "INSERT") return undefined;
-      if (w === "INTO" && next === "OUTFILE") return toks.slice(0, i);
     } else if (first === "INSERT") {
       if (w === "SELECT" || w === "WITH") return toks.slice(i);
     } else if (first === "CREATE" || first === "REPLACE") {

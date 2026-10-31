@@ -13,6 +13,9 @@ export const ACCESS_TYPE_KEYWORDS = namesOf(PRIVILEGES);
 /** Privileges granted on a parameter instead of a table, like NAMED COLLECTION ON name. */
 export const PARAMETER_ACCESS_TYPES = namesOf(PRIVILEGES.filter((privilege) => PARAMETER_LEVELS.has(privilege.level ?? "")));
 
+/** NONE, USAGE and NO PRIVILEGES, which grant nothing. */
+export const NO_ACCESS_TYPES = namesOf(PRIVILEGES.filter((privilege) => privilege.name === "NONE"));
+
 /** READ and WRITE are granted on a source, which must be one of SOURCE_NAMES or *. */
 export const SOURCE_ACCESS_TYPES = namesOf(PRIVILEGES.filter((privilege) => privilege.level === "SOURCE"));
 

@@ -394,9 +394,9 @@ class Highlighter {
         return "entity.name.function.sql";
       case "type":
         return "storage.type.sql";
-      // ENGINE = Memory names an engine, and ENGINE = MergeTree() calls one.
+      // ENGINE = Memory names an engine, and ENGINE = MergeTree() calls one, on this line or the next.
       case "engine":
-        return this.callFollows(i) ? "entity.name.function.sql" : "variable.other.sql";
+        return this.kind(i + 1) === TokenKind.OpeningRoundBracket ? "entity.name.function.sql" : "variable.other.sql";
       case "parameter":
         return "variable.parameter.sql";
       case "number":

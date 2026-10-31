@@ -18,7 +18,10 @@ const DIAGNOSTICS_MS = 300 * SCALE;
 const ROUND_TRIP_MS = 500 * SCALE;
 const TOOL_MS = 50 * SCALE;
 
-/** BROKEN and then 10,000 statements that ClickHouse accepts, from the oracle's corpus: about 1 MB. */
+/**
+ * BROKEN and then 10,000 statements that ClickHouse accepts, from the oracle's corpus: about 1 MB.
+ * A blank line ends each one, so inline data ends there, as in the test files.
+ */
 function corpusFile(): string {
   const extension = vscode.extensions.all.find((e) => e.packageJSON.name === LANGUAGE_ID)!;
   const corpus = gunzipSync(readFileSync(resolve(extension.extensionPath, "../../oracle/fixtures/corpus.jsonl.gz"))).toString("utf8");
@@ -30,7 +33,7 @@ function corpusFile(): string {
     .filter((entry) => entry.valid && !entry.mutation)
     .slice(0, 10_000)
     .map((entry) => entry.sql);
-  return BROKEN + statements.join(";\n") + ";\n";
+  return BROKEN + statements.join(";\n\n") + ";\n\n";
 }
 
 /** A fixed sequence of numbers in [0, 1) (mulberry32), so that every run makes the same edits. */
@@ -160,7 +163,7 @@ describe("A file of 10,000 statements, about 1 MB", function () {
   });
 
   it(`completes within ${TOOL_MS} ms at its end and in its middle`, async () => {
-    const half = sql.indexOf(";\n", sql.length / 2) + 2;
+    const half = sql.indexOf(";\n\n", sql.length / 2) + 3;
     const editor = await open(`${sql.slice(0, half)}${TYPING};\n${sql.slice(half)}${TYPING}`);
     const document = editor.document;
     const complete = (offset: number) => () =>
@@ -174,5 +177,40 @@ describe("A file of 10,000 statements, about 1 MB", function () {
     console.log(`      completion: at the end ${atEnd.toFixed(0)} ms, in the middle ${inMiddle.toFixed(0)} ms`);
     assert.ok(atEnd < TOOL_MS, `at the end: ${atEnd.toFixed(0)} ms`);
     assert.ok(inMiddle < TOOL_MS, `in the middle: ${inMiddle.toFixed(0)} ms`);
+  });
+});
+
+// From ClickHouse's test 03012_parser_backtracking: the parser gives up on it at its backtracking limit.
+const HEAVY = "SELECT((((((((((SELECT(((((((((SELECT((((((((((SELECT(((((((((SELECT((((((((((SELECT(((((((((SELECT 1+)))))))))))))))))))))))))))))))))))))))))))))))))))))))))";
+
+describe("A statement that takes the parser most of a second", function () {
+  this.timeout(120_000);
+  afterEach(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
+
+  /** The time from an edit at `offset` to new diagnostics and the semantic tokens of the document, without the check delay. */
+  async function afterEdit(editor: vscode.TextEditor, offset: number, text: string): Promise<number> {
+    const before = syntaxErrors(editor.document)[0];
+    const start = performance.now();
+    assert.ok(await editor.edit((edit) => edit.insert(editor.document.positionAt(offset), text)));
+    await vscode.commands.executeCommand("vscode.provideDocumentSemanticTokens", editor.document.uri);
+    while (syntaxErrors(editor.document)[0] === before) await sleep(1);
+    return performance.now() - start - CHECK_DELAY_MS;
+  }
+
+  it(`is parsed once after an edit to it, and not at all after an edit elsewhere`, async () => {
+    const editor = await open(`${BROKEN}${HEAVY};\nSELECT 2;\n`);
+    while (syntaxErrors(editor.document).length < 2) await sleep(10);
+    const parse = await timed(async () => vscode.commands.executeCommand("vscode.executeFormatDocumentProvider", editor.document.uri));
+    // Spaces after the 1 of the statement, and before the 2 of the next one, three from the end.
+    const inStatement = BROKEN.length + HEAVY.indexOf("1+") + 1;
+    let elsewhere = Infinity;
+    let inside = Infinity;
+    for (let i = 0; i < 3; i++) {
+      elsewhere = Math.min(elsewhere, await afterEdit(editor, editor.document.getText().length - 3, " "));
+      inside = Math.min(inside, await afterEdit(editor, inStatement, " "));
+    }
+    console.log(`      one parse (Format Document) ${parse.toFixed(0)} ms; diagnostics and semantic tokens after an edit elsewhere ${elsewhere.toFixed(0)} ms, after one to it ${inside.toFixed(0)} ms`);
+    assert.ok(elsewhere < DIAGNOSTICS_MS, `after an edit elsewhere: ${elsewhere.toFixed(0)} ms`);
+    assert.ok(inside < 1.5 * parse, `after an edit to it: ${inside.toFixed(0)} ms, one parse ${parse.toFixed(0)} ms`);
   });
 });

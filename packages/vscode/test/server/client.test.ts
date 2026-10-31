@@ -40,6 +40,13 @@ describe("query", () => {
     assert.equal(params.get("max_execution_time"), "1.5");
   });
 
+  // The server reads a parameter as escaped text: \b in it is a backspace, and a tab ends the value.
+  test("sends query parameters as escaped text", async () => {
+    error = undefined;
+    await query(connection(), "SELECT {t:String}", { t: "a\\b\tc\nd\re" });
+    assert.equal(params.get("param_t"), "a\\\\b\\tc\\nd\\re");
+  });
+
   test("a setting of the URL that the user may not change is a problem of the connection", async () => {
     const answers: [number, string, string, string][] = [
       [164, "Cannot modify 'max_execution_time' setting in readonly mode. (READONLY)", "SELECT 1", "ConnectionError"],

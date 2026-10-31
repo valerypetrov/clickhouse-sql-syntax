@@ -6,11 +6,12 @@ import { COMBINATORS } from "../generated/combinators.js";
 import { DATA_TYPES } from "../generated/data-types.js";
 import { FORMATS } from "../generated/formats.js";
 import { FUNCTIONS } from "../generated/functions.js";
+import { PRIVILEGES } from "../generated/privileges.js";
 import { SETTINGS } from "../generated/settings.js";
 import { TABLE_ENGINES } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
-import { tokenize } from "../lexer/index.js";
-import { expectedAt } from "../parser/index.js";
+import { split, type Unit } from "../format/index.js";
+import { expectedAt, keywordFilter } from "../parser/index.js";
 import {
   type CompleteOptions,
   type CompletionCandidate,
@@ -35,8 +36,8 @@ import { databases, isWord, nameOf, resolve, type SchemaTable, tableRefs } from 
 /** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
 const KEYWORD_VARIANT = /^[A-Z][A-Z0-9_]*( [A-Z][A-Z0-9_]*)*$/;
 
-/** The variants of the parsers that read a table expression after FROM or JOIN. */
-const TABLE_VARIANTS = ["table, table function, subquery or list of joined tables", "table or subquery or table function"];
+/** Expected where a table goes after FROM or JOIN; the list of joins expects its own variant after a table too. */
+const TABLE_VARIANT = "table or subquery or table function";
 
 /** Words after which a table name follows. */
 const TABLE_NAME_WORDS = new Set(["table", "into", "update", "describe", "desc", "exists", "truncate"]);
@@ -50,6 +51,7 @@ interface Word {
 
 /** The last token that starts before the offset, or undefined at the start. */
 function tokenBefore(tokens: Token[], offset: number): Token | undefined {
+  if (!tokens.length) return undefined;
   let lo = 0;
   let hi = tokens.length - 1;
   while (lo < hi) {
@@ -61,16 +63,30 @@ function tokenBefore(tokens: Token[], offset: number): Token | undefined {
   return token.start < offset ? token : undefined;
 }
 
-/** The first index of a token that starts at or after the offset. */
-function indexFrom(tokens: Token[], offset: number): number {
-  let lo = 0;
-  let hi = tokens.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (tokens[mid]!.start >= offset) hi = mid;
-    else lo = mid + 1;
+/** The last unit that starts before the offset, the one whose tokens the cursor is among. */
+function unitBefore(units: Unit[], offset: number): Unit | undefined {
+  let found: Unit | undefined;
+  for (const unit of units) {
+    if (unit.start >= offset) break;
+    found = unit;
   }
-  return lo;
+  return found;
+}
+
+/** Whether a statement has ended before the offset, at its ";" or at the empty line after its data. */
+function endedBefore(unit: Unit, offset: number): boolean {
+  const statement = unit.statement!;
+  if (offset < statement.end) return false;
+  return unit.data.blankLine || unit.tokens.some((token) => token.kind === T.Semicolon && token.end === statement.end);
+}
+
+/** The statement that a word starting at `start` goes on, or undefined when it starts one. */
+function statementAt(units: Unit[], start: number): Unit | undefined {
+  let i = units.length - 1;
+  while (i >= 0 && !(units[i]!.statement && units[i]!.statement!.start <= start)) i--;
+  if (i >= 0 && !endedBefore(units[i]!, start)) return units[i];
+  for (i++; i < units.length; i++) if (units[i]!.statement) return units[i];
+  return undefined;
 }
 
 /** The word at the cursor, or undefined in a comment, a string, a quoted name or a number. */
@@ -219,18 +235,18 @@ function addDatabases(out: Candidates, tier: number, schema: CompletionSchema): 
 /** Suggestions at `offset` of `sql`, best first, for the word that ends there. */
 export function complete(sql: string, offset: number, options: CompleteOptions = {}): CompletionCandidate[] {
   const at = Math.max(0, Math.min(offset, sql.length));
-  const tokens = tokenize(sql);
-  const word = wordAt(sql, tokens, at);
+  // Statements end where check() ends them, inline INSERT data included.
+  const units = split(sql);
+  const around = unitBefore(units, at);
+  const word = wordAt(sql, around && at <= around.end ? around.tokens : [], at);
   if (!word) return [];
 
-  // The statement around the cursor: from the ';' before it to the ';' after it.
-  const significant = tokens.filter((token) => isSignificant(token.kind));
-  const cursor = indexFrom(significant, word.start);
-  let begin = cursor;
-  while (begin > 0 && significant[begin - 1]!.kind !== T.Semicolon) begin--;
-  let end = cursor;
-  while (significant[end]!.kind !== T.Semicolon && significant[end]!.kind !== T.EndOfStream) end++;
-  const before = significant.slice(begin, cursor);
+  const unit = statementAt(units, word.start);
+  if (unit && unit.data.start >= 0 && at > unit.data.start && !endedBefore(unit, word.start)) return [];
+  const statement = (unit?.tokens ?? []).filter(
+    (token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream,
+  );
+  const before = statement.filter((token) => token.start < word.start);
 
   const variants = expectedAt(sql, before, word.start);
   const has = (variant: string) => variants.includes(variant);
@@ -242,7 +258,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   const schemaTier = prefix ? 1 : 0;
   const nameTier = 2;
 
-  const refs = tableRefs(sql, significant.slice(begin, end));
+  const refs = tableRefs(sql, statement);
   const names = qualifier(sql, before);
   if (names.length) {
     // After `x.`: the columns of the table or alias x, and the tables of the database x.
@@ -256,9 +272,16 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     return out.sorted();
   }
 
+  const accepts = keywordFilter(sql, before, word.start);
   for (const variant of variants)
-    if (KEYWORD_VARIANT.test(variant))
+    if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && accepts(variant))
       out.add(keywordTier, { label: isLower(prefix) ? variant.toLowerCase() : variant, kind: "keyword" });
+
+  if (has("access type")) {
+    // Only names in capitals are found in any case, so addressToLine keeps its own.
+    for (const { name } of PRIVILEGES)
+      out.add(keywordTier, { label: isLower(prefix) && isUpper(name) ? name.toLowerCase() : name, kind: "keyword", detail: "privilege" });
+  }
 
   const previous = before[before.length - 1];
   const previousWord = previous?.kind === T.BareWord ? sql.slice(previous.start, previous.end).toLowerCase() : "";
@@ -277,7 +300,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
       });
     }
     if (prefix) addCombinators(out, nameTier + 1);
-  } else if (TABLE_VARIANTS.some(has)) {
+  } else if (has(TABLE_VARIANT)) {
     addTables(out, schemaTier, schema.tables ?? []);
     addDatabases(out, schemaTier, schema);
     for (const info of TABLE_FUNCTIONS)

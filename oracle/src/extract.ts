@@ -39,6 +39,11 @@ export function usesOtherDialect(source: string): boolean {
   return false;
 }
 
+/** True for tests that need a build with XRay, whose SYSTEM INSTRUMENT the other builds parse in another way. */
+export function needsXRay(source: string): boolean {
+  return /^--\s*Tags:.*\buse-xray\b/m.test(source);
+}
+
 export function expectsSyntaxError(hints: readonly string[]): boolean {
   return hints.some((hint) => /^clientError\b.*\b(SYNTAX_ERROR|62)\b/.test(hint));
 }
@@ -51,7 +56,7 @@ export function extractCorpus(dir: string, options: ExtractOptions): ExtractResu
   let total = 0;
   for (const file of files) {
     const source = readFileSync(join(dir, file), "utf8");
-    if (usesOtherDialect(source)) {
+    if (usesOtherDialect(source) || needsXRay(source)) {
       skippedFiles.push(file);
       continue;
     }

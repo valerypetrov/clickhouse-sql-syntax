@@ -60,6 +60,10 @@ There is no AST of names, types or meaning: an unknown function is fine, a mispl
 ClickHouse, nesting deeper than 1000 levels and more than 1,000,000 backtracks in one statement are errors. All the
 statements of one call share 2,000,000 backtracks; where they run out, a warning says the rest was not checked.
 
+`checkWithRoles()` takes a `ParseCache` of statements checked before, by their text from where they begin to their
+first `;`. It keeps a statement only when nothing after that `;` decided its result, so no inline data, and a hit
+costs the backtracks of the parse it stands for, so the result is the same as without the cache.
+
 ## roles() and highlight()
 
 While a statement parses, the parser marks what it read each word as: a keyword, identifier, function, type,
@@ -88,19 +92,22 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
 
 `complete()` takes the statement around the cursor and parses its tokens before the cursor, followed by a token
 that no parser accepts, so the parser records everything it tries there (`expectedAt()`). The keywords among those
-expectations are offered as they are; the other ones (an expression, a table, a data type, a format, a setting, ...)
-pick names from the generated lists and from the schema passed in. The parse stops after 50,000 backtracks, so a
-very long statement gets no suggestions.
+expectations are offered when the parser takes them there, which it does not for all of them, as for FETCH without
+ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks); the other ones (an
+expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and from the schema
+passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
 
 ## The VS Code extension
 
 In `packages/vscode/src`:
 
-- `extension.ts`: diagnostics from `check()`, 300 ms after the last change.
+- `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
+  statements parsed, so that the diagnostics, the semantic tokens and hover parse a statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
-- `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`.
+- `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;
+  hover takes the role of the word from the parser where completion does not tell what it is.
 - `server/`: the server check. `statements.ts` finds the SELECTs the server can explain: SELECT and WITH statements,
   and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`. `index.ts` sends each one as `EXPLAIN QUERY TREE`
   with `readonly=1`, 500 ms after a change, keeps the answers by query text, and puts an error on the name it

@@ -179,7 +179,7 @@ export function floatLit(text: string, negative: boolean): Lit | undefined {
   return { t: "Float64", v: negative ? -value : value };
 }
 
-/** tryReadIntText over the whole text: plain decimal digits. */
+/** tryReadIntText into a UInt64 over the whole text: plain decimal digits, not past UInt64. */
 export function isUnsignedIntegerText(text: string): boolean {
-  return /^\+?\d+$/.test(text);
+  return /^\+?\d+$/.test(text) && BigInt(text) <= UINT64_MAX;
 }

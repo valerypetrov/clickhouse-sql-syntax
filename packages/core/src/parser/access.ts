@@ -4,7 +4,7 @@
  * Ports of src/Parsers/Access/*.cpp.
  */
 import { parseStringAndSubstitution } from "./alter.js";
-import { Ast, isParam, stringValue } from "./ast.js";
+import { Ast, isParam, type Lit, stringValue } from "./ast.js";
 import {
   parseCluster,
   parseDatabaseAndTableName,
@@ -23,7 +23,7 @@ import {
   parseUnsignedInteger,
 } from "./elements.js";
 import { parseExpression, parseIntervalKind, subParser } from "./expression.js";
-import { ACCESS_TYPE_KEYWORDS, PARAMETER_ACCESS_TYPES, SOURCE_ACCESS_TYPES, SOURCE_NAMES } from "./privileges.js";
+import { ACCESS_TYPE_KEYWORDS, NO_ACCESS_TYPES, PARAMETER_ACCESS_TYPES, SOURCE_ACCESS_TYPES, SOURCE_NAMES } from "./privileges.js";
 import { attempt, base, kw, listUtil, P, peekKw, T, tok } from "./state.js";
 
 /** [ON CLUSTER c], moving back if ON is not followed by a cluster. */
@@ -420,7 +420,7 @@ function parseParameterRegExp(p: P): string | null {
 }
 
 /** access types ON what: a table, *.*, db.*, or a parameter for the global privileges that take one. */
-function parseAccessRightsAroundOn(p: P): boolean {
+function parseAccessRightsAroundOn(p: P, keywords?: string[]): boolean {
   const flags: { keyword: string; columns: boolean }[] = [];
   const parsedFlags = listUtil(
     p,
@@ -464,12 +464,17 @@ function parseAccessRightsAroundOn(p: P): boolean {
     wildcard = name.wildcard;
     table = name.table;
   }
-  return !flags.some((flag) => (wildcard || !table) && flag.columns);
+  if (flags.some((flag) => (wildcard || !table) && flag.columns)) return false;
+  keywords?.push(...flags.map((flag) => flag.keyword));
+  return true;
 }
 
-/** parseAccessRightsElementsWithoutOptions: SELECT(a) ON db.t, INSERT ON *.*, ... */
-function parseAccessRightsElements(p: P): boolean {
-  return attempt(p, () => listUtil(p, () => parseAccessRightsAroundOn(p), undefined, false)) !== null;
+/** parseAccessRightsElementsWithoutOptions: SELECT(a) ON db.t, INSERT ON *.*, ...; `keywords` gets their access types. */
+function parseAccessRightsElements(p: P, keywords?: string[]): boolean {
+  const found: string[] = [];
+  const ok = attempt(p, () => listUtil(p, () => parseAccessRightsAroundOn(p, found), undefined, false)) !== null;
+  if (ok) keywords?.push(...found);
+  return ok;
 }
 
 // --- Authentication ------------------------------------------------------------------------------
@@ -607,11 +612,76 @@ function parseIdentifiedOrNotIdentified(p: P): boolean {
   );
 }
 
+/** inet_aton: one to four parts in decimal, octal or hex, maybe followed by whitespace and anything; 0 fails. */
+function isIPv4(text: string): boolean {
+  const parts = /^[^ \t\n\v\f\r]*/.exec(text)![0].split(".");
+  if (parts.length > 4) return false;
+  let nonzero = false;
+  for (const [i, part] of parts.entries()) {
+    const last = i === parts.length - 1;
+    if (!/^(0[xX][0-9a-fA-F]*|0[0-7]*|[1-9][0-9]*)$/.test(part) || (last && /^0[xX]$/.test(part))) return false;
+    const value = /^0[xX]$/.test(part) ? 0n : BigInt(/^0[0-7]/.test(part) ? `0o${part.slice(1)}` : part);
+    // A last part fills the bits left; glibc rejects a single part past 32 bits, which BSD cuts to 32.
+    if (parts.length > 1 && value >= 1n << (last ? 32n - 8n * BigInt(i) : 8n)) return false;
+    nonzero ||= (parts.length > 1 ? value : value % (1n << 32n)) !== 0n;
+  }
+  return nonzero;
+}
+
+/** inet_pton(AF_INET6): groups of hex digits, at most one "::", and maybe an IPv4 address in the last 32 bits. */
+function isIPv6(text: string): boolean {
+  const halves = text.split("::");
+  if (halves.length > 2) return false;
+  let groups = 0;
+  const words = halves.map((half) => (half === "" ? [] : half.split(":")));
+  for (const [h, half] of words.entries()) {
+    for (const [g, word] of half.entries()) {
+      const last = h === words.length - 1 && g === half.length - 1;
+      if (last && /^(\d{1,3}\.){3}\d{1,3}$/.test(word) && word.split(".").every((octet) => Number(octet) <= 255)) groups += 2;
+      else if (/^[0-9a-fA-F]{1,4}$/.test(word)) groups++;
+      else return false;
+    }
+  }
+  return halves.length === 2 ? groups <= 7 : groups === 8;
+}
+
+/** The family of Poco's IPAddress(text), or undefined where it throws; a scope as in fe80::1%eth0 always fails here. */
+function ipFamily(text: string): 4 | 6 | undefined {
+  const trimmed = text.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, "");
+  if (!text || trimmed === "0.0.0.0" || isIPv4(text)) return 4;
+  return trimmed === "::" || isIPv6(text) ? 6 : undefined;
+}
+
+/** What AllowedClientHosts::IPSubnet throws for HOST IP 'address[/mask]', or undefined. */
+function subnetError(text: string): string | undefined {
+  const slash = text.indexOf("/");
+  const address = slash < 0 ? text : text.slice(0, slash);
+  const family = ipFamily(address);
+  if (!family) return `Invalid address: ${address}`;
+  if (slash < 0) return undefined;
+  const mask = text.slice(slash + 1);
+  if (!/^\d*$/.test(mask)) return ipFamily(mask) ? undefined : `Invalid address: ${mask}`;
+  if (!mask) return "stoul: no conversion";
+  if (BigInt(mask) >= 1n << 64n) return "stoul: out of range";
+  // std::stoul, then a cast to unsigned.
+  const bits = BigInt(mask) % (1n << 32n);
+  return bits > (family === 4 ? 32n : 128n) ? "Invalid argument: Invalid prefix length passed to IPAddress()" : undefined;
+}
+
 /** [ADD|DROP] HOST ANY | NONE | LOCAL | NAME 'n' | REGEXP 'r' | IP 'a' | LIKE 'p', ... */
 function parseHosts(p: P, prefix: string): boolean {
   const host = () => {
     if (kw(p, "NONE") || kw(p, "ANY") || kw(p, "LOCAL")) return true;
-    if (kw(p, "REGEXP") || kw(p, "NAME") || kw(p, "IP") || kw(p, "LIKE"))
+    if (kw(p, "IP")) {
+      const subnets: number[] = [];
+      const list = parseList(p, () => (subnets.push(p.i), parseStringLiteral(p)), undefined, false);
+      for (const [i, subnet] of (list?.children ?? []).entries()) {
+        const error = subnetError(stringValue(subnet)!);
+        if (error) p.failOther(error, subnets[i]);
+      }
+      return list !== null;
+    }
+    if (kw(p, "REGEXP") || kw(p, "NAME") || kw(p, "LIKE"))
       return parseList(p, () => parseStringLiteral(p), undefined, false) !== null;
     return false;
   };
@@ -806,14 +876,86 @@ const QUOTA_TYPE_KEYWORDS = [
 ];
 const QUOTA_TYPE_NAMES = QUOTA_TYPE_KEYWORDS.map((keyword) => keyword.toLowerCase().replaceAll(" ", "_"));
 
-function parseQuotaType(p: P): boolean {
-  return (
-    attempt(p, () => {
-      if (QUOTA_TYPE_KEYWORDS.some((keyword) => kw(p, keyword))) return true;
-      const name = parseIdentifier(p);
-      return name !== null && QUOTA_TYPE_NAMES.includes(name.name);
-    }) !== null
-  );
+/** The name of the quota type read, such as execution_time. */
+function parseQuotaType(p: P): string | null {
+  return attempt(p, () => {
+    const keyword = QUOTA_TYPE_KEYWORDS.findIndex((keyword) => kw(p, keyword));
+    if (keyword >= 0) return QUOTA_TYPE_NAMES[keyword];
+    const name = parseIdentifier(p);
+    return name !== null && QUOTA_TYPE_NAMES.includes(name.name) ? name.name : null;
+  });
+}
+
+/** The decimal and binary multipliers of a size suffix, as in 1K and 1Ki. */
+const SIZE_SUFFIXES: Record<string, [bigint, bigint]> = {
+  k: [1000n, 10n], K: [1000n, 10n], M: [10n ** 6n, 20n], G: [10n ** 9n, 30n], T: [10n ** 12n, 40n],
+};
+const ESCAPES: Record<string, string> = { "\b": "b", "\f": "f", "\n": "n", "\r": "r", "\t": "t", "\0": "0" };
+
+/** parseWithSizeSuffix<UInt64>: digits and a k, M, G or T suffix, maybe with i; the value, or the exception's message. */
+function parseWithSizeSuffix(text: string): bigint | string {
+  if (!text) return "Attempt to read after eof";
+  let i = 0;
+  let value = 0n;
+  let sign = false;
+  let digits = false;
+  for (; i < text.length; i++) {
+    const c = text[i]!;
+    if ((c === "+" || c === "-") && !digits) {
+      if (sign) return "Cannot parse number with multiple sign (+/-) characters";
+      if (c === "-") return "Unsigned type must not contain '-' symbol";
+      sign = true;
+    } else if (c >= "0" && c <= "9") {
+      digits = true;
+      value = BigInt.asUintN(64, value * 10n + BigInt(Number(c)));
+    } else break;
+  }
+  if (sign && !digits) return "Cannot parse number without any digits";
+  const suffix = SIZE_SUFFIXES[text[i] ?? ""];
+  if (suffix) {
+    i++;
+    if (i === text.length) {
+      value = BigInt.asUintN(64, value * suffix[0]);
+    } else if (text[i] === "i") {
+      value = BigInt.asUintN(64, value << suffix[1]);
+      i++;
+    }
+  }
+  if (i === text.length) return value;
+  const rest = text.slice(i).replace(/[\b\f\n\r\t\0\\']/g, (c) => `\\${ESCAPES[c] ?? c}`);
+  return `Cannot parse input: expected 'eof' before: '${rest}'`;
+}
+
+/** A Float64 as fmt writes it: the shortest digits, with an exponent below 1e-4 and from 1e16. */
+function formatFloat(x: number): string {
+  if (!Number.isFinite(x)) return Number.isNaN(x) ? "nan" : x < 0 ? "-inf" : "inf";
+  const [mantissa, power] = x.toExponential().split("e") as [string, string];
+  const exponent = Number(power);
+  if (exponent < -4 || exponent >= 16) return `${mantissa}e${exponent < 0 ? "-" : "+"}${String(Math.abs(exponent)).padStart(2, "0")}`;
+  const digits = mantissa.replace(/[-.]/g, "");
+  const sign = x < 0 ? "-" : "";
+  if (exponent < 0) return `${sign}0.${"0".repeat(-exponent - 1)}${digits}`;
+  if (exponent >= digits.length - 1) return `${sign}${digits}${"0".repeat(exponent - digits.length + 1)}`;
+  return `${sign}${digits.slice(0, exponent + 1)}.${digits.slice(exponent + 1)}`;
+}
+
+/** parseMaxValue: what ClickHouse throws for a limit that is no UInt64; execution_time is kept in nanoseconds. */
+function checkQuotaValue(p: P, type: string, value: Lit, at: number): void {
+  let number: number;
+  if (value.t === "String") {
+    const parsed = parseWithSizeSuffix(value.v.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, ""));
+    if (typeof parsed === "string") p.failOther(parsed, at);
+    number = Number(parsed);
+  } else {
+    number = value.t === "UInt64" || value.t === "Int64" || value.t === "Float64" ? value.v : 0;
+    if (type !== "execution_time" && value.t === "Float64") {
+      if (!Number.isFinite(number)) p.failOther("Cannot convert infinite value to integer type", at);
+      if (number < 0 || number >= 2 ** 64) p.failOther("Cannot convert out of range floating point value to integer type", at);
+    }
+  }
+  const scaled = number * 1e9;
+  if (type === "execution_time" && !(scaled >= 0 && scaled < 2 ** 64))
+    p.failOther(`Value ${formatFloat(number)} is out of range for the quota type execution_time`, at);
 }
 
 /** MAX queries = 100, errors = 10 or queries MAX 100, ... */
@@ -821,10 +963,14 @@ function parseQuotaLimits(p: P): boolean {
   let maxPrefix = false;
   const limit = () => {
     if (kw(p, "MAX")) maxPrefix = true;
-    if (!parseQuotaType(p)) return false;
+    const type = parseQuotaType(p);
+    if (!type) return false;
     if (maxPrefix) tok(p, T.Equals);
     else if (!kw(p, "MAX")) return false;
-    return parseNumber(p) !== null || parseStringLiteral(p) !== null;
+    const at = p.i;
+    const value = parseNumber(p) ?? parseStringLiteral(p);
+    if (value) checkQuotaValue(p, type, value.value!, at);
+    return value !== null;
   };
   return listUtil(p, limit, undefined, false);
 }
@@ -1253,9 +1399,10 @@ export function parseShowAccessQuery(p: P): Ast | null {
 
 // --- GRANT, REVOKE, CHECK GRANT, SET ROLE and EXECUTE AS ----------------------------------------
 
-/** CURRENT GRANTS (rights) or CURRENT GRANTS ON table. */
-function parseCurrentGrants(p: P): boolean {
-  if (tok(p, T.OpeningRoundBracket)) return parseAccessRightsElements(p) && tok(p, T.ClosingRoundBracket);
+/** CURRENT GRANTS (rights) or CURRENT GRANTS ON table, which grants ALL there. */
+function parseCurrentGrants(p: P, keywords: string[]): boolean {
+  if (tok(p, T.OpeningRoundBracket)) return parseAccessRightsElements(p, keywords) && tok(p, T.ClosingRoundBracket);
+  keywords.push("ALL");
   return kw(p, "ON") && parseDatabaseAndTableNameOrAsterisks(p) !== null;
 }
 
@@ -1272,13 +1419,13 @@ export function parseGrantQuery(p: P): Ast | null {
       if (kw(p, "GRANT OPTION FOR")) grantOption = true;
       else if (kw(p, "ADMIN OPTION FOR")) adminOption = true;
     }
-    let rights = false;
+    // The access types granted; NONE, USAGE and NO PRIVILEGES add no rights.
+    const keywords: string[] = [];
     let roles = false;
     if (!revoke && kw(p, "CURRENT GRANTS")) {
-      if (!parseCurrentGrants(p)) return null;
-      rights = true;
-    } else if (parseAccessRightsElements(p)) {
-      rights = true;
+      if (!parseCurrentGrants(p, keywords)) return null;
+    } else if (parseAccessRightsElements(p, keywords)) {
+      // GRANT rights.
     } else if (attempt(p, () => parseRolesOrUsersSet(p, { params: true, all: revoke }))) {
       roles = true;
     } else {
@@ -1298,7 +1445,7 @@ export function parseGrantQuery(p: P): Ast | null {
     }
     if (!cluster) parseOnCluster(p);
     if (grantOption && roles) p.fail("GRANT OPTION should be specified for access types");
-    if (adminOption && rights) p.fail("ADMIN OPTION should be specified for roles");
+    if (adminOption && keywords.some((keyword) => !NO_ACCESS_TYPES.has(keyword))) p.fail("ADMIN OPTION should be specified for roles");
     return new Ast("GrantQuery");
   });
 }

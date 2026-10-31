@@ -159,7 +159,14 @@ class Analyzer {
       const next = this.statement(i, this.end(i));
       i = next > i ? next : i + 1;
     }
+    // ClickHouse reads the type of a query parameter from its text, so every one stays as written.
+    for (let j = 0; j < this.n; j++) if (this.parameterAt(j)) this.shape.verbatim[j] = this.shape.match[j]!;
     return this.shape;
+  }
+
+  /** Whether "{" at `i` opens a query parameter {name:Type}. */
+  private parameterAt(i: number): boolean {
+    return this.is(i, T.OpeningCurlyBrace) && this.shape.match[i]! >= 0 && (this.is(i + 1, T.BareWord) || this.is(i + 1, T.QuotedIdentifier)) && this.is(i + 2, T.Colon);
   }
 
   // ---- Token helpers ----
@@ -987,6 +994,7 @@ class Analyzer {
   /** The "." at `i` and the member after it. */
   private member(i: number): number {
     i++;
+    if (this.is(i, T.OpeningCurlyBrace)) return this.brace(i);
     if (this.is(i, T.Caret) || this.is(i, T.Colon)) i++;
     if (i < this.n && !ENDERS.has(this.kind(i)!)) i++;
     return i;
@@ -1057,10 +1065,7 @@ class Analyzer {
   private brace(i: number): number {
     const close = this.shape.match[i]!;
     if (close < 0) return this.n;
-    if (this.is(i + 1, T.BareWord) && this.is(i + 2, T.Colon)) {
-      this.shape.verbatim[i] = close;
-      return close + 1;
-    }
+    if (this.parameterAt(i)) return close + 1;
     let j = i + 1;
     while (j < close) {
       j = this.expr(j, close, {});

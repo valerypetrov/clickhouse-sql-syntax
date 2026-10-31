@@ -102,6 +102,10 @@ describe("Less common clauses and statements", () => {
     "GRANT SELECT ON db* TO u",
     "GRANT CURRENT GRANTS(SELECT ON db.*) TO u",
     "REVOKE ADMIN OPTION FOR r FROM u",
+    "GRANT USAGE ON *.* TO u WITH ADMIN OPTION",
+    "GRANT NONE, NO PRIVILEGES(a) ON db.t TO u WITH ADMIN OPTION",
+    "GRANT CURRENT GRANTS(usage ON *.*) TO u WITH ADMIN OPTION",
+    "REVOKE ADMIN OPTION FOR USAGE ON *.* FROM u",
     "REVOKE ALL ON *.* FROM ALL",
     "REVOKE r FROM ALL",
     "GRANT r TO ALL",
@@ -270,6 +274,10 @@ describe("Less common clauses and statements", () => {
     ["GRANT SELECT ON db*.t TO u", 20, "Expected one of: token, Asterisk"],
     ["GRANT r TO u WITH GRANT OPTION", 30, "GRANT OPTION should be specified for access types"],
     ["GRANT SELECT ON t TO u WITH ADMIN OPTION", 40, "ADMIN OPTION should be specified for roles"],
+    ["GRANT USAGE, SELECT ON *.* TO u WITH ADMIN OPTION", 49, "ADMIN OPTION should be specified for roles"],
+    ["GRANT USAGE ON *.*, SELECT ON t TO u WITH ADMIN OPTION", 54, "ADMIN OPTION should be specified for roles"],
+    ["GRANT CURRENT GRANTS ON *.* TO u WITH ADMIN OPTION", 50, "ADMIN OPTION should be specified for roles"],
+    ["REVOKE ADMIN OPTION FOR SELECT ON *.* FROM u", 44, "ADMIN OPTION should be specified for roles"],
     ["CREATE USER u IDENTIFIED WITH jwt", 33, "CREATE USER is not supported for JWT"],
     ["CREATE USER '{u:Identifier}'", 12, "String literals don't support query parameters substitution, remove single quotes surrounding the query parameter"],
     ["ALTER USER u, v RENAME TO w", 16, "Expected one of: token, At, Comma, NOT IDENTIFIED, IDENTIFIED, ADD, RESET AUTHENTICATION METHODS TO…"],
@@ -312,5 +320,78 @@ describe("REFRESH intervals", () => {
     ["CREATE MATERIALIZED VIEW mv REFRESH EVERY 1 YEAR OFFSET 365 DAY ENGINE = Memory AS SELECT 1", 60, "OFFSET must be less than the period"],
     ["CREATE MATERIALIZED VIEW mv REFRESH EVERY 1 DAY OFFSET 1 MONTH ENGINE = Memory AS SELECT 1", 57, "OFFSET must be less than the period"],
     ["CREATE MATERIALIZED VIEW mv REFRESH EVERY 100 MILLISECOND ENGINE = Memory AS SELECT 1", 46, "Sub-second intervals are not supported here."],
+  ]);
+});
+
+describe("Unsigned integers past UInt64", () => {
+  accepts([
+    "ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 18446744073709551615",
+    "ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 000018446744073709551615",
+    "SELECT x.18446744073709551616",
+  ]);
+
+  rejects([
+    ["ALTER TABLE x ADD INDEX x x TYPE x GRANULARITY 18446744073709551616", 47, "Expected unsigned integer"],
+    [
+      "CREATE TABLE x (s AggregateFunction(18446744073709551616()))",
+      36,
+      "Expected one of: unsigned integer, function, function name, compound identifier, identifier",
+    ],
+  ]);
+});
+
+// Errors ClickHouse throws while it parses, with other codes than SYNTAX_ERROR; from its tests 01297, 04695 and 05291.
+describe("Values that the parser checks", () => {
+  const quota = (limit: string) => `CREATE QUOTA q FOR INTERVAL 1 MINUTE MAX ${limit}`;
+  accepts([
+    quota("query_selects = '1K', execution_time = '1Ki', queries = ' 1 ', errors = 'K', read_rows = '18446744073709551616'"),
+    quota("query_selects = -1, queries = 1.5, errors = 1e19, read_rows = 0x10, result_rows = 18446744073709551615"),
+    quota("execution_time = 1.5, execution_time = 1e-10, execution_time = '1G', execution_time = -0"),
+    "CREATE TABLE t TO INNER UUID '00000000-0000-0000-0000-000000000001' (x UInt32) ENGINE = SharedSet('/z', 'r')",
+    "CREATE MATERIALIZED VIEW v TO INNER UUID '00000000-0000-0000-0000-000000000001' ENGINE = Memory AS SELECT 1",
+    "CREATE USER u HOST IP '1.2.3.4', '1', '256', '1.2.3', '0x7f.1', '01.2.3.4', '1.2.3.4 x', '', '0.0.0.0', '::'",
+    "CREATE USER u HOST IP '0::0', '::ffff:1.2.3.4', '2001:db8::/32', '1.2.3.4/255.255.0.0', '1.2.3.4/32', '::1/128'",
+    "ALTER USER u ADD HOST IP '1.2.3.4/::ffff:255.255.0.0'",
+  ]);
+
+  rejects([
+    [quota("query_selects = '1.5'"), 57, "Cannot parse input: expected 'eof' before: '.5'"],
+    [quota("execution_time = '1 1'"), 58, "Cannot parse input: expected 'eof' before: ' 1'"],
+    [quota("query_selects = '1K1'"), 57, "Cannot parse input: expected 'eof' before: '1'"],
+    [quota("query_selects = 'foo'"), 57, "Cannot parse input: expected 'eof' before: 'foo'"],
+    [quota("query_selects = 'a\\'b'"), 57, "Cannot parse input: expected 'eof' before: 'a\\'b'"],
+    [quota("query_selects = '1KiB'"), 57, "Cannot parse input: expected 'eof' before: 'B'"],
+    [quota("query_selects = '-1'"), 57, "Unsigned type must not contain '-' symbol"],
+    [quota("query_selects = '++1'"), 57, "Cannot parse number with multiple sign (+/-) characters"],
+    [quota("query_selects = '+K'"), 57, "Cannot parse number without any digits"],
+    [quota("query_selects = ''"), 57, "Attempt to read after eof"],
+    [quota("query_selects = inf"), 57, "Cannot convert infinite value to integer type"],
+    [quota("query_selects = nan"), 57, "Cannot convert infinite value to integer type"],
+    [quota("query_selects = -0.5"), 57, "Cannot convert out of range floating point value to integer type"],
+    [quota("query_selects = 18446744073709551616"), 57, "Cannot convert out of range floating point value to integer type"],
+    [quota("execution_time = 1e19"), 58, "Value 1e+19 is out of range for the quota type execution_time"],
+    [quota("execution_time = 18446744073709551616"), 58, "Value 1.8446744073709552e+19 is out of range for the quota type execution_time"],
+    [quota("execution_time = inf"), 58, "Value inf is out of range for the quota type execution_time"],
+    [quota("execution_time = -1e19"), 58, "Value -1e+19 is out of range for the quota type execution_time"],
+    [quota("execution_time = -0.00001"), 58, "Value -1e-05 is out of range for the quota type execution_time"],
+    [quota("execution_time = 1e15"), 58, "Value 1000000000000000 is out of range for the quota type execution_time"],
+    ["CREATE QUOTA q FOR INTERVAL 1 MINUTE EXECUTION TIME MAX '1T'", 56, "Value 1000000000000 is out of range for the quota type execution_time"],
+    [quota("execution_time = '18446744073709551615'"), 58, "Value 1.8446744073709552e+19 is out of range for the quota type execution_time"],
+    ["CREATE TABLE t TO INNER UUID '00000000-0000-0000-0000-000000000000' (x UInt32) ENGINE = SharedSet('/z', 'r')", 29, "TO INNER UUID cannot use a Nil UUID"],
+    ["CREATE TABLE t TO INNER UUID 'zzz' (x UInt32) ENGINE = SharedJoin('/z', 'r')", 29, "Cannot parse uuid zzz"],
+    ["CREATE MATERIALIZED VIEW v TO INNER UUID '00000000000000000000000000000000' AS SELECT 1", 41, "TO INNER UUID cannot use a Nil UUID"],
+    ["CREATE USER u HOST IP ':::'", 22, "Invalid address: :::"],
+    ["CREATE USER u HOST IP '1.2.3.4', '0'", 33, "Invalid address: 0"],
+    ["CREATE USER u HOST IP ' 1.2.3.4'", 22, "Invalid address:  1.2.3.4"],
+    ["CREATE USER u HOST IP '1.2.3.256'", 22, "Invalid address: 1.2.3.256"],
+    ["CREATE USER u HOST IP '4294967296'", 22, "Invalid address: 4294967296"],
+    ["CREATE USER u HOST IP '[::1]'", 22, "Invalid address: [::1]"],
+    ["CREATE USER u HOST IP '::1 '", 22, "Invalid address: ::1 "],
+    ["CREATE USER u HOST IP '1.2.3.4/x'", 22, "Invalid address: x"],
+    ["CREATE USER u HOST IP '1.2.3.4/33'", 22, "Invalid argument: Invalid prefix length passed to IPAddress()"],
+    ["CREATE USER u HOST IP '::1/129'", 22, "Invalid argument: Invalid prefix length passed to IPAddress()"],
+    ["CREATE USER u HOST IP '1.2.3.4/'", 22, "stoul: no conversion"],
+    ["CREATE USER u HOST IP '1.2.3.4/99999999999999999999'", 22, "stoul: out of range"],
+    ["ALTER USER u DROP HOST IP ':::'", 26, "Invalid address: :::"],
   ]);
 });

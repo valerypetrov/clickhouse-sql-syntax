@@ -211,6 +211,26 @@ describe("ClickHouse server check", function () {
     await until("the diagnostic to go", () => serverDiagnostics(editor.document).length === 0 || undefined);
   });
 
+  // EXPLAIN would write its own output in the format, which GeoJSON and Template cannot do.
+  it("explains a SELECT without its FORMAT, and readonly=1 still refuses its SETTINGS", async () => {
+    const before = sent.length;
+    const editor = await open(
+      "SELECT 1 AS x FORMAT GeoJSON;\nSELECT 2 AS y FORMAT Template;\nSELECT 3 AS z FORMAT GeoJSON SETTINGS max_threads = 1;\nSELECT nope FORMAT GeoJSON;\n",
+    );
+    const explained = (sql: string) => sent.slice(before).find((request) => request.sql === `EXPLAIN QUERY TREE ${sql}` && request.status);
+    const replies = await until("the four queries to be explained", () => {
+      const found = ["SELECT 1 AS x", "SELECT 2 AS y", "SELECT 3 AS z SETTINGS max_threads = 1", "SELECT nope"].map(explained);
+      return found.every(Boolean) ? found.map((request) => request!.status) : undefined;
+    });
+    assert.deepEqual(replies.slice(0, 2), [200, 200]);
+    assert.notEqual(replies[2], 200, "readonly=1 refuses the SETTINGS");
+    const found = await until("a server diagnostic", () => {
+      const diagnostics = serverDiagnostics(editor.document);
+      return diagnostics.length ? diagnostics : undefined;
+    });
+    assert.deepEqual(found.map((d) => editor.document.getText(d.range)), ["nope"]);
+  });
+
   it("lists databases, tables and columns, cached until Refresh Schema", async () => {
     assert.ok((await api.schema.databases()).includes("logs"));
     assert.deepEqual(await api.schema.tables("logs"), ["rc_logs_replicated_365", "unique_message_keys_replicated"]);
@@ -226,6 +246,18 @@ describe("ClickHouse server check", function () {
     await vscode.commands.executeCommand("clickhouseSql.server.refreshSchema");
     await api.schema.tables("logs");
     assert.ok(sent.slice(before).some((request) => request.sql.includes("FROM system.tables")));
+  });
+
+  // The server reads query parameters as escaped text, where \b is a backspace and a tab ends the value.
+  it("lists the tables and columns of names with a backslash, a tab or a line break", async () => {
+    await admin("CREATE DATABASE `odd\\\\db`");
+    const names = ["a\\b", "tab\there", "line\nbreak"];
+    for (const name of names) {
+      const quoted = name.replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
+      await admin(`CREATE TABLE \`odd\\\\db\`.\`${quoted}\` (x UInt8) ENGINE = Memory`);
+    }
+    assert.deepEqual(await api.schema.tables("odd\\db"), [...names].sort());
+    for (const name of names) assert.deepEqual(await api.schema.columns("odd\\db", name), [{ name: "x", type: "UInt8" }], name);
   });
 
   it("completes the databases, tables and columns of the server", async () => {

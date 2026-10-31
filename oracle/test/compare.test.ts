@@ -126,4 +126,9 @@ test("errorSummary keeps the part of a ClickHouse error that check() reports", (
     errorSummary("Syntax error: failed at position 10 (end of query): (1. Unmatched parentheses: '(' at position 8 is never closed"),
     "Unmatched parentheses: '(' at position 8 is never closed",
   );
+  // With nothing expected, only where it failed, which check() reports as "Syntax error".
+  assert.equal(errorSummary("Syntax error: failed at position 11 ()): ) SELECT 1"), "Syntax error");
+  assert.equal(errorSummary("Syntax error (query): failed at position 3 (x) (line 2, col 1): x)"), "Syntax error");
+  assert.equal(errorSummary("Syntax error: failed at position 3 (y): y"), "Syntax error");
+  assert.equal(errorSummary("ADMIN OPTION should be specified for roles"), "ADMIN OPTION should be specified for roles");
 });

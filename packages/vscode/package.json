@@ -56,7 +56,10 @@
       {
         "language": "clickhouse-sql",
         "scopeName": "source.clickhouse-sql",
-        "path": "./syntaxes/clickhouse-sql.tmLanguage.json"
+        "path": "./syntaxes/clickhouse-sql.tmLanguage.json",
+        "tokenTypes": {
+          "meta.quoted-name.sql": "string"
+        }
       }
     ],
     "semanticTokenScopes": [

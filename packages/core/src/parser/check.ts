@@ -102,6 +102,35 @@ function expectedMessage(token: Token, sql: string, expected: Expected): string 
   return message;
 }
 
+/** What checking one statement gave, with offsets from where it begins; or that it needs more than `over` backtracks. */
+type Checked =
+  | { diagnostics: Omit<Diagnostic, "line" | "col">[]; spans: RoleSpan[]; next: number; backtracks: number; over?: undefined }
+  | { over: number };
+
+/**
+ * Statements checked before, by their text from where they begin to their first ';', for later calls
+ * of checkWithRoles() to take instead of parsing them again. It keeps the `size` used last.
+ */
+export class ParseCache {
+  private readonly checked = new Map<string, Checked>();
+
+  constructor(private readonly size = 20_000) {}
+
+  get(text: string): Checked | undefined {
+    const found = this.checked.get(text);
+    if (found) {
+      this.checked.delete(text);
+      this.checked.set(text, found);
+    }
+    return found;
+  }
+
+  set(text: string, checked: Checked): void {
+    this.checked.set(text, checked);
+    if (this.checked.size > this.size) this.checked.delete(this.checked.keys().next().value!);
+  }
+}
+
 /** One statement being checked: where it starts and the tokens from there on. */
 interface Statement {
   /** Offset where ClickHouse's query begins: after the previous one, its whitespace and ';'. */
@@ -112,10 +141,15 @@ interface Statement {
 
 class Checker {
   readonly diagnostics: Diagnostic[] = [];
-  /** The roles of the words of the last statement parsed, when they are asked for. */
-  roles?: Roles;
+  /** The roles of the words of the last statement, when they are asked for. */
+  spans: RoleSpan[] = [];
+  private roles?: Roles;
   private readonly lines: Lines;
   private readonly budget = new Budget();
+  /** The parse of the last statement, the furthest token that anything else looked at, and whether to keep it. */
+  private parsed?: P;
+  private lookedAt = 0;
+  private keep = true;
 
   constructor(
     private readonly sql: string,
@@ -154,8 +188,9 @@ class Checker {
     const stack: Token[] = [];
     for (let i = start; i < toks.length; i++) {
       const token = toks[i]!;
-      if (token.kind === T.EndOfStream || isErrorKind(token.kind)) break;
       if (!stack.length && token.start >= statementEnd) break;
+      this.lookedAt = Math.max(this.lookedAt, i);
+      if (token.kind === T.EndOfStream || isErrorKind(token.kind)) break;
       if (token.kind === T.OpeningRoundBracket || token.kind === T.OpeningSquareBracket) {
         stack.push(token);
       } else if (token.kind === T.ClosingRoundBracket || token.kind === T.ClosingSquareBracket) {
@@ -200,12 +235,56 @@ class Checker {
     return i;
   }
 
+  /**
+   * checkStatement(), or what the cache has for the same text. A statement is kept only when nothing after
+   * its first ';' decided it, and a hit costs the backtracks of its parse, so the result never changes.
+   */
+  checkCached(statement: Statement, cache?: ParseCache): number {
+    if (!cache) return this.checkStatement(statement);
+    const { toks, start, begin } = statement;
+    const endIndex = this.statementEndIndex(toks, start);
+    const keyEnd = toks[endIndex]!.end;
+    const key = this.sql.slice(begin, keyEnd);
+    const hit = cache.get(key);
+    if (hit?.over !== undefined && this.budget.backtracks <= hit.over) throw new OutOfBudget();
+    if (hit && hit.over === undefined) {
+      this.budget.backtracks -= hit.backtracks;
+      if (this.budget.backtracks < 0) throw new OutOfBudget();
+      for (const d of hit.diagnostics) this.report(begin + d.start, begin + d.end, d.message, d.severity);
+      this.spans = hit.spans.map((span) => ({ ...span, start: begin + span.start, end: begin + span.end }));
+      return begin + hit.next;
+    }
+    const reported = this.diagnostics.length;
+    const left = this.budget.backtracks;
+    let next: number;
+    try {
+      next = this.checkStatement(statement);
+    } catch (error) {
+      if (error instanceof OutOfBudget) cache.set(key, { over: left });
+      throw error;
+    }
+    const p = this.parsed;
+    if (this.keep && next <= keyEnd && Math.max(this.lookedAt, p?.maxIndex ?? 0) <= endIndex) {
+      cache.set(key, {
+        diagnostics: this.diagnostics.slice(reported).map((d) => ({ message: d.message, start: d.start - begin, end: d.end - begin, severity: d.severity })),
+        spans: this.spans.map((span) => ({ ...span, start: span.start - begin, end: span.end - begin })),
+        next: next - begin,
+        backtracks: p?.backtracks ?? 0,
+      });
+    }
+    return next;
+  }
+
   /** Checks one statement and returns the offset where the next one may start. */
   checkStatement(statement: Statement): number {
     const { toks, start, begin } = statement;
     const sql = this.sql;
     const endIndex = this.statementEndIndex(toks, start);
     const afterStatement = toks[endIndex]!.end;
+    this.parsed = undefined;
+    this.lookedAt = 0;
+    this.keep = true;
+    this.spans = [];
 
     const startsWithInsert = (() => {
       const probe = new P(toks, sql, start);
@@ -222,6 +301,7 @@ class Checker {
     }
 
     const p = new P(toks, sql, start, this.budget);
+    this.parsed = p;
     if (this.withRoles) p.roles = this.roles = new Roles(p);
     let node: Ast | null;
     try {
@@ -232,11 +312,14 @@ class Checker {
         return afterStatement;
       }
       if (error instanceof RangeError) {
+        // How deep the stack may go depends on the caller, so this one is not kept.
+        this.keep = false;
         this.reportToken(toks[start]!, `Maximum parse depth (${MAX_PARSER_DEPTH}) exceeded. Consider rising max_parser_depth parameter.`);
         return afterStatement;
       }
       throw error;
     }
+    if (this.roles) this.spans = this.roles.spans();
     // tryParseQuery() calls checkDepth() on the AST before anything else.
     if (node && astDepth(node) >= MAX_PARSER_DEPTH) {
       this.reportToken(toks[start]!, `AST is too deep. Maximum: ${MAX_PARSER_DEPTH}`);
@@ -246,7 +329,11 @@ class Checker {
     const last = toks[lastIndex]!;
 
     const data = node ? insertData(node) : undefined;
-    if (data !== undefined) return this.insertDataEnd(node!, data, toks, start);
+    if (data !== undefined) {
+      // Where inline data ends depends on the text after it.
+      this.keep = false;
+      return this.insertDataEnd(node!, data, toks, start);
+    }
 
     if (isErrorKind(last.kind)) {
       this.reportToken(last, LEXER_ERROR_MESSAGES[last.kind]!);
@@ -393,13 +480,13 @@ export function roles(sql: string): RoleSpan[] {
   return spans;
 }
 
-/** check() and roles() in one pass. */
-export function checkWithRoles(sql: string): { diagnostics: Diagnostic[]; spans: RoleSpan[] } {
+/** check() and roles() in one pass, taking the statements that `cache` has from it. */
+export function checkWithRoles(sql: string, cache?: ParseCache): { diagnostics: Diagnostic[]; spans: RoleSpan[] } {
   const spans: RoleSpan[] = [];
-  return { diagnostics: checkAll(sql, spans), spans };
+  return { diagnostics: checkAll(sql, spans, cache), spans };
 }
 
-function checkAll(sql: string, spans?: RoleSpan[]): Diagnostic[] {
+function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache): Diagnostic[] {
   const checker = new Checker(sql, spans !== undefined);
   const stream = new TokenStream(sql);
   let offset = 0;
@@ -418,7 +505,7 @@ function checkAll(sql: string, spans?: RoleSpan[]): Diagnostic[] {
     const reported = checker.diagnostics.length;
     let next: number;
     try {
-      next = checker.checkStatement({ begin, toks: stream.significant, start });
+      next = checker.checkCached({ begin, toks: stream.significant, start }, cache);
     } catch (error) {
       if (!(error instanceof OutOfBudget)) throw error;
       // Better nothing than a guess: the rest gets one warning instead of errors.
@@ -426,7 +513,7 @@ function checkAll(sql: string, spans?: RoleSpan[]): Diagnostic[] {
       break;
     }
     if (checker.diagnostics.length === reported) {
-      if (spans) for (const span of checker.roles!.spans()) spans.push(span);
+      if (spans) for (const span of checker.spans) spans.push(span);
       next = adjustQueryEnd(sql, stream, next);
     }
     if (next <= offset) break;
