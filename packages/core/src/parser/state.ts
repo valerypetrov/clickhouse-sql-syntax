@@ -14,6 +14,8 @@ export const MAX_PARSER_BACKTRACKS = 1_000_000;
 /** Backtracks shared by all statements of one check() call: about a second of work. */
 export class Budget {
   backtracks = 2 * MAX_PARSER_BACKTRACKS;
+  /** Tokens parsed again, as after a backtrack; only the keyword probes of complete() limit them. */
+  tokens = Infinity;
 }
 
 /** Thrown when a check() call has used up its Budget. */
@@ -179,7 +181,7 @@ export class P {
           this.i,
           false,
         );
-      if (this.budget && --this.budget.backtracks < 0) throw new OutOfBudget();
+      if (this.budget && (--this.budget.backtracks < 0 || (this.budget.tokens -= this.i - i) < 0)) throw new OutOfBudget();
     }
     this.i = i;
     this.roles?.rewind(i);
