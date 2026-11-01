@@ -469,14 +469,14 @@ describe("ClickHouse server check", function () {
     assert.ok(sent.length > 0);
     for (const request of sent) {
       assert.equal(request.params.get("readonly"), "1", request.sql);
-      assert.match(request.sql, /^(EXPLAIN QUERY TREE |SELECT .* FROM system\.(databases|tables|columns)\b)/s);
+      assert.match(request.sql, /^(EXPLAIN QUERY TREE |SELECT .* FROM system\.(databases|tables|columns|clusters|macros)\b)/s);
     }
     await admin("SYSTEM FLUSH LOGS");
     const logged = await rows(`SELECT DISTINCT query_kind, query FROM system.query_log WHERE user = '${USER}'`);
     assert.ok(logged.some((row) => row.query_kind === "Explain"));
     for (const row of logged) {
       const explain = row.query_kind === "Explain" && row.query!.startsWith("EXPLAIN QUERY TREE ");
-      const schema = row.query_kind === "Select" && /^SELECT .* FROM system\.(databases|tables|columns)\b/s.test(row.query!);
+      const schema = row.query_kind === "Select" && /^SELECT .* FROM system\.(databases|tables|columns|clusters|macros)\b/s.test(row.query!);
       assert.ok(explain || schema, row.query);
     }
     const tables = await rows("SELECT name FROM system.tables WHERE database = 'logs' ORDER BY name");
