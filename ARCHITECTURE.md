@@ -147,8 +147,8 @@ A range that does not hold the one before it is left out, so they nest. Operator
 In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
-  statements parsed, so that the diagnostics, the semantic tokens, hover, the outline and selections parse a statement
-  once, until it changes.
+  statements parsed, so that the diagnostics, the semantic tokens, hover, the outline, selections and names parse a
+  statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
   characters.
 - `outline.ts`: the document symbols of the Outline view, breadcrumbs and Go to Symbol from `outline()`, which takes
@@ -159,6 +159,7 @@ In `packages/vscode/src`:
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;
   hover takes the role of the word from the parser where completion does not tell what it is.
+- `names.ts`: go to definition, references, document highlights and rename through `names/`, with the document's `ParseCache`.
 - `server/`: the server check. `statements.ts` finds the SELECTs the server can explain: SELECT and WITH statements,
   and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`. `index.ts` sends each one as `EXPLAIN QUERY TREE`
   with `readonly=1`, 500 ms after a change, keeps the answers by query text, and puts an error on the name it

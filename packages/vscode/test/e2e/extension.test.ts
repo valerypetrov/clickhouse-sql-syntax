@@ -125,6 +125,8 @@ describe("ClickHouse SQL extension", () => {
     // Indentation folds nothing here, where the extension would fold the comments.
     assert.deepEqual(await vscode.commands.executeCommand("vscode.executeFoldingRangeProvider", uri), []);
     assert.deepEqual((await vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", uri)) ?? [], []);
+    assert.deepEqual(await vscode.commands.executeCommand("vscode.executeDefinitionProvider", uri, inName), []);
+    assert.deepEqual(await vscode.commands.executeCommand("vscode.executeDocumentHighlights", uri, inName), []);
   });
 
   it("leaves other languages alone", async () => {
