@@ -36,6 +36,7 @@ import {
   unquote,
 } from "./literals.js";
 import { parseSelectWithUnionQuery } from "./select.js";
+import { aliasKind } from "./names.js";
 import { base, kw, listUtil, P, peekKw, peekKwQuiet, T, tok, tokSeq } from "./state.js";
 
 /** ParserIdentifier: a bare word, a quoted name, or a {name:Identifier} parameter. */
@@ -195,6 +196,7 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
     if (startsWithFrom && parenthesesHoldExpressionOverColumnNamedFrom(p, open)) return null;
 
     let result = parseWithOptionalAlias(p, () => parseSelectWithUnionQuery(p), false);
+    let opaque = false;
     if (!result) {
       const explain = parseExplainQuery(p, true);
       if (explain) {
@@ -208,6 +210,7 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
           args.push(explained);
         }
         result = selectFromTableFunction(func("viewExplain", args));
+        opaque = true;
       } else if (kw(p, "VALUES")) {
         if (p.kind() !== T.OpeningRoundBracket) return null;
         const rows: Ast[] = [];
@@ -219,6 +222,7 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
           p.i++;
         }
         result = selectFromTableFunction(func("SQLStandardValues", rows));
+        opaque = true;
       } else {
         return null;
       }
@@ -226,6 +230,7 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
     if (out) out.startsValid = !possibleInner && !startsWithFrom;
     if (p.kind() !== T.ClosingRoundBracket) return null;
     p.i++;
+    if (opaque) p.names?.add("opaque", open, p.i - 1);
     const node = new Ast("Subquery");
     node.children = [result];
     return node;
@@ -486,13 +491,16 @@ export function parseAlias(p: P, allowWithoutAs: boolean): Ast | null {
 /** ParserWithOptionalAlias: an element, then an alias if the element can carry one. */
 export function parseWithOptionalAlias(p: P, element: () => Ast | null, allowWithoutAs: boolean): Ast | null {
   return base(p, "element of expression with optional alias", () => {
+    const begin = p.i;
     const node = element();
     if (!node) return null;
+    const bodyEnd = p.i - 1;
     const allowNow = allowWithoutAs && identifierName(node)?.toLowerCase() !== "from";
     const alias = parseAlias(p, allowNow);
     if (alias) {
       if (canHaveAlias(node)) {
         node.alias = alias.name;
+        p.names?.add("alias", begin, p.i - 1, { part: [begin, bodyEnd], name: [p.i - 1, p.i - 1], flag: aliasKind(node) });
       } else {
         p.expect("alias cannot be here");
         return null;
@@ -690,26 +698,39 @@ function parseTransformers(p: P, node: Ast, allowed: Transformers = ALL_TRANSFOR
 /** ParserAsterisk: * with an optional LIKE pattern and transformers. */
 export function parseAsterisk(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
   return base(p, "asterisk", () => {
+    const begin = p.i;
     if (p.kind() !== T.Asterisk) return null;
     p.i++;
     const matcher = parseLikePatternMatcher(p, false);
     if (matcher === "fail") return null;
-    return parseTransformers(p, matcher ?? new Ast("Asterisk"), allowed);
+    const node = parseTransformers(p, matcher ?? new Ast("Asterisk"), allowed);
+    markMatcher(p, node, begin);
+    return node;
   });
 }
 
 /** ParserQualifiedAsterisk: t.* or db.t.*. */
 export function parseQualifiedAsterisk(p: P): Ast | null {
   return base(p, "qualified asterisk", () => {
+    const begin = p.i;
     if (!parseCompoundIdentifier(p, false, true)) return null;
+    const qualifier: [number, number] = [begin, p.i - 1];
     if (p.kind() !== T.Dot) return null;
     p.i++;
     if (p.kind() !== T.Asterisk) return null;
     p.i++;
     const matcher = parseLikePatternMatcher(p, true);
     if (matcher === "fail") return null;
-    return parseTransformers(p, matcher ?? new Ast("QualifiedAsterisk"));
+    const node = parseTransformers(p, matcher ?? new Ast("QualifiedAsterisk"));
+    markMatcher(p, node, begin, qualifier);
+    return node;
   });
+}
+
+/** A matcher mark: its kind, and whether transformers follow it. */
+function markMatcher(p: P, node: Ast, begin: number, qualifier?: [number, number]): void {
+  const flag = node.kind + (node.has("transformers") ? " transformers" : "");
+  p.names?.add("matcher", begin, p.i - 1, { name: qualifier, flag });
 }
 
 /** (columns, ...) or ('regexp') after COLUMNS. */
@@ -728,17 +749,26 @@ function parseColumnsMatcherBody(p: P, allowed: Transformers, qualified: boolean
 
 /** ParserColumnsMatcher: COLUMNS(a, b) or COLUMNS('regexp'). */
 export function parseColumnsMatcher(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
-  return base(p, "COLUMNS matcher", () => (kw(p, "COLUMNS") ? parseColumnsMatcherBody(p, allowed, false) : null));
+  return base(p, "COLUMNS matcher", () => {
+    const begin = p.i;
+    const node = kw(p, "COLUMNS") ? parseColumnsMatcherBody(p, allowed, false) : null;
+    if (node) markMatcher(p, node, begin);
+    return node;
+  });
 }
 
 /** ParserQualifiedColumnsMatcher: t.COLUMNS(...). */
 export function parseQualifiedColumnsMatcher(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
   return base(p, "qualified COLUMNS matcher", () => {
+    const begin = p.i;
     const name = parseCompoundIdentifier(p, false, true);
     if (!name) return null;
     const parts = name.parts!;
     if (parts.length === 1 || parts[parts.length - 1] !== "COLUMNS") return null;
-    return parseColumnsMatcherBody(p, allowed, true);
+    const node = parseColumnsMatcherBody(p, allowed, true);
+    // The qualifier ends before ".COLUMNS".
+    if (node) markMatcher(p, node, begin, [begin, begin + 2 * (parts.length - 2)]);
+    return node;
   });
 }
 

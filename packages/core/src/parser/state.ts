@@ -3,6 +3,7 @@
  * A parser function takes a P and returns a node, or null and leaves p.i where it was.
  */
 import { TokenKind as T, isErrorKind, type Token } from "../types.js";
+import type { NameMarks } from "./names.js";
 import type { Role, Roles } from "./roles.js";
 
 export { T };
@@ -83,6 +84,8 @@ export class P {
   backtracks = 0;
   /** Where the roles of consumed words go, when someone asked for them. */
   roles?: Roles;
+  /** Where the names analysis marks go, along with the roles. */
+  names?: NameMarks;
   readonly last: number;
   private readonly lowered: (string | undefined)[] = [];
 
@@ -185,6 +188,7 @@ export class P {
     }
     this.i = i;
     this.roles?.rewind(i);
+    this.names?.rewind(i);
   }
 
   /** The tokens from `from` up to `to` have `role`. */
@@ -271,6 +275,7 @@ export function lookahead<R>(p: P, body: () => R, expected?: Expected): R {
     p.depth = depth;
     p.backtracks = backtracks;
     p.roles?.rewind(i);
+    p.names?.rewind(i);
   }
 }
 
@@ -329,6 +334,7 @@ export function peekKw(p: P, keyword: string): boolean {
   const ok = kw(p, keyword);
   p.i = begin;
   p.roles?.rewind(begin);
+  p.names?.rewind(begin);
   return ok;
 }
 

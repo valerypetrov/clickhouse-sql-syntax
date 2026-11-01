@@ -33,7 +33,9 @@ import { base, kw, P, peekKw, T, tok } from "./state.js";
 
 /** ParserSelectWithUnionQuery: selects joined by UNION, EXCEPT and INTERSECT, then pipe operators. */
 export function parseSelectWithUnionQuery(p: P): Ast | null {
-  return base(p, "SELECT query, possibly with UNION", () => {
+  const begin = p.i;
+  let pipe = false;
+  const result = base(p, "SELECT query, possibly with UNION", () => {
     const elements = parseUnionList(p);
     if (!elements) return null;
     let node: Ast;
@@ -43,9 +45,12 @@ export function parseSelectWithUnionQuery(p: P): Ast | null {
       node = new Ast("SelectWithUnionQuery");
       node.children = elements;
     }
-    if (p.kind() === T.PipeOperator) return parsePipeOperators(p, node);
+    pipe = p.kind() === T.PipeOperator;
+    if (pipe) return parsePipeOperators(p, node);
     return node;
   });
+  if (result) p.names?.add("union", begin, p.i - 1, pipe ? { flag: "pipe" } : {});
+  return result;
 }
 
 /** ParserUnionList: the elements of a UNION chain. */
@@ -117,6 +122,7 @@ export function parseOrderByClauseBody(p: P, node: Ast): boolean {
     const orderList = parseOrderByExpressionList(p);
     if (!orderList) return false;
     node.set("order_by", orderList);
+    const interpolateStart = p.i;
     if (orderList.children.some((element) => element.has("with_fill")) && kw(p, "INTERPOLATE")) {
       if (tok(p, T.OpeningRoundBracket)) {
         const interpolate = parseInterpolateExpressionList(p);
@@ -124,6 +130,7 @@ export function parseOrderByClauseBody(p: P, node: Ast): boolean {
         node.set("interpolate", interpolate);
         if (!tok(p, T.ClosingRoundBracket)) return false;
       }
+      p.names?.add("interpolate", interpolateStart, p.i - 1);
     }
   }
   return true;
@@ -181,11 +188,14 @@ function hasTopLevelSelectAlias(tables: Ast | null): boolean {
 
 /** ParserSelectQuery: WITH, SELECT and every clause after it, or the FROM-first form. */
 export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
-  return base(p, "SELECT query", () => {
+  const begin = p.i;
+  let projection: [number, number] | undefined;
+  let recursive = false;
+  const result = base(p, "SELECT query", () => {
     const node = new Ast("SelectQuery");
     let withList: Ast | null = null;
     if (kw(p, "WITH")) {
-      kw(p, "RECURSIVE");
+      recursive = kw(p, "RECURSIVE");
       withList = parseList(p, () => parseWithElement(p), undefined, true, true);
       if (!withList) return null;
       if (!withList.children.length) return null;
@@ -202,6 +212,7 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
         if (tok(p, T.OpeningRoundBracket)) {
           if (!parseAliasesExpressionList(p)) return false;
           if (!tok(p, T.ClosingRoundBracket)) return false;
+          p.names?.add("opaque", tablesEnd, p.i - 1);
         }
         return true;
       };
@@ -252,8 +263,10 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
         node.flag("top");
         if (kw(p, "WITH TIES")) node.flag("with_ties");
       }
+      const columnsBegin = p.i;
       const columns = parseNotEmptyExpressionList(p, true, true);
       if (!columns) return null;
+      projection = [columnsBegin, p.i - 1];
       node.set("select", columns);
       if (distinctOn) node.flag("distinct_on");
     }
@@ -262,9 +275,11 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
       tables = parseTablesInSelectQuery(p);
       if (!tables) return null;
     }
+    const open = p.i;
     if (tables && tok(p, T.OpeningRoundBracket)) {
       if (!parseAliasesExpressionList(p)) return null;
       if (!tok(p, T.ClosingRoundBracket)) return null;
+      p.names?.add("opaque", open, p.i - 1);
     }
     node.set("tables", tables);
     for (const clause of ["PREWHERE", "WHERE"]) {
@@ -303,6 +318,8 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
     if (withList) node.set("with", withList);
     return node;
   });
+  if (result) p.names?.add("query", begin, p.i - 1, { part: projection, flag: recursive ? "recursive" : undefined });
+  return result;
 }
 
 /** endsWithBarewordSelect: the tables parse ended right after a bare word `select`. */
@@ -469,21 +486,30 @@ export function parseWithElement(p: P): Ast | null {
     const ident = parseIdentifier(p);
     if (ident && p.kindAt(begin) === T.BareWord && ident.name.toLowerCase() === "select") return null;
     p.restore(begin);
+    let columns: [number, number] | undefined;
     const isCte =
       parseIdentifier(p) !== null &&
       (() => {
         if (!tok(p, T.OpeningRoundBracket)) return true;
+        const first = p.i;
         if (!parseAliasesExpressionList(p)) return false;
+        columns = [first, p.i - 1];
         return tok(p, T.ClosingRoundBracket);
       })() &&
       kw(p, "AS");
     if (isCte) {
-      kw(p, "MATERIALIZED");
+      const materialized = kw(p, "MATERIALIZED");
       const subquery = parseSubquery(p);
-      if (subquery) return new Ast("WithElement").set("subquery", subquery);
+      if (subquery) {
+        const flag = materialized ? "materialized" : "cte";
+        p.names?.add("with", begin, p.i - 1, columns ? { name: [begin, begin], part: columns, flag } : { name: [begin, begin], flag });
+        return new Ast("WithElement").set("subquery", subquery);
+      }
     }
     p.restore(begin);
-    return parseExpressionWithOptionalAlias(p, false);
+    const node = parseExpressionWithOptionalAlias(p, false);
+    if (node) p.names?.add("with", begin, p.i - 1, { flag: "expr" });
+    return node;
   });
 }
 
@@ -517,8 +543,10 @@ function parseArrayJoin(p: P): Ast | null {
       found = kw(p, "ARRAY JOIN");
     }
     if (!found) return null;
+    const first = p.i;
     const columns = parseNotEmptyExpressionList(p, false);
     if (!columns) return null;
+    p.names?.add("arrayjoin", saved, p.i - 1, { part: [first, p.i - 1], flag: p.isWord("left", saved) ? "left" : "inner" });
     return new Ast("ArrayJoin").set("columns", columns);
   });
 }
@@ -535,6 +563,7 @@ function parseJoinStrictness(p: P): string {
 /** ParserTablesInSelectQueryElement: the first table, or a join, or an ARRAY JOIN. */
 export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWithoutAs = true): Ast | null {
   return base(p, "table, table function, subquery or list of joined tables", () => {
+    const begin = p.i;
     const node = new Ast("TablesInSelectQueryElement");
     if (isFirst) {
       const table = parseTableExpression(p, allowWithoutAs);
@@ -593,10 +622,13 @@ export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWit
       if (!table) return null;
     }
 
+    let part: [number, number] | undefined;
+    let flag = `${kind}${natural ? " natural" : ""}${lateral ? " lateral" : ""}`;
     if (kind !== "comma" && kind !== "cross" && kind !== "paste" && !natural) {
       if (kw(p, "USING")) {
         const inBrackets = p.kind() === T.OpeningRoundBracket;
         if (inBrackets) p.i++;
+        const first = p.i;
         const columns = parseExpressionList(p, false);
         if (!columns) return null;
         if (!columns.children.length) {
@@ -604,19 +636,25 @@ export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWit
           p.expect("column identifier for USING");
           return null;
         }
+        part = [first, p.i - 1];
+        flag += " using";
         if (inBrackets) {
           if (p.kind() !== T.ClosingRoundBracket) return null;
           p.i++;
         }
         node.set("join", new Ast("TableJoin").set("using", columns));
       } else if (kw(p, "ON")) {
+        const first = p.i;
         const condition = parseExpression(p);
         if (!condition) return null;
+        part = [first, p.i - 1];
+        flag += " on";
         node.set("join", new Ast("TableJoin").set("on", condition));
       } else {
         return null;
       }
     }
+    p.names?.add("join", begin, p.i - 1, { part, flag });
     return node.set("table", table);
   });
 }
@@ -624,6 +662,7 @@ export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWit
 /** ParserTableExpression: a subquery, table function, table or (joined tables), with FINAL, SAMPLE, STREAM. */
 export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
   return base(p, "table or subquery or table function", () => {
+    const begin = p.i;
     const node = new Ast("TableExpression");
     let source =
       parseWithOptionalAlias(p, () => parseSubquery(p), allowWithoutAs) ??
@@ -631,7 +670,9 @@ export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
       parseWithOptionalAlias(p, () => parseCompoundIdentifier(p, true, true), allowWithoutAs) ??
       parseWithOptionalAlias(p, () => parseTableAsStringLiteral(p), allowWithoutAs);
     if (source?.kind === "Subquery") node.flag("subquery");
+    let sourceKind = source?.kind === "Subquery" ? "subquery" : source?.kind === "Function" ? "function" : source?.kind === "TableIdentifier" && p.kindAt(begin) === T.StringLiteral ? "string" : "name";
     if (!source) {
+      sourceKind = "joined";
       // (t1 JOIN t2 ON ...) in brackets.
       if (p.kind() !== T.OpeningRoundBracket) return null;
       const open = p.i;
@@ -654,9 +695,13 @@ export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
       }
     }
     node.set("source", source);
+    const alias: [number, number] | undefined = source.alias ? [p.i - 1, p.i - 1] : undefined;
+    let columns: [number, number] | undefined;
     if (p.kind() === T.OpeningRoundBracket) {
       p.i++;
+      const first = p.i;
       if (!parseAliasesExpressionList(p)) return null;
+      columns = [first, p.i - 1];
       if (p.kind() !== T.ClosingRoundBracket) return null;
       p.i++;
     }
@@ -673,6 +718,7 @@ export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
       if (!stream) return null;
       node.set("stream", stream);
     }
+    p.names?.add("table", begin, p.i - 1, { alias, part: columns, flag: sourceKind });
     return node;
   });
 }

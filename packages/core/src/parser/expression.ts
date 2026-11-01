@@ -34,6 +34,7 @@ import {
   parseWindowReference,
   parseWithOptionalAlias,
 } from "./elements.js";
+import { aliasKind } from "./names.js";
 import { parseSetQuery } from "./set.js";
 import { parseSelectWithUnionQuery } from "./select.js";
 import { base, Expected, kw, lookahead, P, peekKwQuiet, T, tok } from "./state.js";
@@ -211,6 +212,9 @@ abstract class Layer {
   parsedAlias = false;
   savedCheckpoint: { pos: number; checkpoint: Checkpoint } | null = null;
   currentCheckpoint = Checkpoint.None;
+  /** Where the current element begins, and the lambda in it that is not folded yet, as token indices. */
+  elementStart = -1;
+  lambda: { params: number; arrow: number } | null = null;
 
   constructor(
     readonly allowAlias = true,
@@ -535,6 +539,7 @@ class CastLayer extends Layer {
           const type = parseDataTypeAsText(p);
           if (type !== null && tok(p, T.ClosingRoundBracket)) {
             if (!this.insertAlias(alias)) return false;
+            markLayerAlias(p, this, afterAs - 1, afterAs);
             if (!this.mergeElement()) return false;
             this.elements = [this.makeCast(this.elements[0]!, type)];
             this.finished = true;
@@ -546,6 +551,7 @@ class CastLayer extends Layer {
         if (alias2 && tok(p, T.Comma)) {
           step.next = Action.Operand;
           if (!this.insertAlias(alias2)) return false;
+          markLayerAlias(p, this, afterAs - 1, afterAs);
           if (!this.mergeElement()) return false;
           this.state = 1;
           return true;
@@ -1214,6 +1220,7 @@ class EvalLayer extends Layer {
         return true;
       }
       p.i = begin;
+      p.names?.rewind(begin);
     }
     if (tok(p, T.Comma)) {
       step.next = Action.Operand;
@@ -1532,6 +1539,7 @@ function tryParseOperand(layers: Layer[], p: P): Action {
   const beforeName = p.i;
   const name = parseFunctionName(p);
   if (name && p.kind() === T.OpeningRoundBracket) {
+    p.names?.add("call", beforeName, p.i - 1);
     p.i++;
     layers.push(getFunctionLayer(name, layers[0]!.isTableFunction, isFirstIdentifier(layers)));
     return Action.Operand;
@@ -1540,6 +1548,7 @@ function tryParseOperand(layers: Layer[], p: P): Action {
 
   const ident = parseCompoundIdentifier(p, false, true) ?? parseSubstitution(p);
   if (ident) {
+    if (ident.kind === "Identifier") p.names?.add("ref", beforeName, p.i - 1, ident.has("param") ? { flag: "param" } : {});
     top.operands.push(ident);
     return Action.Operator;
   }
@@ -1644,6 +1653,8 @@ function tryParseOperator(layers: Layer[], p: P): Action {
     const alias = parseAlias(p, top.allowAliasWithoutAs);
     if (!alias || !top.insertAlias(alias)) return Action.None;
     top.parsedAlias = true;
+    markLayerAlias(p, top, saved, p.i - 1);
+    endLambda(p, top, saved - 1);
     return Action.Operator;
   }
   let current = found;
@@ -1654,6 +1665,7 @@ function tryParseOperator(layers: Layer[], p: P): Action {
       return Action.None;
     }
     top.operators.push(current);
+    top.lambda = { params: top.elementStart, arrow: saved };
     return Action.Operand;
   }
 
@@ -1733,6 +1745,21 @@ function tryParseOperator(layers: Layer[], p: P): Action {
   return Action.Operand;
 }
 
+/** The alias whose name ends at `last` covers the current element up to `aliasStart`. */
+function markLayerAlias(p: P, layer: Layer, aliasStart: number, last: number): void {
+  const node = layer.operands[layer.operands.length - 1];
+  if (!p.names || !node || layer.elementStart < 0) return;
+  p.names.add("alias", layer.elementStart, last, { part: [layer.elementStart, aliasStart - 1], name: [last, last], flag: aliasKind(node) });
+}
+
+/** The lambda of the layer ends at token `last` once its operator is folded into the element. */
+function endLambda(p: P, layer: Layer, last: number): void {
+  const lambda = layer.lambda;
+  if (!lambda || layer.hasPendingOperator(Op.Lambda)) return;
+  layer.lambda = null;
+  if (lambda.params >= 0) p.names?.add("lambda", lambda.params, last, { part: [lambda.params, lambda.arrow - 1] });
+}
+
 /** ParserExpressionImpl::parse: the main loop over layers. */
 function parseLayers(p: P, start: Layer): Ast | null {
   const step: Step = { next: Action.Operand };
@@ -1740,7 +1767,9 @@ function parseLayers(p: P, start: Layer): Ast | null {
   for (;;) {
     while (p.valid()) {
       const top = layers[layers.length - 1]!;
+      const before = p.i;
       if (!top.parse(p, step)) break;
+      endLambda(p, top, before - 1);
       if (top.finished) {
         if (layers.length === 1) break;
         step.next = Action.Operator;
@@ -1750,12 +1779,16 @@ function parseLayers(p: P, start: Layer): Ast | null {
         layers[layers.length - 1]!.operands.push(result);
         continue;
       }
+      if (step.next === Action.Operand && top.isCurrentElementEmpty()) top.elementStart = p.i;
       step.next = step.next === Action.Operand ? tryParseOperand(layers, p) : tryParseOperator(layers, p);
       if (step.next === Action.None) break;
     }
     if (layers.length === 1) {
       const node = layers[0]!.getResult();
-      if (node) return node;
+      if (node) {
+        endLambda(p, layers[0]!, p.i - 1);
+        return node;
+      }
     }
     layers.pop();
     while (layers.length && !layers[layers.length - 1]!.savedCheckpoint) layers.pop();
