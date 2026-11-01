@@ -103,7 +103,8 @@ In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
   statements parsed, so that the diagnostics, the semantic tokens and hover parse a statement once, until it changes.
-- `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar.
+- `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
+  characters.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;

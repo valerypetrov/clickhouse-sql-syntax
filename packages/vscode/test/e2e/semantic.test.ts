@@ -100,4 +100,21 @@ describe("Semantic tokens", () => {
     const editor = vscode.workspace.getConfiguration("editor", { languageId: LANGUAGE_ID });
     assert.equal(editor.get("semanticHighlighting.enabled"), true);
   });
+
+  // With semantic tokens on this line of 237,801 characters, completion at its end took 39 s.
+  it("leave lines over 10,000 characters to the grammar, so that completion on them stays quick", async function () {
+    this.timeout(120_000);
+    const columns = Array.from({ length: 10_000 }, (_, i) => `number + ${i} AS c${i}`).join(", ");
+    const document = await open(`SELECT key FROM t;\nSELECT ${columns} FROM numbers(1)`);
+    // Long enough for VS Code to ask for the semantic tokens and apply them.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const start = performance.now();
+    const end = document.positionAt(document.getText().length);
+    await vscode.commands.executeCommand("vscode.executeCompletionItemProvider", document.uri, end);
+    const ms = performance.now() - start;
+    assert.ok(ms < 10_000, `completion took ${ms.toFixed(0)} ms`);
+    assert.deepEqual(await semanticTokens(document), [
+      ["SELECT", "keyword"], ["key", "variable"], ["FROM", "keyword"], ["t", "variable"],
+    ]);
+  });
 });
