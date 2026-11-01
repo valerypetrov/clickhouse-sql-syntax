@@ -91,6 +91,20 @@ generated lists, the oracle's numbers, the statements the release accepts and `c
 - GitHub does not start the other workflows on a pull request that a workflow opened; close and reopen it to start them.
 - It needs **Allow GitHub Actions to create and approve pull requests** in Settings, Actions, General.
 
+## Publishing
+
+`.github/workflows/release.yml` publishes the extension when CI passes on `main` and the version in
+`packages/vscode/package.json` has no `v<version>` tag yet. It runs the tests, packs the `.vsix`, publishes it to the
+Visual Studio Marketplace, and to Open VSX when `OVSX_PAT` is set, then creates the GitHub release and its tag with the
+`.vsix`. So a version bump, by hand or by the ClickHouse release pipeline, is published once its pull request is merged.
+
+- `VSCE_PAT`: an Azure DevOps personal access token for the publisher `valerypetrov`, with the **Marketplace, Manage**
+  scope and **All accessible organizations**. Without it the workflow only packs the `.vsix` and says so.
+- `OVSX_PAT`: optional, an Open VSX access token.
+- Both go in Settings, Secrets and variables, Actions.
+- A pull request that changes `release.yml` runs it without publishing. Running it by hand on `main` retries a failed
+  publish.
+
 ## Conventions
 
 - Plain, readable TypeScript in strict mode, as ES modules; relative imports end in `.js`.

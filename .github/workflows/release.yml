@@ -1,0 +1,90 @@
+name: Release
+
+# Publishes the extension once CI passes on main with a version that has no tag yet.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+  # A change to this file runs every step but the publishing ones.
+  pull_request:
+    paths: [.github/workflows/release.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      PUBLISH: ${{ github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Find the version and whether it is released
+        id: version
+        run: |
+          version=$(node -p "require('./packages/vscode/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$version is already released."
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.version.outputs.released == 'false'
+        run: npm ci
+      - if: steps.version.outputs.released == 'false'
+        run: npm run build
+      - if: steps.version.outputs.released == 'false'
+        run: npm test
+      - name: Package the extension
+        if: steps.version.outputs.released == 'false'
+        run: npm run package -w packages/vscode -- --out "$RUNNER_TEMP/clickhouse-sql-${{ steps.version.outputs.version }}.vsix"
+      - uses: actions/upload-artifact@v7
+        if: steps.version.outputs.released == 'false'
+        with:
+          name: clickhouse-sql-${{ steps.version.outputs.version }}
+          path: ${{ runner.temp }}/clickhouse-sql-${{ steps.version.outputs.version }}.vsix
+      - name: Publish to the Visual Studio Marketplace
+        id: marketplace
+        if: steps.version.outputs.released == 'false' && env.PUBLISH == 'true'
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::Set the VSCE_PAT secret to publish v${{ steps.version.outputs.version }}."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          npx vsce publish --packagePath "$RUNNER_TEMP/clickhouse-sql-${{ steps.version.outputs.version }}.vsix"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+        working-directory: packages/vscode
+      - name: Publish to Open VSX
+        if: steps.marketplace.outputs.published == 'true' && env.OVSX_PAT != ''
+        run: npx --yes ovsx publish "$RUNNER_TEMP/clickhouse-sql-${{ steps.version.outputs.version }}.vsix" -p "$OVSX_PAT"
+      - name: Tag the release on GitHub
+        if: steps.marketplace.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "v${{ steps.version.outputs.version }}"
+          "$RUNNER_TEMP/clickhouse-sql-${{ steps.version.outputs.version }}.vsix"
+          --target "$(git rev-parse HEAD)" --title "v${{ steps.version.outputs.version }}" --generate-notes
