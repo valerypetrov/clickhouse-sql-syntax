@@ -4,7 +4,7 @@ import { test } from "node:test";
 import api, { DATA_TYPES, KEYWORDS, LEXER_ERROR_MESSAGES, TokenKind, isErrorKind, isSignificant } from "../src/index.js";
 
 test("the default export carries the whole API", () => {
-  assert.deepEqual(Object.keys(api).sort(), ["check", "complete", "describe", "foldingRanges", "format", "highlight", "outline", "tokenize"]);
+  assert.deepEqual(Object.keys(api).sort(), ["check", "complete", "describe", "foldingRanges", "format", "highlight", "outline", "selectionRanges", "tokenize"]);
 });
 
 test("every Error* kind has a message and no other kind has one", () => {

@@ -1,4 +1,4 @@
-/** A statement of the input as outline() reads it: its tokens, the roles of its words and its brackets. */
+/** A statement as outline() and selectionRanges() read it: its tokens, the roles of its words and its brackets. */
 import { analyze, type RegionRecorder, type Tok, type Unit, unitTokens } from "../format/index.js";
 import type { Role, RoleSpan } from "../parser/index.js";
 import { TokenKind as T } from "../types.js";

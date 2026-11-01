@@ -91,6 +91,17 @@ and `-- #region` ... `-- #endregion` blocks. Lines count from 1, and `startLine`
 foldingRanges("SELECT *\nFROM (\n    SELECT 1\n)"); // [{ startLine: 1, endLine: 4 }, { startLine: 2, endLine: 3 }]
 ```
 
+### selectionRanges(sql, offsets, cache?)
+
+For each offset, the ranges around it for an editor's Expand Selection, each one holding the one before: the token
+there, then the names, calls, bracket groups, expressions, list items, clauses and queries around it, then the
+statement. Like `outline()`, it takes the `ParseCache` of `checkWithRoles()`.
+
+```ts
+selectionRanges("SELECT f(a + 1) FROM t", [9]).map((r) => r.map(({ start, end }) => [start, end]));
+// [[[9, 10], [9, 14], [8, 15], [7, 15], [0, 15], [0, 22]]]: a, a + 1, (a + 1), f(a + 1), SELECT f(a + 1), the statement
+```
+
 ### highlight(sql) and tokenize(sql)
 
 ```ts

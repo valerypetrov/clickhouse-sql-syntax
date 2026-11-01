@@ -124,7 +124,7 @@ const BINARY = new Set([
 const COMPARISONS = new Set([T.Equals, T.NotEquals, T.Less, T.Greater, T.LessOrEquals, T.GreaterOrEquals, T.Spaceship]);
 
 /** What a part of a statement that analyze() read as one piece is. */
-export type RegionKind = "clause" | "column";
+export type RegionKind = "query" | "clause" | "list" | "item" | "expression" | "group" | "call" | "name" | "table" | "type" | "column";
 
 /** Takes the parts that analyze() reads: tokens from `start` up to `end`, and a clause's keyword as `name`. */
 export type RegionRecorder = (kind: RegionKind, start: number, end: number, name?: string) => void;
@@ -206,7 +206,8 @@ class Analyzer {
 
   /** Passes the part from `start` up to `end` to the recorder, if any, and returns `end`. */
   private note(kind: RegionKind, start: number, end: number, name?: string): number {
-    if (this.record && end > start) this.record(kind, start, end, name);
+    // A part read past the last token, as a name that ends in a dot, ends with that token.
+    if (this.record && end > start && start < this.n) this.record(kind, start, Math.min(end, this.n), name);
     return end;
   }
 
@@ -421,6 +422,10 @@ class Analyzer {
 
   /** A query from `i` to `end`: clauses, each on its own line. */
   private query(i: number, end: number): number {
+    return this.note("query", i, this.clauses(i, end));
+  }
+
+  private clauses(i: number, end: number): number {
     // `start` is true where a query begins; `first` only for the very first token.
     let start = true;
     let first = true;
@@ -477,7 +482,7 @@ class Analyzer {
       case "FROM":
         return this.tables(j, end);
       case "JOIN": {
-        j = this.table(j, end);
+        j = this.note("table", j, this.table(j, end));
         if (this.word(j) === "ON" && !this.dotted(j)) return this.expr(this.kw(j), end, q);
         if (this.word(j) === "USING" && !this.dotted(j)) {
           j = this.kw(j);
@@ -569,7 +574,7 @@ class Analyzer {
   /** The tables of FROM, separated by commas. */
   private tables(i: number, end: number): number {
     for (;;) {
-      i = this.table(i, end);
+      i = this.note("table", i, this.table(i, end));
       if (!this.is(i, T.Comma)) return i;
       i++;
     }
@@ -606,6 +611,7 @@ class Analyzer {
 
   /** A name: word, quoted identifier or query parameter, with dotted parts. */
   private name(i: number): number {
+    const start = i;
     if (this.is(i, T.OpeningCurlyBrace)) i = this.brace(i);
     else if (this.is(i, T.BareWord) || this.is(i, T.QuotedIdentifier) || this.is(i, T.StringLiteral)) i++;
     else return i;
@@ -613,7 +619,7 @@ class Analyzer {
       if (this.is(i + 1, T.OpeningCurlyBrace)) i = this.brace(i + 1);
       else i += 2;
     }
-    return i;
+    return this.note("name", start, i);
   }
 
   /** Names separated by commas, as in DROP TABLE a, b. */
@@ -625,29 +631,34 @@ class Analyzer {
 
   /** A call: name(arguments), with more bracket groups as in quantile(0.5)(x). */
   private call(i: number): number {
+    const start = i;
     i++;
     while (this.is(i, T.OpeningRoundBracket)) {
       this.shape.glue[i] |= GLUE_BEFORE;
       i = this.group(i, "args");
     }
-    return i;
+    return this.note("call", start, i);
   }
 
   // ---- Lists and expressions ----
 
   /** Comma-separated expressions; with `split`, each on its own line when there are several. */
   private list(i: number, end: number, c: Ctx, split = false): number {
+    const start = i;
     const items: number[] = [];
     for (;;) {
       const next = this.expr(i, end, c);
-      if (next > i) items.push(i);
+      if (next > i) {
+        items.push(i);
+        this.note("item", i, next);
+      }
       i = next;
       if (!this.is(i, T.Comma) || i >= end) break;
       i++;
       if (c.trailing && this.trailingComma(i, c.trailing)) break;
     }
     if (split && items.length > 1) for (const item of items) this.shape.brk[item] = 1;
-    return i;
+    return this.note("list", start, i);
   }
 
   /** Whether the comma before `i` ends the list, as in SELECT a, b, FROM t; the rule of ExpressionLayer::parse. */
@@ -662,6 +673,7 @@ class Analyzer {
 
   /** One expression from `i`; returns the index of the token that ends it. */
   private expr(i: number, end: number, c: Ctx): number {
+    const start = i;
     let operand = true;
     let cases = 0;
     let between = 0;
@@ -903,7 +915,7 @@ class Analyzer {
       // An alias without AS.
       i++;
     }
-    return i;
+    return this.note("expression", start, i);
   }
 
   /** The keyword operator at `i` after an operand, as a number of words, or 0. */
@@ -1004,10 +1016,11 @@ class Analyzer {
 
   /** a.b.c, t.*, t.1 and the like from a word at `i`. */
   private dottedName(i: number): number {
+    const start = i;
     i++;
     while (this.is(i, T.Dot)) i = this.member(i);
     if (this.is(i, T.OpeningRoundBracket)) i = this.call(i - 1);
-    return i;
+    return this.note("name", start, i);
   }
 
   /** The "." at `i` and the member after it. */
@@ -1050,7 +1063,7 @@ class Analyzer {
     if (this.kind(i) === T.OpeningRoundBracket && this.startsQuery(i, hint === "args")) {
       this.shape.block[i] = BLOCK_INLINE;
       this.query(first, close);
-      return close + 1;
+      return this.note("group", i, close + 1);
     }
     switch (hint) {
       case "args": {
@@ -1077,14 +1090,14 @@ class Analyzer {
       default:
         this.list(first, close, { alias: true });
     }
-    return close + 1;
+    return this.note("group", i, close + 1);
   }
 
   /** "{": a query parameter {name:Type} printed as written, or a map literal. */
   private brace(i: number): number {
     const close = this.shape.match[i]!;
     if (close < 0) return this.n;
-    if (this.parameterAt(i)) return close + 1;
+    if (this.parameterAt(i)) return this.note("group", i, close + 1);
     let j = i + 1;
     while (j < close) {
       j = this.expr(j, close, {});
@@ -1095,7 +1108,7 @@ class Analyzer {
       if (this.is(j, T.Comma)) j++;
       else break;
     }
-    return close + 1;
+    return this.note("group", i, close + 1);
   }
 
   /** A window: [name] [PARTITION BY ...] [ORDER BY ...] [ROWS|RANGE|GROUPS frame]. */
@@ -1164,6 +1177,7 @@ class Analyzer {
     i = this.name(i);
     let columnsSeen = false;
     while (i < end) {
+      const from = i;
       const w = this.dotted(i) ? "" : this.word(i);
       if (this.is(i, T.OpeningRoundBracket) && !columnsSeen) {
         columnsSeen = true;
@@ -1233,6 +1247,7 @@ class Analyzer {
         const next = this.tail(i, end, true);
         i = next > i ? next : i + 1;
       }
+      this.note("clause", from, i);
     }
     return i;
   }
@@ -1309,6 +1324,7 @@ class Analyzer {
     while (i < close) {
       if (!first) this.shape.brk[i] = 0;
       first = false;
+      if (this.record) this.note("item", i, this.elementEnd(i, close));
       i = this.element(i, close);
       if (this.is(i, T.Comma)) i++;
       else if (i < close) i = this.skip(i, close);
@@ -1383,12 +1399,14 @@ class Analyzer {
   /** name [Type] [NULL | NOT NULL] [DEFAULT expr] [COMMENT 'x'] [CODEC(...)] [TTL expr] ... */
   private columnDef(i: number, end: number): number {
     i = this.name(i);
+    const type = i;
     // The data type, up to the first column keyword.
     while (i < end && !(this.is(i, T.BareWord) && COLUMN_WORDS.has(this.word(i)) && !this.dotted(i))) {
       if (this.is(i, T.OpeningRoundBracket)) i = this.typeArgs(i);
       else if (OPENERS.has(this.kind(i)!)) i = this.after(i);
       else i++;
     }
+    this.note("type", type, i);
     const stop = COLUMN_WORDS;
     while (i < end) {
       const w = this.word(i);
@@ -1434,6 +1452,7 @@ class Analyzer {
     while (i < last) {
       commands.push(i);
       const next = this.command(i, last);
+      this.note("item", i, next);
       i = next > i ? next : i + 1;
       if (this.is(i, T.Comma)) i++;
     }

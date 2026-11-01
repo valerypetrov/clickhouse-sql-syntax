@@ -17,7 +17,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()` and `describe()`.
-- `structure/`: `outline()` and `foldingRanges()`.
+- `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
 
@@ -116,18 +116,28 @@ comment, and the lines from `-- #region` to `-- #endregion`. A fold leaves the l
 and never ends inside a token that goes on below it. Of the ranges that start on one line the longest stays, and a
 range that crosses an earlier one is dropped, so the rest nest.
 
+## selectionRanges()
+
+The ranges around an offset start at the token there, or at the word it is right after, and go on through the parts
+around it that `analyze()` of the formatter reads: names, calls, bracket groups, data types, expressions, list items,
+clauses and queries. Every bracket group and what it holds is a range too, so a statement that does not parse, or
+nests too deep for `analyze()`, still has those. The statement follows, then with its `;`, then with its comments.
+A range that does not hold the one before it is left out, so they nest. Operators make no ranges of their own: in
+`a + b > c` there is none for `a + b`.
+
 ## The VS Code extension
 
 In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
-  statements parsed, so that the diagnostics, the semantic tokens, hover and the outline parse a statement once, until
-  it changes.
+  statements parsed, so that the diagnostics, the semantic tokens, hover, the outline and selections parse a statement
+  once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
   characters.
 - `outline.ts`: the document symbols of the Outline view, breadcrumbs and Go to Symbol from `outline()`, which takes
   the `ParseCache` of the document.
 - `folding.ts`: folding ranges from `foldingRanges()`.
+- `selection.ts`: Expand and Shrink Selection from `selectionRanges()`, with the `ParseCache` of the document.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;

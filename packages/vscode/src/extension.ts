@@ -5,6 +5,7 @@ import { registerFolding } from "./folding.js";
 import { registerFormatter } from "./format.js";
 import { registerHover } from "./hover.js";
 import { registerOutline } from "./outline.js";
+import { registerSelectionRanges } from "./selection.js";
 import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
@@ -18,7 +19,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
   const server = registerServer(context, LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
-  // The statements of each document parsed once, for its diagnostics, semantic tokens, hover and outline.
+  // The statements of each document parsed once, for its diagnostics, semantic tokens, hover, outline and selections.
   const caches = new Map<string, ParseCache>();
   const cacheOf = (document: vscode.TextDocument): ParseCache => {
     const key = document.uri.toString();
@@ -55,6 +56,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerCompletion(LANGUAGE_ID, (document, offset) => server.schema.completion(document.getText(), offset)),
     registerHover(LANGUAGE_ID, cacheOf),
     registerOutline(LANGUAGE_ID, cacheOf),
+    registerSelectionRanges(LANGUAGE_ID, cacheOf),
     registerSignatureHelp(LANGUAGE_ID),
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
     diagnostics,

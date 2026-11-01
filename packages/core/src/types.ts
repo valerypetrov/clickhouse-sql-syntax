@@ -197,6 +197,8 @@ export interface ClickHouseSqlSyntax {
   foldingRanges(sql: string): FoldingRange[];
   /** Each statement with its kind and a short name, and its CTEs and columns; a ParseCache saves parsing again. */
   outline(sql: string, cache?: ParseCache): OutlineSymbol[];
+  /** For each offset, the pieces around it from the token out to the statement, each holding the one before. */
+  selectionRanges(sql: string, offsets: readonly number[], cache?: ParseCache): TextRange[][];
 }
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
@@ -293,4 +295,10 @@ export interface OutlineSymbol {
   nameStart: number;
   nameEnd: number;
   children: OutlineSymbol[];
+}
+
+/** A piece of the input, by offsets. */
+export interface TextRange {
+  start: number;
+  end: number;
 }
