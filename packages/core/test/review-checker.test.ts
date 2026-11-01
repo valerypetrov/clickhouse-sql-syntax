@@ -24,6 +24,11 @@ function time(work: () => unknown): number {
 
 const TOO_DEEP_AST = "AST is too deep. Maximum: 1000";
 
+/** A table with one column of this type. */
+function column(type: string): string {
+  return `CREATE TABLE t (a ${type}) ENGINE = Memory`;
+}
+
 describe("where a statement begins", () => {
   // clickhouse-client skips only ASCII whitespace, so U+1680 (which /\s/ matches) is an error token.
   test("reports U+1680 before a statement as an unrecognized token", () => {
@@ -58,6 +63,13 @@ describe("AST depth", () => {
     // ClickHouse reads (EXPLAIN SELECT ...) as SELECT * FROM viewExplain(..., (SELECT ...)), and (VALUES ...) likewise.
     ["calls in an EXPLAIN subquery", `SELECT * FROM (EXPLAIN SELECT ${repeat("f(", 489)}1${repeat(")", 489)})`, `SELECT * FROM (EXPLAIN SELECT ${repeat("f(", 490)}1${repeat(")", 490)})`],
     ["calls in a VALUES subquery", `SELECT * FROM (VALUES (${repeat("f(", 492)}1${repeat(")", 492)}))`, `SELECT * FROM (VALUES (${repeat("f(", 493)}1${repeat(")", 493)}))`],
+    // A typed path of JSON is four levels below the JSON type, and max_dynamic_paths=N a call of equals.
+    ["nested JSON paths", column(`${repeat("JSON(k ", 248)}UInt8${repeat(")", 248)}`), column(`${repeat("JSON(k ", 249)}UInt8${repeat(")", 249)}`)],
+    ["nested SHARED JSON paths", column(`${repeat("JSON(SHARED k ", 248)}UInt8${repeat(")", 248)}`), column(`${repeat("JSON(SHARED k ", 249)}UInt8${repeat(")", 249)}`)],
+    ["JSON paths in arrays", column(`${repeat("Array(JSON(k ", 165)}UInt8${repeat("))", 165)}`), column(`${repeat("Array(JSON(k ", 166)}UInt8${repeat("))", 166)}`)],
+    ["SKIP under nested JSON paths", column(`${repeat("JSON(k ", 248)}JSON(SKIP a)${repeat(")", 248)}`), column(`${repeat("JSON(k ", 249)}JSON(SKIP a)${repeat(")", 249)}`)],
+    ["max_dynamic_paths under nested JSON paths", column(`${repeat("JSON(k ", 247)}JSON(max_dynamic_paths=1)${repeat(")", 247)}`), column(`${repeat("JSON(k ", 248)}JSON(max_dynamic_paths=1)${repeat(")", 248)}`)],
+    ["max_types in nested arrays", column(`${repeat("Array(", 495)}Dynamic(max_types=1)${repeat(")", 495)}`), column(`${repeat("Array(", 496)}Dynamic(max_types=1)${repeat(")", 496)}`)],
   ];
   for (const [name, fits, tooDeep] of cases) {
     test(`rejects ${name} one level deeper than ClickHouse allows`, () => {
