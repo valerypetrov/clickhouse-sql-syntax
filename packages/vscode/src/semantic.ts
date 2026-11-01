@@ -19,6 +19,9 @@ const LEGEND = new vscode.SemanticTokensLegend(ROLES.map((role) => TYPE_OF_ROLE[
 /** The grammar already colours these keywords as constants. */
 const CONSTANTS = new Set(["NULL", "TRUE", "FALSE"]);
 
+/** Longer lines get no semantic tokens, as VS Code merges them all again for each column that completion looks at. */
+const MAX_LINE_LENGTH = 10_000;
+
 interface Result {
   id: string;
   data: Uint32Array;
@@ -42,6 +45,8 @@ class DocumentTokens {
     const byText = range ? this.byText : new Map<string, RoleSpan[]>();
     const builder = new vscode.SemanticTokensBuilder(LEGEND);
     const lines = new LineCounter(text);
+    let checked = -1;
+    let long = false;
     for (const [start, end] of pieces(text)) {
       if (end <= from || start >= to) continue;
       const piece = text.slice(start, end);
@@ -54,6 +59,11 @@ class DocumentTokens {
         const character = start + span.start - lines.lineStart;
         // A quoted name may span lines, which a semantic token cannot.
         if (lines.lineAt(start + span.end) !== line) continue;
+        if (line !== checked) {
+          checked = line;
+          long = document.lineAt(line).text.length > MAX_LINE_LENGTH;
+        }
+        if (long) continue;
         builder.push(line, character, length, ROLES.indexOf(span.role));
       }
     }

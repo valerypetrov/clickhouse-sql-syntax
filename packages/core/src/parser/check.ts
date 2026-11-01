@@ -14,6 +14,7 @@ import {
 } from "../types.js";
 import { type Ast, astDepth } from "./ast.js";
 import { parseQuery } from "./query.js";
+import { type NameMark, NameMarks } from "./names.js";
 import { Roles, type RoleSpan } from "./roles.js";
 import { Budget, Expected, kwQuiet, MAX_PARSER_DEPTH, OutOfBudget, P, ParseError } from "./state.js";
 
@@ -104,7 +105,7 @@ function expectedMessage(token: Token, sql: string, expected: Expected): string 
 
 /** What checking one statement gave, with offsets from where it begins; or that it needs more than `over` backtracks. */
 type Checked =
-  | { diagnostics: Omit<Diagnostic, "line" | "col">[]; spans: RoleSpan[]; next: number; backtracks: number; over?: undefined }
+  | { diagnostics: Omit<Diagnostic, "line" | "col">[]; spans: RoleSpan[]; names: NameMark[]; next: number; backtracks: number; over?: undefined }
   | { over: number };
 
 /**
@@ -141,9 +142,11 @@ interface Statement {
 
 class Checker {
   readonly diagnostics: Diagnostic[] = [];
-  /** The roles of the words of the last statement, when they are asked for. */
+  /** The roles of the words of the last statement and its names analysis marks, from where it begins. */
   spans: RoleSpan[] = [];
+  names: NameMark[] = [];
   private roles?: Roles;
+  private nameMarks?: NameMarks;
   private readonly lines: Lines;
   private readonly budget = new Budget();
   /** The parse of the last statement, the furthest token that anything else looked at, and whether to keep it. */
@@ -252,6 +255,7 @@ class Checker {
       if (this.budget.backtracks < 0) throw new OutOfBudget();
       for (const d of hit.diagnostics) this.report(begin + d.start, begin + d.end, d.message, d.severity);
       this.spans = hit.spans.map((span) => ({ ...span, start: begin + span.start, end: begin + span.end }));
+      this.names = hit.names;
       return begin + hit.next;
     }
     const reported = this.diagnostics.length;
@@ -268,6 +272,7 @@ class Checker {
       cache.set(key, {
         diagnostics: this.diagnostics.slice(reported).map((d) => ({ message: d.message, start: d.start - begin, end: d.end - begin, severity: d.severity })),
         spans: this.spans.map((span) => ({ ...span, start: span.start - begin, end: span.end - begin })),
+        names: this.names,
         next: next - begin,
         backtracks: p?.backtracks ?? 0,
       });
@@ -285,6 +290,7 @@ class Checker {
     this.lookedAt = 0;
     this.keep = true;
     this.spans = [];
+    this.names = [];
 
     const startsWithInsert = (() => {
       const probe = new P(toks, sql, start);
@@ -302,7 +308,10 @@ class Checker {
 
     const p = new P(toks, sql, start, this.budget);
     this.parsed = p;
-    if (this.withRoles) p.roles = this.roles = new Roles(p);
+    if (this.withRoles) {
+      p.roles = this.roles = new Roles(p);
+      p.names = this.nameMarks = new NameMarks(p);
+    }
     let node: Ast | null;
     try {
       node = parseQuery(p);
@@ -320,6 +329,7 @@ class Checker {
       throw error;
     }
     if (this.roles) this.spans = this.roles.spans();
+    if (this.nameMarks) this.names = this.nameMarks.list(begin);
     // tryParseQuery() calls checkDepth() on the AST before anything else.
     if (node && astDepth(node) >= MAX_PARSER_DEPTH) {
       this.reportToken(toks[start]!, `AST is too deep. Maximum: ${MAX_PARSER_DEPTH}`);
@@ -486,7 +496,22 @@ export function checkWithRoles(sql: string, cache?: ParseCache): { diagnostics: 
   return { diagnostics: checkAll(sql, spans, cache), spans };
 }
 
-function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache): Diagnostic[] {
+/** A statement without syntax errors: where it begins and where the next one may begin, its roles, and its marks from `begin`. */
+export interface ParsedStatement {
+  begin: number;
+  end: number;
+  spans: RoleSpan[];
+  names: NameMark[];
+}
+
+/** The statements without syntax errors, with what names analysis needs, through the same cache as checkWithRoles(). */
+export function parsedStatements(sql: string, cache?: ParseCache): ParsedStatement[] {
+  const statements: ParsedStatement[] = [];
+  checkAll(sql, [], cache, statements);
+  return statements;
+}
+
+function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache, statements?: ParsedStatement[]): Diagnostic[] {
   const checker = new Checker(sql, spans !== undefined);
   const stream = new TokenStream(sql);
   let offset = 0;
@@ -515,6 +540,7 @@ function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache): Diagnost
     if (checker.diagnostics.length === reported) {
       if (spans) for (const span of checker.spans) spans.push(span);
       next = adjustQueryEnd(sql, stream, next);
+      statements?.push({ begin, end: next, spans: checker.spans, names: checker.names });
     }
     if (next <= offset) break;
     offset = next;

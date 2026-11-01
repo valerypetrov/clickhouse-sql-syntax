@@ -2,7 +2,7 @@
  * Data types: a port of src/Parsers/ParserDataType.cpp.
  * The result is a DataType node with the type name and its arguments as children.
  */
-import { Ast } from "./ast.js";
+import { Ast, func } from "./ast.js";
 import {
   parseCompoundIdentifier,
   parseEnumElement,
@@ -69,49 +69,63 @@ function parseEnumValues(p: P): boolean {
 function parseDynamicArgument(p: P): Ast | null {
   return base(p, "Dynamic data type optional argument", () => {
     const begin = p.i;
-    if (!parseIdentifier(p)) return null;
+    const name = parseIdentifier(p);
+    if (!name) return null;
     p.mark(begin, "setting");
     if (p.kind() !== T.Equals) {
       p.expect("equals operator");
       return null;
     }
     p.i++;
-    return parseNumber(p) ? new Ast("Other") : null;
+    const number = parseNumber(p);
+    return number ? func("equals", [name, number]) : null;
   });
+}
+
+/** ASTObjectTypeArgument, which holds a skipped path, a parameter or a typed path. */
+function objectArgument(child: Ast | null): Ast | null {
+  if (!child) return null;
+  const node = new Ast("Other");
+  node.children = [child];
+  return node;
 }
 
 /** JSON(max_dynamic_paths=N, a.b UInt32, SKIP a.c, SKIP REGEXP 'x', SHARED a.d Type). */
 function parseObjectArgument(p: P): Ast | null {
   return base(p, "JSON data type optional argument", () => {
     if (kwQuiet(p, "SKIP")) {
-      if (kwQuiet(p, "REGEXP")) return parseStringLiteral(p) ? new Ast("Other") : null;
-      return parseCompoundIdentifier(p) ? new Ast("Other") : null;
+      if (kwQuiet(p, "REGEXP")) return objectArgument(parseStringLiteral(p));
+      return objectArgument(parseCompoundIdentifier(p));
     }
     const begin = p.i;
-    const hasIdentifier = parseCompoundIdentifier(p) !== null;
+    const identifier = parseCompoundIdentifier(p);
     const afterIdentifier = p.i;
-    const hasType = hasIdentifier && parseDataType(p) !== null;
+    const type = identifier && parseDataType(p);
     const afterType = p.i;
-    const plainPath = hasType && (p.kind() === T.Comma || p.kind() === T.ClosingRoundBracket);
-    let shared = false;
+    const plainPath = type !== null && (p.kind() === T.Comma || p.kind() === T.ClosingRoundBracket);
+    let sharedType: Ast | null = null;
     if (!plainPath) {
       p.restore(begin);
-      if (kwQuiet(p, "SHARED") && parseCompoundIdentifier(p) && parseDataType(p)) shared = true;
+      if (kwQuiet(p, "SHARED") && parseCompoundIdentifier(p)) sharedType = parseDataType(p);
       // ClickHouse colours SHARED as the name that the first reading took it for.
-      if (shared) p.mark(begin, "identifier", begin + 1);
+      if (sharedType) p.mark(begin, "identifier", begin + 1);
     }
-    if (!shared && !plainPath) {
-      if (!hasIdentifier) return null;
+    if (!sharedType && !plainPath) {
+      if (!identifier) return null;
       p.restore(afterIdentifier);
       if (p.kind() === T.Equals) {
         p.mark(begin, "setting");
         p.i++;
-        return parseNumber(p) ? new Ast("Other") : null;
+        const number = parseNumber(p);
+        return number ? objectArgument(func("equals", [identifier, number])) : null;
       }
-      if (!hasType) return null;
+      if (!type) return null;
       p.i = afterType;
     }
-    return new Ast("Other");
+    // ASTObjectTypedPathArgument, which holds the type of the path.
+    const path = new Ast("Other");
+    path.children = [(sharedType ?? type)!];
+    return objectArgument(path);
   });
 }
 

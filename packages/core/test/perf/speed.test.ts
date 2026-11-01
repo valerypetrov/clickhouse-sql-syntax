@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { gunzipSync } from "node:zlib";
 
-import { check, complete, format, highlight, roles, tokenize } from "../../src/index.js";
+import { check, checkWithRoles, complete, format, highlight, ParseCache, references, rename, roles, tokenize } from "../../src/index.js";
 
 const CORPUS = new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url);
 
@@ -91,4 +91,41 @@ describe("completion speed", () => {
     t.diagnostic(`${ms.toFixed(0)} ms`);
     assert.ok(ms < 1000, `took ${ms.toFixed(0)} ms`);
   });
+});
+
+describe("names speed", () => {
+  // As in an editor, the diagnostics parsed the text into the cache before a name is asked about, here
+  // without SET statements, which may change how names resolve.
+  const corpus = INPUTS["10,000 statements"].split(";\n\n").filter((sql) => !/^SET\b/i.test(sql)).join(";\n\n");
+  const middle = corpus.indexOf(";\n\n", corpus.length / 2) + 3;
+  const typed = `${corpus.slice(0, middle)}SELECT number + 1 AS n FROM numbers(3) WHERE n > 1;\n\n${corpus.slice(middle)}`;
+  const wide = INPUTS["a 1 MB statement"];
+  // As in ClickHouse's test 03094_one_thousand_joins.
+  let joins = "SELECT * FROM (SELECT 1 AS x) t1";
+  for (let i = 2; i <= 1000; i++) joins += ` JOIN (SELECT 1 AS x) t${i} ON t1.x = t${i}.x`;
+  const cases: [string, string, number, number, number][] = [
+    ["a name among 10,000 statements", typed, typed.indexOf("n FROM numbers", middle), 700, 1500],
+    ["a name of a 1 MB statement", wide, wide.indexOf("AS d10,") + 3, 4000, 8000],
+    ["a table alias of 1,000 joins", joins, joins.indexOf("t500 ON"), 4000, 8000],
+  ];
+  for (const [what, sql, offset, findBudget, renameBudget] of cases) {
+    test(`references() and rename() of ${what} within ${findBudget} and ${renameBudget} ms`, (t) => {
+      const cache = new ParseCache();
+      checkWithRoles(sql, cache);
+      // Shifted by more spaces each time, so that the cache keeps the statements but no analysis is kept.
+      let shift = 0;
+      const find = fastest(3, () => {
+        shift++;
+        assert.ok(references(" ".repeat(shift) + sql, offset + shift, { cache }).length >= 1);
+      });
+      // A refused rename takes as long as the analysis, and one that is done checks the result too.
+      const renamed = fastest(3, () => {
+        shift++;
+        rename(" ".repeat(shift) + sql, offset + shift, "renamed", { cache });
+      });
+      t.diagnostic(`references ${find.toFixed(0)} ms, rename ${renamed.toFixed(0)} ms`);
+      assert.ok(find < findBudget, `references() took ${find.toFixed(0)} ms`);
+      assert.ok(renamed < renameBudget, `rename() took ${renamed.toFixed(0)} ms`);
+    });
+  }
 });

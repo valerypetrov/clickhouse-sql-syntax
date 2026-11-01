@@ -54,7 +54,13 @@ export class Ast {
 }
 
 /** Kinds whose children sit in an ExpressionList of ClickHouse's AST, which this tree leaves out. */
-const LISTED_CHILDREN = new Set(["Function", "DataType", "SelectWithUnionQuery", "Columns"]);
+const LISTED_CHILDREN = new Set([
+  "Function",
+  "DataType",
+  "SelectWithUnionQuery",
+  "Columns",
+  "FunctionWithKeyValueArguments",
+]);
 
 /** The nodes under `node`, each with how many levels further down ClickHouse's AST has it. */
 function edges(node: Ast): [Ast, number][] {
@@ -103,6 +109,12 @@ export function canHaveAlias(node: Ast): boolean {
     default:
       return false;
   }
+}
+
+/** Sets a part of `node` and tells whether there is one, for the parsers that return a boolean. */
+export function keep(node: Ast, name: string, value: Ast | null): boolean {
+  node.set(name, value);
+  return value !== null;
 }
 
 export function identifier(parts: string[]): Ast {

@@ -69,3 +69,17 @@ statement, then valid ones up to `--limit` (20,000 by default) in a fixed hash o
 
 `npm test` runs the comparison on the committed corpus and fails when a rate falls below the value
 in `thresholds.json`. Raise the values when `check()` gets better, so it cannot slide back.
+
+## Rename
+
+```sh
+npm run build -w packages/core
+npm run oracle:rename -- --clickhouse /path/to/clickhouse --corpus /path/to/ClickHouse/tests/queries/0_stateless
+```
+
+This checks `rename()` against ClickHouse. It takes the SELECT statements of the tests without a `FORMAT`, `INTO OUTFILE`
+or expected error, renames each name that `prepareRename()` accepts to a fresh one (every seventh also to one that needs
+quotes), and runs the original and the renamed query in a fresh `clickhouse local` with one thread. A statement counts
+when it runs alone, without the tables of its test, and gives the same result twice. A mismatch is a renamed query that
+fails or gives another result, or edits that are not exactly the words `references()` finds, each one the old name
+becoming the new one. `out/rename-report.json` lists the counts, why `prepareRename()` refused names, and every mismatch.

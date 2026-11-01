@@ -69,6 +69,56 @@ combinator, and the syntax and arguments of a function:
 describe("toDate"); // { name: "toDate", kind: "function", syntax: "toDate(x)", arguments: [{ name: "x", ... }], documentation: "..." }
 ```
 
+### outline(sql, cache?)
+
+Each statement with its kind and a short name, for an editor's outline, with its CTEs and the columns that
+CREATE TABLE, VIEW or DICTIONARY defines as children. `start` and `end` cover the statement up to its `;`, and
+`nameStart` and `nameEnd` its name; for a query, its `SELECT`. With the `ParseCache` of `checkWithRoles()`, nothing
+is parsed again.
+
+```ts
+outline("CREATE TABLE db.t (id UInt64) ENGINE = Memory");
+// [{ name: "CREATE TABLE db.t", kind: "table", start: 0, end: 45, nameStart: 13, nameEnd: 17,
+//    children: [{ name: "id", kind: "column", start: 19, end: 28, nameStart: 19, nameEnd: 21, children: [] }] }]
+```
+
+### foldingRanges(sql)
+
+The lines an editor can fold: statements, bracket groups and block comments of several lines, runs of line comments,
+and `-- #region` ... `-- #endregion` blocks. Lines count from 1, and `startLine` stays in view.
+
+```ts
+foldingRanges("SELECT *\nFROM (\n    SELECT 1\n)"); // [{ startLine: 1, endLine: 4 }, { startLine: 2, endLine: 3 }]
+```
+
+### selectionRanges(sql, offsets, cache?)
+
+For each offset, the ranges around it for an editor's Expand Selection, each one holding the one before: the token
+there, then the names, calls, bracket groups, expressions, list items, clauses and queries around it, then the
+statement. Like `outline()`, it takes the `ParseCache` of `checkWithRoles()`.
+
+```ts
+selectionRanges("SELECT f(a + 1) FROM t", [9]).map((r) => r.map(({ start, end }) => [start, end]));
+// [[[9, 10], [9, 14], [8, 15], [7, 15], [0, 15], [0, 22]]]: a, a + 1, (a + 1), f(a + 1), SELECT f(a + 1), the statement
+```
+
+### definition(sql, offset, options?), references(), prepareRename() and rename()
+
+For the names a statement defines: aliases, CTEs and their columns, table aliases, lambda parameters and query parameters.
+
+```ts
+references("SELECT a + 1 AS x FROM t WHERE x > 0", 31); // [{ start: 16, end: 17, definition: true }, { start: 31, end: 32, definition: false }]
+rename("SELECT a + 1 AS x FROM t WHERE x > 0", 31, "total sum"); // { edits: [{ start: 16, end: 17, newText: "`total sum`" }, ...] }
+prepareRename("SELECT a FROM t", 7); // { error: "`a` is not defined in this query: ..." }
+```
+
+Names resolve as ClickHouse's analyzer resolves them: an alias anywhere in its query, before or after it is defined,
+and inside its own expression the column of that name; a lambda parameter first; inner queries hiding outer names; a
+CTE read again at each place it is used. Where ClickHouse could read a name in more than one way, as when a table of
+the database may have a column of that name, there are no results, and `rename()` gives the reason. `rename()` quotes
+the new name where ClickHouse would, and refuses one that would change what the query means. With `{ cache }`, the
+statements come from the `ParseCache` of `checkWithRoles()`.
+
 ### highlight(sql) and tokenize(sql)
 
 ```ts

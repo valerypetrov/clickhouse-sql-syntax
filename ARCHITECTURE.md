@@ -17,10 +17,12 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()` and `describe()`.
+- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
+- `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
 
-`types.ts` holds the public types. `index.ts` exports them and the functions by name, and the six main functions as one default object.
+`types.ts` holds the public types. `index.ts` exports them and the functions by name, and the main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,
 `\r\n` or a lone `\r`, as in VS Code.
 
@@ -93,21 +95,71 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
 `complete()` takes the statement around the cursor and parses its tokens before the cursor, followed by a token
 that no parser accepts, so the parser records everything it tries there (`expectedAt()`). The keywords among those
 expectations are offered when the parser takes them there, which it does not for all of them, as for FETCH without
-ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks); the other ones (an
-expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and from the schema
-passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
+ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks and 100,000 tokens parsed);
+the other ones (an expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and
+from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
+
+## outline()
+
+Each unit of `split()` with a statement is a symbol, named by its leading keywords without `IF [NOT] EXISTS` and the
+name after them, such as `CREATE TABLE db.t`; a query is `SELECT … FROM` the first table of its first `FROM`. The
+words are read by their roles from `checkWithRoles()`, with the cache of the document, and in a statement that does
+not parse by the keyword list. For a statement with `WITH`, or one that makes a table, view or dictionary,
+`analyze()` of the formatter passes on the WITH clauses and column declarations it reads: the elements of a WITH
+clause written `name AS (query)` are CTEs, each under the CTE that holds it, and the declarations one bracket deep
+are the columns.
+
+## foldingRanges()
+
+It reads the units of `split()`, so that inline data is never looked into. A statement, a pair of brackets of the
+same kind and a block comment fold when they take several lines, and so do runs of lines with nothing but a line
+comment, and the lines from `-- #region` to `-- #endregion`. A fold leaves the line of a closing bracket in view,
+and never ends inside a token that goes on below it. Of the ranges that start on one line the longest stays, and a
+range that crosses an earlier one is dropped, so the rest nest.
+
+## selectionRanges()
+
+The ranges around an offset start at the token there, or at the word it is right after, and go on through the parts
+around it that `analyze()` of the formatter reads: names, calls, bracket groups, data types, expressions, list items,
+clauses and queries. Every bracket group and what it holds is a range too, so a statement that does not parse, or
+nests too deep for `analyze()`, still has those. The statement follows, then with its `;`, then with its comments.
+A range that does not hold the one before it is left out, so they nest. Operators make no ranges of their own: in
+`a + b > c` there is none for `a + b`.
+
+## definition(), references() and rename()
+
+1. Along with the roles, the parser marks what names analysis needs: each SELECT and UNION, WITH element, table
+   expression, join, ARRAY JOIN, alias with the expression it names, lambda, identifier and function name
+   (`parser/names.ts`). Moving back drops the marks past the position, and the `ParseCache` keeps them with the roles.
+2. `names/tree.ts` nests the marks of the statement at the offset into a tree.
+3. `names/resolve.ts` walks the tree as `QueryAnalyzer` walks a query (`src/Analyzer/Resolve`): lambda parameters
+   first, then aliases, then the tables of FROM, then the enclosing queries. An alias is resolved again at each place it
+   is used, without itself inside its own expression, and a CTE is resolved at each place that reads it. Each word
+   records what it resolved to each time.
+4. A word that resolved to more than one thing, or to something the analysis does not follow, is ambiguous: it has no
+   definition, and the names it may stand for cannot be renamed. A table of the database or a table function other than
+   a few known ones, such as `numbers()`, may have any column, except one named like a table or alias of the same FROM.
+5. `rename()` checks its result: the renamed statement must parse, and every word must resolve as before.
+
 
 ## The VS Code extension
 
 In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
-  statements parsed, so that the diagnostics, the semantic tokens and hover parse a statement once, until it changes.
-- `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar.
+  statements parsed, so that the diagnostics, the semantic tokens, hover, the outline, selections and names parse a
+  statement once, until it changes.
+- `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
+  characters.
+- `outline.ts`: the document symbols of the Outline view, breadcrumbs and Go to Symbol from `outline()`, which takes
+  the `ParseCache` of the document.
+- `folding.ts`: folding ranges from `foldingRanges()`.
+- `selection.ts`: Expand and Shrink Selection from `selectionRanges()`, with the `ParseCache` of the document.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;
   hover takes the role of the word from the parser where completion does not tell what it is.
+- `names.ts`: go to definition, references, document highlights and rename through `names/`, with the document's `ParseCache`.
 - `server/`: the server check. `statements.ts` finds the SELECTs the server can explain: SELECT and WITH statements,
   and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`. `index.ts` sends each one as `EXPLAIN QUERY TREE`
   with `readonly=1`, 500 ms after a change, keeps the answers by query text, and puts an error on the name it

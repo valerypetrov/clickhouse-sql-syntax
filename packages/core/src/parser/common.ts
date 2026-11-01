@@ -119,17 +119,18 @@ export function parsePartition(p: P): Ast | null {
     if (parseSubstitution(p)) return new Ast("Partition");
     const value = parseExpression(p);
     if (!value) return null;
+    const partition = new Ast("Partition").set("value", value);
     if (value.kind === "Function") {
-      if (value.name === "tuple") return new Ast("Partition");
+      if (value.name === "tuple") return partition;
       if (value.name === "CAST" || value.name === "_CAST") {
         if (value.children.length !== 2) return null;
         const operand = value.children[0]!;
         const isTuple = operand.kind === "Function" && operand.name === "tuple";
-        return isTuple || operand.kind === "Literal" ? new Ast("Partition") : null;
+        return isTuple || operand.kind === "Literal" ? partition : null;
       }
       return null;
     }
-    return value.kind === "Literal" ? new Ast("Partition") : null;
+    return value.kind === "Literal" ? partition : null;
   });
 }
 

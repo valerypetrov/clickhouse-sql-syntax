@@ -479,28 +479,27 @@ function parseAccessRightsElements(p: P, keywords?: string[]): boolean {
 
 // --- Authentication ------------------------------------------------------------------------------
 
-/** VALID UNTIL 'time' or VALID FOR interval; IN after the interval is left for the storage clause. */
-function parseAuthenticationValidUntil(p: P): boolean {
-  return (
-    attempt(p, () => {
-      if (kw(p, "VALID UNTIL")) return parseStringAndSubstitution(p) !== null;
-      if (!kw(p, "VALID FOR")) return false;
-      const interval = parseExpression(p);
-      if (!interval) return false;
-      if (interval.kind === "Function" && interval.name === "in" && interval.children.length === 2) {
-        const storage = interval.children[1]!;
-        const isStorageName =
-          (storage.kind === "Identifier" && storage.parts?.length === 1) ||
-          (storage.kind === "Literal" && storage.value?.t === "String");
-        if (isStorageName) {
-          const end = p.i;
-          p.restore(p.i - 2);
-          if (!peekKw(p, "IN")) p.i = end;
-        }
+/** VALID UNTIL 'time' or VALID FOR interval, returned; IN after the interval is left for the storage clause. */
+function parseAuthenticationValidUntil(p: P): Ast | null {
+  return attempt(p, () => {
+    if (kw(p, "VALID UNTIL")) return parseStringAndSubstitution(p);
+    if (!kw(p, "VALID FOR")) return null;
+    const interval = parseExpression(p);
+    if (!interval) return null;
+    if (interval.kind === "Function" && interval.name === "in" && interval.children.length === 2) {
+      const storage = interval.children[1]!;
+      const isStorageName =
+        (storage.kind === "Identifier" && storage.parts?.length === 1) ||
+        (storage.kind === "Literal" && storage.value?.t === "String");
+      if (isStorageName) {
+        const end = p.i;
+        p.restore(p.i - 2);
+        if (!peekKw(p, "IN")) p.i = end;
+        else return interval.children[0]!;
       }
-      return true;
-    }) !== null
-  );
+    }
+    return interval;
+  });
 }
 
 /** GRANTS (access rights) of an authentication method or a token. */
@@ -535,7 +534,13 @@ function parsePublicSSHKey(p: P): Ast | null {
 }
 
 /** parseAuthenticationData: [type] BY 'password', SERVER 'ldap', CN 'name', BY KEY ..., then VALID UNTIL and GRANTS. */
-function parseAuthenticationData(p: P, typeMandatory: boolean, typeAllowed: boolean, noPassword: boolean): boolean {
+function parseAuthenticationData(
+  p: P,
+  typeMandatory: boolean,
+  typeAllowed: boolean,
+  noPassword: boolean,
+  methods: Ast[],
+): boolean {
   return (
     attempt(p, () => {
       let type = (noPassword ? AUTHENTICATION_TYPES : AUTHENTICATION_TYPES.slice(1)).find((name) => kw(p, name));
@@ -571,24 +576,25 @@ function parseAuthenticationData(p: P, typeMandatory: boolean, typeAllowed: bool
         if (!kw(p, "SERVER") || !parseStringAndSubstitution(p)) return false;
         if (kw(p, "SCHEME") && !parseStringAndSubstitution(p)) return false;
       }
-      parseAuthenticationValidUntil(p);
+      const validUntil = parseAuthenticationValidUntil(p);
       parseAuthenticationGrants(p);
+      methods.push(new Ast("AuthenticationData").set("valid_until", validUntil));
       return true;
     }) !== null
   );
 }
 
-/** IDENTIFIED [WITH type] BY ..., more methods after commas. */
-function parseIdentifiedWith(p: P, noPassword: boolean): boolean {
+/** IDENTIFIED [WITH type] BY ..., more methods after commas; `methods` gets them. */
+function parseIdentifiedWith(p: P, noPassword: boolean, methods: Ast[]): boolean {
   return (
     attempt(p, () => {
       if (!kw(p, "IDENTIFIED")) return false;
       const mandatory = kw(p, "WITH");
-      if (!parseAuthenticationData(p, mandatory, mandatory, noPassword)) return false;
+      if (!parseAuthenticationData(p, mandatory, mandatory, noPassword, methods)) return false;
       for (;;) {
         const before = p.i;
         if (!tok(p, T.Comma)) break;
-        if (!parseAuthenticationData(p, false, true, noPassword)) {
+        if (!parseAuthenticationData(p, false, true, noPassword, methods)) {
           p.restore(before);
           break;
         }
@@ -599,15 +605,16 @@ function parseIdentifiedWith(p: P, noPassword: boolean): boolean {
 }
 
 /** NOT IDENTIFIED [VALID UNTIL ...] [GRANTS (...)] or IDENTIFIED ... */
-function parseIdentifiedOrNotIdentified(p: P): boolean {
+function parseIdentifiedOrNotIdentified(p: P, methods: Ast[]): boolean {
   return (
     attempt(p, () => {
       if (kw(p, "NOT IDENTIFIED")) {
-        parseAuthenticationValidUntil(p);
+        const validUntil = parseAuthenticationValidUntil(p);
         parseAuthenticationGrants(p);
+        methods.push(new Ast("AuthenticationData").set("valid_until", validUntil));
         return true;
       }
-      return parseIdentifiedWith(p, true);
+      return parseIdentifiedWith(p, true, methods);
     }) !== null
   );
 }
@@ -672,18 +679,17 @@ function subnetError(text: string): string | undefined {
 function parseHosts(p: P, prefix: string): boolean {
   const host = () => {
     if (kw(p, "NONE") || kw(p, "ANY") || kw(p, "LOCAL")) return true;
-    if (kw(p, "IP")) {
-      const subnets: number[] = [];
-      const list = parseList(p, () => (subnets.push(p.i), parseStringLiteral(p)), undefined, false);
+    const keyword = ["REGEXP", "NAME", "IP", "LIKE"].find((keyword) => kw(p, keyword));
+    if (!keyword) return false;
+    const subnets: number[] = [];
+    const list = parseList(p, () => (subnets.push(p.i), parseStringLiteral(p)), undefined, false);
+    if (keyword === "IP") {
       for (const [i, subnet] of (list?.children ?? []).entries()) {
         const error = subnetError(stringValue(subnet)!);
         if (error) p.failOther(error, subnets[i]);
       }
-      return list !== null;
     }
-    if (kw(p, "REGEXP") || kw(p, "NAME") || kw(p, "LIKE"))
-      return parseList(p, () => parseStringLiteral(p), undefined, false) !== null;
-    return false;
+    return list !== null;
   };
   return (
     attempt(p, () => {
@@ -735,10 +741,14 @@ export function parseCreateUserQuery(p: P): Ast | null {
     let defaultDatabase = false;
     let newName = false;
     let storage = false;
-    let validUntil = false;
+    let validUntil: Ast | null = null;
+    const methods: Ast[] = [];
     for (;;) {
       if (!auth && !reset) {
-        if (parseIdentifiedOrNotIdentified(p) || (alter && attempt(p, () => kw(p, "ADD") && parseIdentifiedWith(p, false)))) {
+        if (
+          parseIdentifiedOrNotIdentified(p, methods) ||
+          (alter && attempt(p, () => kw(p, "ADD") && parseIdentifiedWith(p, false, methods)))
+        ) {
           auth = true;
           continue;
         }
@@ -780,15 +790,14 @@ export function parseCreateUserQuery(p: P): Ast | null {
         storage = true;
         continue;
       }
-      if (!auth && !validUntil && parseAuthenticationValidUntil(p)) {
-        validUntil = true;
-        continue;
-      }
+      if (!auth && !validUntil && (validUntil = parseAuthenticationValidUntil(p))) continue;
       break;
     }
     // ALTER USER with nothing to change.
     if (alter && p.i === afterNames) return null;
-    return new Ast("CreateUserQuery");
+    const node = new Ast("CreateUserQuery").set("valid_until", validUntil);
+    node.children = methods;
+    return node;
   });
 }
 
@@ -1201,20 +1210,17 @@ export function parseCreateSettingsProfileQuery(p: P): Ast | null {
 export function parseCreateTokenQuery(p: P): Ast | null {
   return base(p, "CREATE TOKEN query", () => {
     if (!kw(p, "CREATE TOKEN")) return null;
-    let validUntil = false;
+    let validUntil: Ast | null = null;
     let grants = false;
     for (;;) {
-      if (!validUntil && parseAuthenticationValidUntil(p)) {
-        validUntil = true;
-        continue;
-      }
+      if (!validUntil && (validUntil = parseAuthenticationValidUntil(p))) continue;
       if (!grants && parseAuthenticationGrants(p)) {
         grants = true;
         continue;
       }
       break;
     }
-    return new Ast("CreateTokenQuery");
+    return new Ast("CreateTokenQuery").set("valid_until", validUntil);
   });
 }
 
@@ -1482,7 +1488,6 @@ export function parseExecuteAsQuery(p: P, parseSubquery: () => Ast | null): Ast 
   return base(p, "EXECUTE AS query", () => {
     if (!kw(p, "EXECUTE AS")) return null;
     if (!parseUserNameWithHost(p, false)) return null;
-    parseSubquery();
-    return new Ast("ExecuteAsQuery");
+    return new Ast("ExecuteAsQuery").set("subquery", parseSubquery());
   });
 }

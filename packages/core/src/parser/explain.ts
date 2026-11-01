@@ -50,9 +50,10 @@ export function parseExplainQuery(p: P, selectOnly = false, allowSettingsAfterFo
     } else if (kind === "TABLE OVERRIDE") {
       const fn = parseFunction(p, true, true);
       if (!fn) return null;
-      if (!parseTableOverrideDeclaration(p, false)) return null;
+      const override = parseTableOverrideDeclaration(p, false);
+      if (!override) return null;
       node.set("table_function", fn);
-      node.set("table_override", new Ast("Other"));
+      node.set("table_override", override);
     } else if (kind === "QUERY TREE") {
       const query = parseSelectWithUnionQuery(p);
       if (!query) return null;

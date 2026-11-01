@@ -1,7 +1,7 @@
 /**
  * ALTER TABLE and ALTER DATABASE: a port of src/Parsers/ParserAlterQuery.cpp.
  */
-import { Ast } from "./ast.js";
+import { Ast, keep, list } from "./ast.js";
 import {
   parseCluster,
   parseDatabaseAndTableAsAST,
@@ -43,8 +43,8 @@ function parseName(p: P): boolean {
 }
 
 /** [IN PARTITION p]. */
-function parseInPartition(p: P): boolean {
-  return !kw(p, "IN PARTITION") || parsePartition(p) !== null;
+function parseInPartition(p: P, command: Ast): boolean {
+  return !kw(p, "IN PARTITION") || keep(command, "partition", parsePartition(p));
 }
 
 /** [FIRST | AFTER name]. */
@@ -59,15 +59,22 @@ function parseWithName(p: P): boolean {
 }
 
 /** [IN PARTITION p, ...] WHERE expr, where the condition has no alias. */
-function parsePartitionsAndPredicate(p: P): boolean {
-  if (kw(p, "IN PARTITION") && !parseList(p, () => parsePartition(p), undefined, false)) return false;
+function parsePartitionsAndPredicate(p: P, command: Ast): boolean {
+  if (kw(p, "IN PARTITION")) {
+    const partitions = parseList(p, () => parsePartition(p), undefined, false);
+    if (!partitions) return false;
+    // A single partition is the command's own child, more stay in their list.
+    command.set("partition", partitions.children.length === 1 ? partitions.children[0]! : partitions);
+  }
   if (!kw(p, "WHERE")) return false;
   const predicate = parseExpressionWithOptionalAlias(p, false);
-  return predicate !== null && !predicate.alias;
+  if (!predicate) return false;
+  command.set("predicate", predicate);
+  return !predicate.alias;
 }
 
 /** MODIFY COLUMN and ALTER COLUMN: a declaration, or REMOVE, MODIFY SETTING, RESET SETTING, ADD ENUM VALUES. */
-function parseModifyColumn(p: P, isModify: boolean): boolean {
+function parseModifyColumn(p: P, isModify: boolean, command: Ast): boolean {
   kw(p, "IF EXISTS");
   const declaration = parseColumnDeclaration(p, {
     compoundName: true,
@@ -77,6 +84,7 @@ function parseModifyColumn(p: P, isModify: boolean): boolean {
     checkTypeKeyword: !isModify,
   });
   if (!declaration) return false;
+  command.set("col_decl", declaration);
   if (declaration.has("null_modifier") && !declaration.get("type"))
     p.fail("NULL / NOT NULL modifier requires an explicit column type");
   const checkNoType = (keyword: string): void => {
@@ -97,7 +105,8 @@ function parseModifyColumn(p: P, isModify: boolean): boolean {
   }
   if (kw(p, "ADD ENUM VALUES")) {
     checkNoType("ADD ENUM VALUES");
-    return tok(p, T.OpeningRoundBracket) && parseExpressionList(p, false) !== null && tok(p, T.ClosingRoundBracket);
+    if (!tok(p, T.OpeningRoundBracket)) return false;
+    return keep(command, "add_enum_values", parseExpressionList(p, false)) && tok(p, T.ClosingRoundBracket);
   }
   return parseFirstOrAfter(p);
 }
@@ -110,17 +119,18 @@ function parseMoveDestination(p: P, part: boolean): boolean {
 }
 
 /** CLEAR|MATERIALIZE STATISTICS ALL | [IF EXISTS] columns [IN PARTITION p]. */
-function parseStatisticsOperation(p: P): boolean {
+function parseStatisticsOperation(p: P, command: Ast): boolean {
   if (kw(p, "ALL")) return true;
   kw(p, "IF EXISTS");
-  return parseStatisticsDeclarationWithoutTypes(p) !== null && parseInPartition(p);
+  return parseStatisticsDeclarationWithoutTypes(p) !== null && parseInPartition(p, command);
 }
 
 type Command = [keyword: string, body: () => boolean];
 
 /** The commands of ALTER TABLE, in the order ClickHouse tries them. */
-function tableCommands(p: P): Command[] {
-  const partition = () => parsePartition(p) !== null;
+function tableCommands(p: P, command: Ast): Command[] {
+  const partition = () => keep(command, "partition", parsePartition(p));
+  const inPartition = () => parseInPartition(p, command);
   const part = () => parseStringAndSubstitution(p) !== null;
   const ifExistsName = () => {
     kw(p, "IF EXISTS");
@@ -130,55 +140,55 @@ function tableCommands(p: P): Command[] {
     ["ADD COLUMN", () => {
       kw(p, "IF NOT EXISTS");
       const declaration = parseColumnDeclaration(p, { compoundName: true, allowNullModifiers: true });
-      return declaration !== null && parseFirstOrAfter(p);
+      return keep(command, "col_decl", declaration) && parseFirstOrAfter(p);
     }],
     ["RENAME COLUMN", () => ifExistsName() && kw(p, "TO") && parseName(p)],
-    ["MATERIALIZE COLUMN", () => parseName(p) && parseInPartition(p)],
+    ["MATERIALIZE COLUMN", () => parseName(p) && inPartition()],
     ["DROP PARTITION", partition],
     ["DROP PART", part],
     ["FORGET PARTITION", partition],
     ["DROP DETACHED PARTITION", partition],
     ["DROP DETACHED PART", part],
     ["DROP COLUMN", ifExistsName],
-    ["CLEAR COLUMN", () => ifExistsName() && parseInPartition(p)],
+    ["CLEAR COLUMN", () => ifExistsName() && inPartition()],
     ["ADD INDEX", () => {
       kw(p, "IF NOT EXISTS");
-      return parseIndexDeclaration(p) !== null && parseFirstOrAfter(p);
+      return keep(command, "index_decl", parseIndexDeclaration(p)) && parseFirstOrAfter(p);
     }],
     ["DROP INDEX", ifExistsName],
-    ["CLEAR INDEX", () => ifExistsName() && parseInPartition(p)],
-    ["MATERIALIZE INDEX", () => ifExistsName() && parseInPartition(p)],
+    ["CLEAR INDEX", () => ifExistsName() && inPartition()],
+    ["MATERIALIZE INDEX", () => ifExistsName() && inPartition()],
     ["ADD STATISTICS", () => {
       kw(p, "IF NOT EXISTS");
-      return parseStatisticsDeclaration(p) !== null;
+      return keep(command, "statistics_decl", parseStatisticsDeclaration(p));
     }],
-    ["MODIFY STATISTICS", () => parseStatisticsDeclaration(p) !== null],
+    ["MODIFY STATISTICS", () => keep(command, "statistics_decl", parseStatisticsDeclaration(p))],
     ["DROP STATISTICS", () => {
       kw(p, "IF EXISTS");
       return parseStatisticsDeclarationWithoutTypes(p) !== null;
     }],
-    ["CLEAR STATISTICS", () => parseStatisticsOperation(p)],
-    ["MATERIALIZE STATISTICS", () => parseStatisticsOperation(p)],
+    ["CLEAR STATISTICS", () => parseStatisticsOperation(p, command)],
+    ["MATERIALIZE STATISTICS", () => parseStatisticsOperation(p, command)],
     ["ADD PROJECTION", () => {
       kw(p, "IF NOT EXISTS");
-      return parseProjectionDeclaration(p) !== null && parseFirstOrAfter(p);
+      return keep(command, "projection_decl", parseProjectionDeclaration(p)) && parseFirstOrAfter(p);
     }],
     ["DROP PROJECTION", ifExistsName],
-    ["CLEAR PROJECTION", () => ifExistsName() && parseInPartition(p)],
-    ["MATERIALIZE PROJECTION", () => ifExistsName() && parseInPartition(p)],
+    ["CLEAR PROJECTION", () => ifExistsName() && inPartition()],
+    ["MATERIALIZE PROJECTION", () => ifExistsName() && inPartition()],
     ["MODIFY PROJECTION", () => {
       kw(p, "IF EXISTS");
-      return parseProjectionDeclaration(p) !== null;
+      return keep(command, "projection_decl", parseProjectionDeclaration(p));
     }],
     ["MOVE PART", () => part() && parseMoveDestination(p, true)],
     ["MOVE PARTITION", () => partition() && parseMoveDestination(p, false)],
     ["ADD CONSTRAINT", () => {
       kw(p, "IF NOT EXISTS");
-      return parseConstraintDeclaration(p) !== null;
+      return keep(command, "constraint_decl", parseConstraintDeclaration(p));
     }],
     ["MODIFY CONSTRAINT", () => {
       kw(p, "IF EXISTS");
-      return parseConstraintDeclaration(p) !== null;
+      return keep(command, "constraint_decl", parseConstraintDeclaration(p));
     }],
     ["DROP CONSTRAINT", ifExistsName],
     ["DETACH PARTITION", partition],
@@ -191,31 +201,33 @@ function tableCommands(p: P): Command[] {
     ["FREEZE", () => (!kw(p, "PARTITION") || partition()) && (!kw(p, "WITH") || parseWithName(p))],
     ["UNFREEZE", () => (!kw(p, "PARTITION") || partition()) && kw(p, "WITH") && parseWithName(p)],
     ["UNLOCK SNAPSHOT", () =>
-      parseStringLiteral(p) !== null && (!kw(p, "FROM") || parseIdentifierWithOptionalParameters(p) !== null)],
-    ["MODIFY COLUMN", () => parseModifyColumn(p, true)],
-    ["ALTER COLUMN", () => parseModifyColumn(p, false)],
-    ["MODIFY ORDER BY", () => parseExpressionWithOptionalAlias(p, false) !== null],
-    ["MODIFY SAMPLE BY", () => parseExpressionWithOptionalAlias(p, false) !== null],
+      parseStringLiteral(p) !== null &&
+      (!kw(p, "FROM") || keep(command, "snapshot_desc", parseIdentifierWithOptionalParameters(p)))],
+    ["MODIFY COLUMN", () => parseModifyColumn(p, true, command)],
+    ["ALTER COLUMN", () => parseModifyColumn(p, false, command)],
+    ["MODIFY ORDER BY", () => keep(command, "order_by", parseExpressionWithOptionalAlias(p, false))],
+    ["MODIFY SAMPLE BY", () => keep(command, "sample_by", parseExpressionWithOptionalAlias(p, false))],
     ["REMOVE SAMPLE BY", () => true],
-    ["DELETE", () => parsePartitionsAndPredicate(p)],
+    ["DELETE", () => parsePartitionsAndPredicate(p, command)],
     ["UPDATE", () =>
-      parseList(p, () => parseAssignment(p), undefined, false) !== null && parsePartitionsAndPredicate(p)],
+      keep(command, "update_assignments", parseList(p, () => parseAssignment(p), undefined, false)) &&
+      parsePartitionsAndPredicate(p, command)],
     ["COMMENT COLUMN", () => ifExistsName() && parseStringLiteral(p) !== null],
     ["MODIFY TTL", () => {
       if (peekKw(p, "MATERIALIZE") || peekKw(p, "REMOVE") || peekKw(p, "MODIFY")) return false;
-      return parseTTLExpressionList(p) !== null;
+      return keep(command, "ttl", parseTTLExpressionList(p));
     }],
     ["REMOVE TTL", () => true],
-    ["MATERIALIZE TTL", () => parseInPartition(p)],
-    ["REWRITE PARTS", () => parseInPartition(p)],
+    ["MATERIALIZE TTL", inPartition],
+    ["REWRITE PARTS", inPartition],
     ["MODIFY SETTING", () => parseSetQuery(p, true) !== null],
     ["RESET SETTING", () => parseList(p, () => parseIdentifier(p), undefined, false) !== null],
-    ["MODIFY QUERY", () => parseSelectWithUnionQuery(p) !== null],
+    ["MODIFY QUERY", () => keep(command, "select", parseSelectWithUnionQuery(p))],
   ];
 }
 
 /** The commands after MODIFY QUERY, which start differently. */
-function parseLaterTableCommand(p: P): boolean | null {
+function parseLaterTableCommand(p: P, command: Ast): boolean | null {
   // MODIFY SQL SECURITY and MODIFY DEFINER leave the keyword after MODIFY to the SQL SECURITY parser.
   if (peekKw(p, "MODIFY SQL SECURITY") || peekKw(p, "MODIFY DEFINER")) {
     kw(p, "MODIFY");
@@ -223,19 +235,19 @@ function parseLaterTableCommand(p: P): boolean | null {
   }
   if (kw(p, "MODIFY REFRESH")) return parseRefreshStrategy(p) !== null;
   if (kw(p, "MODIFY COMMENT")) return parseStringLiteral(p) !== null;
-  if (kw(p, "APPLY DELETED MASK") || kw(p, "APPLY PATCHES")) return parseInPartition(p);
+  if (kw(p, "APPLY DELETED MASK") || kw(p, "APPLY PATCHES")) return parseInPartition(p, command);
   if (kw(p, "EXECUTE")) {
     if (!parseIdentifier(p)) return false;
     if (!tok(p, T.OpeningRoundBracket)) return false;
-    if (!parseList(p, () => parseExpressionWithOptionalAlias(p, false))) return false;
+    if (!keep(command, "execute_args", parseList(p, () => parseExpressionWithOptionalAlias(p, false)))) return false;
     return tok(p, T.ClosingRoundBracket);
   }
   return null;
 }
 
-function parseTableCommand(p: P): boolean {
-  for (const [keyword, body] of tableCommands(p)) if (kw(p, keyword)) return body();
-  return parseLaterTableCommand(p) ?? false;
+function parseTableCommand(p: P, command: Ast): boolean {
+  for (const [keyword, body] of tableCommands(p, command)) if (kw(p, keyword)) return body();
+  return parseLaterTableCommand(p, command) ?? false;
 }
 
 function parseDatabaseCommand(p: P): boolean {
@@ -248,9 +260,10 @@ function parseDatabaseCommand(p: P): boolean {
 function parseAlterCommand(p: P, withBracket: boolean, database: boolean): Ast | null {
   return base(p, "ALTER command", () => {
     if (withBracket && !tok(p, T.OpeningRoundBracket)) return null;
-    if (!(database ? parseDatabaseCommand(p) : parseTableCommand(p))) return null;
+    const command = new Ast("AlterCommand");
+    if (!(database ? parseDatabaseCommand(p) : parseTableCommand(p, command))) return null;
     if (withBracket && !tok(p, T.ClosingRoundBracket)) return null;
-    return new Ast("AlterCommand");
+    return command;
   });
 }
 
@@ -258,10 +271,13 @@ function parseAlterCommand(p: P, withBracket: boolean, database: boolean): Ast |
 function parseAlterCommandList(p: P, database: boolean): Ast | null {
   return base(p, "a list of ALTER commands", () => {
     const withBracket = p.kind() === T.OpeningRoundBracket;
+    const commands: Ast[] = [];
     do {
-      if (!parseAlterCommand(p, withBracket, database)) return null;
+      const command = parseAlterCommand(p, withBracket, database);
+      if (!command) return null;
+      commands.push(command);
     } while (tok(p, T.Comma));
-    return new Ast("AlterCommandList");
+    return list(commands);
   });
 }
 
@@ -278,6 +294,7 @@ export function parseAlterQuery(p: P): Ast | null {
       return null;
     }
     if (kw(p, "ON") && !parseCluster(p)) return null;
-    return parseAlterCommandList(p, database) ? new Ast("AlterQuery") : null;
+    const commands = parseAlterCommandList(p, database);
+    return commands ? new Ast("AlterQuery").set("commands", commands) : null;
   });
 }

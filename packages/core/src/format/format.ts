@@ -119,6 +119,11 @@ function firstLineBreak(sql: string, units: Unit[], parts: (Part | null)[]): str
   return kept ?? data ?? "\n";
 }
 
+/** The significant tokens of a unit as analyze() reads them, given the role of each word by its offset. */
+export function unitTokens(sql: string, unit: Unit, roles: Map<number, Role>): Tok[] {
+  return toPiece(sql, unit, roles).sig;
+}
+
 /** The significant tokens of a unit with the comments around them. */
 function toPiece(sql: string, unit: Unit, roles: Map<number, Role>): Piece {
   const sig: Tok[] = [];

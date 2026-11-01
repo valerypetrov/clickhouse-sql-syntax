@@ -13,6 +13,8 @@ First release.
   slowing VS Code down.
 - Autocomplete, hover documentation and signature help for ClickHouse's keywords, functions, data types, settings,
   table engines, formats and table functions.
+- Go to definition, references, highlights and rename of aliases, CTEs, table aliases and lambda and query
+  parameters, scoped as ClickHouse's analyzer scopes them.
 - An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its
   queries run with `readonly=1` and limits of 2 s, rows, bytes and memory each, and a check of a file sends no
   new query after 10 s. Its settings count only in the user settings, so that a workspace cannot send its SQL

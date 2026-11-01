@@ -2,6 +2,7 @@
  * Shared contracts of the library. Every other module builds on these types,
  * so change them only together with all their users.
  */
+import type { ParseCache } from "./parser/index.js";
 
 /** Token kinds of ClickHouse's lexer, named as in src/Parsers/Lexer.h. */
 export enum TokenKind {
@@ -192,7 +193,50 @@ export interface ClickHouseSqlSyntax {
   complete(sql: string, offset: number, options?: CompleteOptions): CompletionCandidate[];
   /** The documentation of a function, setting, table function, table engine, format or combinator. */
   describe(name: string, kind?: CompletionKind): Description | undefined;
+  /** The lines an editor can fold: statements, brackets and comments of several lines, and -- #region blocks. */
+  foldingRanges(sql: string): FoldingRange[];
+  /** Each statement with its kind and a short name, and its CTEs and columns; a ParseCache saves parsing again. */
+  outline(sql: string, cache?: ParseCache): OutlineSymbol[];
+  /** For each offset, the pieces around it from the token out to the statement, each holding the one before. */
+  selectionRanges(sql: string, offsets: readonly number[], cache?: ParseCache): TextRange[][];
+  /** Where the alias, CTE, table alias, lambda parameter or query parameter at an offset is defined. */
+  definition(sql: string, offset: number, options?: NameOptions): NameLocation[];
+  /** Every place of its statement that names the same thing as the name at an offset. */
+  references(sql: string, offset: number, options?: NameOptions): NameLocation[];
+  /** The name at an offset and its range, if rename() can rename it. */
+  prepareRename(sql: string, offset: number, options?: NameOptions): PrepareRenameResult;
+  /** The edits that give the name at an offset a new name, quoted where needed. */
+  rename(sql: string, offset: number, newName: string, options?: NameOptions): RenameResult;
 }
+
+/** Options of definition(), references(), prepareRename() and rename(). */
+export interface NameOptions {
+  /** The statements parsed before, as checkWithRoles() keeps them. */
+  cache?: ParseCache;
+}
+
+/** Where a name is written; `definition` is true where it is defined. */
+export interface NameLocation {
+  start: number;
+  end: number;
+  definition: boolean;
+}
+
+/** Text from `start` to `end` to replace with `newText`. */
+export interface TextEdit {
+  start: number;
+  end: number;
+  newText: string;
+}
+
+/** What prepareRename() gives: the name and where it is written, or why it cannot be renamed. */
+export type PrepareRenameResult = { start: number; end: number; name: string; error?: undefined } | { error: string };
+
+/** The name and the range that rename() would change. */
+export type RenameRange = Extract<PrepareRenameResult, { name: string }>;
+
+/** What rename() gives: the edits, or why it cannot rename. */
+export type RenameResult = { edits: TextEdit[]; error?: undefined } | { error: string; edits?: undefined };
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
 export type KeywordCase = "upper" | "lower" | "preserve";
@@ -261,4 +305,37 @@ export interface Description {
   arguments?: readonly ArgumentInfo[];
   /** The parameters of a parametric aggregate function, as `level` in quantile(level)(x). */
   parameters?: readonly ArgumentInfo[];
+}
+
+/**
+ * Lines that an editor can fold, numbered as in Token. The first line stays in view, and the
+ * lines after it up to endLine fold under it.
+ */
+export interface FoldingRange {
+  startLine: number;
+  endLine: number;
+  kind?: "comment" | "region";
+}
+
+/** What a symbol of outline() is: what a CREATE statement makes, a query, another statement, a CTE or a column. */
+export type OutlineKind = "table" | "view" | "dictionary" | "database" | "function" | "query" | "statement" | "cte" | "column";
+
+/** A statement, or a CTE or column of one, for an editor's outline. Offsets follow the rules of Token. */
+export interface OutlineSymbol {
+  /** A short name: "CREATE TABLE db.t", "SELECT … FROM db.t", or the name of the CTE or column. */
+  name: string;
+  kind: OutlineKind;
+  /** The whole statement, CTE or column. */
+  start: number;
+  end: number;
+  /** Where its name is written; the SELECT keyword of a query, and the leading keywords of a statement without a name. */
+  nameStart: number;
+  nameEnd: number;
+  children: OutlineSymbol[];
+}
+
+/** A piece of the input, by offsets. */
+export interface TextRange {
+  start: number;
+  end: number;
 }

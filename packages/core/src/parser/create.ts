@@ -4,7 +4,7 @@
  * ParserViewTargets.cpp, ParserRefreshStrategy.cpp and ParserProjectionSelectQuery.cpp.
  */
 import { parseUserNameWithHost } from "./access.js";
-import { Ast, canHaveAlias, func, stringValue } from "./ast.js";
+import { Ast, canHaveAlias, func, keep, list, stringValue } from "./ast.js";
 import { intervalSeconds, parseCluster, parseTimeInterval } from "./common.js";
 import { parseDataType } from "./datatype.js";
 import {
@@ -195,9 +195,9 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
     }
 
     // The remaining modifiers come in any order, each at most once.
-    let codec = false;
-    let statistics = false;
-    let ttl = false;
+    let codec: Ast | null = null;
+    let statistics: Ast | null = null;
+    let ttl: Ast | null = null;
     let primaryKey = false;
     let settings = false;
     for (;;) {
@@ -205,14 +205,14 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
         if (!parseStringLiteral(p)) return null;
         comment = true;
       } else if (!codec && kw(p, "CODEC")) {
-        if (!parseCodec(p)) return null;
-        codec = true;
+        codec = parseCodec(p);
+        if (!codec) return null;
       } else if (!statistics && kw(p, "STATISTICS")) {
-        if (!parseStatisticsType(p)) return null;
-        statistics = true;
+        statistics = parseStatisticsType(p);
+        if (!statistics) return null;
       } else if (!ttl && kw(p, "TTL")) {
-        if (!parseExpression(p)) return null;
-        ttl = true;
+        ttl = parseExpression(p);
+        if (!ttl) return null;
       } else if (!collation && kw(p, "COLLATE")) {
         if (!parseCollation(p)) return null;
         collation = true;
@@ -234,6 +234,7 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
     }
     if (type) node.set("type", type);
     if (defaultExpression) node.set("default", defaultExpression);
+    node.set("codec", codec).set("statistics", statistics).set("ttl", ttl);
     if (defaultSpecifier) node.flag("default_specifier");
     if (nullModifier !== undefined) node.flag("null_modifier");
     // Like ASTColumnDeclaration::hasChildren(): any part besides the name and the flags.
@@ -285,7 +286,7 @@ function parseCodecDeclaration(p: P): Ast | null {
     const codec = parseCodec(p);
     if (!codec) return null;
     if (!name.name.includes(".") && !isCompressionCodec(codec)) return null;
-    return new Ast("CodecDeclaration");
+    return new Ast("CodecDeclaration").set("codec", codec);
   });
 }
 
@@ -293,11 +294,13 @@ function parseCodecDeclaration(p: P): Ast | null {
 export function parseIndexDeclaration(p: P): Ast | null {
   return base(p, "index declaration", () => {
     if (!parseIdentifier(p)) return null;
-    if (!parseExpression(p)) return null;
+    const expr = parseExpression(p);
+    if (!expr) return null;
     if (!kw(p, "TYPE")) return null;
-    if (!parseExpressionWithOptionalArguments(p)) return null;
+    const type = parseExpressionWithOptionalArguments(p);
+    if (!type) return null;
     if (kw(p, "GRANULARITY") && !parseUnsignedInteger(p)) return null;
-    return new Ast("IndexDeclaration");
+    return new Ast("IndexDeclaration").set("expr", expr).set("type", type);
   });
 }
 
@@ -306,8 +309,9 @@ export function parseStatisticsDeclaration(p: P): Ast | null {
   return base(p, "statistics declaration", () => {
     if (!parseList(p, () => parseIdentifier(p), undefined, false)) return null;
     if (!kw(p, "TYPE")) return null;
-    if (!parseList(p, () => parseExpressionWithOptionalArguments(p), undefined, false)) return null;
-    return new Ast("StatisticsDeclaration");
+    const types = parseList(p, () => parseExpressionWithOptionalArguments(p), undefined, false);
+    if (!types) return null;
+    return new Ast("StatisticsDeclaration").set("types", types);
   });
 }
 
@@ -323,33 +327,39 @@ export function parseConstraintDeclaration(p: P): Ast | null {
   return base(p, "constraint declaration", () => {
     if (!parseIdentifier(p)) return null;
     if (!kw(p, "CHECK") && !kw(p, "ASSUME")) return null;
-    if (!parseExpression(p)) return null;
-    return new Ast("ConstraintDeclaration");
+    const expr = parseExpression(p);
+    return expr ? new Ast("ConstraintDeclaration").set("expr", expr) : null;
   });
 }
 
 /** ParserProjectionSelectQuery: [WITH ...] SELECT ... [WHERE ...] [GROUP BY ...] [ORDER BY ...]. */
 function parseProjectionSelectQuery(p: P): Ast | null {
   return base(p, "PROJECTION SELECT query", () => {
-    if (kw(p, "WITH") && !parseNotEmptyExpressionList(p, false)) return null;
+    const node = new Ast("ProjectionSelectQuery");
+    if (kw(p, "WITH") && !keep(node, "with", parseNotEmptyExpressionList(p, false))) return null;
     if (!kw(p, "SELECT")) return null;
-    if (!parseNotEmptyExpressionList(p, true)) return null;
-    if (kw(p, "WHERE") && !parseExpressionWithOptionalAlias(p, false)) return null;
-    if (kw(p, "GROUP BY") && !parseList(p, () => parseExpression(p))) return null;
-    if (kw(p, "ORDER BY") && !parseStorageOrderByExpressionList(p, false)) return null;
-    return new Ast("ProjectionSelectQuery");
+    if (!keep(node, "select", parseNotEmptyExpressionList(p, true))) return null;
+    if (kw(p, "WHERE") && !keep(node, "where", parseExpressionWithOptionalAlias(p, false))) return null;
+    if (kw(p, "GROUP BY") && !keep(node, "group_by", parseList(p, () => parseExpression(p)))) return null;
+    if (kw(p, "ORDER BY")) {
+      const keys = parseStorageOrderByExpressionList(p, false);
+      if (!keys) return null;
+      // One key is the ORDER BY itself, more are a tuple of them.
+      node.set("order_by", keys.children.length === 1 ? keys.children[0]! : func("tuple", keys.children));
+    }
+    return node;
   });
 }
 
 /** parseProjectionDeclarationBody: (SELECT ...) or INDEX exprs TYPE type, then [WITH SETTINGS (...)]. */
-export function parseProjectionDeclarationBody(p: P): boolean {
+export function parseProjectionDeclarationBody(p: P, node: Ast): boolean {
   if (tok(p, T.OpeningRoundBracket)) {
-    if (!parseProjectionSelectQuery(p)) return false;
+    if (!keep(node, "query", parseProjectionSelectQuery(p))) return false;
     if (!tok(p, T.ClosingRoundBracket)) return false;
   } else if (kw(p, "INDEX")) {
-    if (!parseNotEmptyExpressionList(p, false)) return false;
+    if (!keep(node, "index", parseNotEmptyExpressionList(p, false))) return false;
     if (!kw(p, "TYPE")) return false;
-    if (!parseExpressionWithOptionalArguments(p)) return false;
+    if (!keep(node, "type", parseExpressionWithOptionalArguments(p))) return false;
   } else {
     return false;
   }
@@ -363,9 +373,11 @@ export function parseProjectionDeclarationBody(p: P): boolean {
 
 /** ParserProjectionDeclaration: name (SELECT ...). */
 export function parseProjectionDeclaration(p: P): Ast | null {
-  return base(p, "projection declaration", () =>
-    parseIdentifier(p) && parseProjectionDeclarationBody(p) ? new Ast("ProjectionDeclaration") : null,
-  );
+  return base(p, "projection declaration", () => {
+    if (!parseIdentifier(p)) return null;
+    const node = new Ast("ProjectionDeclaration");
+    return parseProjectionDeclarationBody(p, node) ? node : null;
+  });
 }
 
 /** ParserForeignKeyDeclaration: (cols) REFERENCES t (cols) [ON DELETE|UPDATE action]..., which is ignored. */
@@ -405,6 +417,10 @@ export function parseTablePropertiesDeclarationList(p: P): Ast | null {
     const elements = parseList(p, () => parseTablePropertyDeclaration(p), undefined, false);
     if (!elements) return null;
     const columns = new Ast("Columns");
+    const codecs: Ast[] = [];
+    const indices: Ast[] = [];
+    const constraints: Ast[] = [];
+    const projections: Ast[] = [];
     for (const element of elements.children) {
       switch (element.kind) {
         case "ColumnDeclaration":
@@ -412,26 +428,35 @@ export function parseTablePropertiesDeclarationList(p: P): Ast | null {
           columns.children.push(element);
           break;
         case "CodecDeclaration":
+          codecs.push(element);
+          break;
         case "IndexDeclaration":
+          indices.push(element);
+          break;
         case "ForeignKeyDeclaration":
           break;
         case "ConstraintDeclaration":
           columns.flag("constraints");
+          constraints.push(element);
           break;
         case "ProjectionDeclaration":
           columns.flag("projections");
+          projections.push(element);
           break;
         case "PrimaryKey": {
           const key = element.get("key")!;
           if (key.kind !== "Identifier" && key.kind !== "Function") return null;
           if (columns.has("primary_key")) return null;
-          columns.flag("primary_key");
+          columns.flag("primary_key").set("primary_key", key);
           break;
         }
         default:
           return null;
       }
     }
+    // The other declarations go to lists of their own, as in ASTColumns.
+    for (const [name, declarations] of Object.entries({ codecs, indices, constraints, projections }))
+      if (declarations.length) columns.set(name, list(declarations));
     return columns;
   });
 }
@@ -439,12 +464,15 @@ export function parseTablePropertiesDeclarationList(p: P): Ast | null {
 /** ParserStorageOrderByClause: ORDER BY expr [ASC|DESC], or (a DESC, b). */
 function parseStorageOrderByClause(p: P): Ast | null {
   return base(p, "storage order by clause", () => {
-    if (parseStorageOrderByElement(p, true)) return new Ast("Other");
+    // ClickHouse keeps the ASC|DESC wrapper of a key only when it is DESC.
+    const element = parseStorageOrderByElement(p, true);
+    if (element) return element.has("desc") ? element : element.children[0]!;
     if (p.kind() === T.BareWord && p.text() === "tuple") p.i++;
     if (!tok(p, T.OpeningRoundBracket)) return null;
-    parseStorageOrderByExpressionList(p, true);
+    const keys = parseStorageOrderByExpressionList(p, true)?.children ?? [];
     if (!tok(p, T.ClosingRoundBracket)) return null;
-    return new Ast("Other");
+    // In a list, the wrappers go only when no key is DESC.
+    return func("tuple", keys.some((key) => key.has("desc")) ? keys : keys.map((key) => key.children[0]!));
   });
 }
 
@@ -462,7 +490,7 @@ export function parseStorage(p: P): Ast | null {
       node.set("engine", engine);
       storageLike = true;
     }
-    const clauses: [string, string, () => unknown][] = [
+    const clauses: [string, string, () => Ast | null][] = [
       ["partition_by", "PARTITION BY", () => parseExpression(p)],
       ["primary_key", "PRIMARY KEY", () => parseExpression(p)],
       ["order_by", "ORDER BY", () => parseStorageOrderByClause(p)],
@@ -473,7 +501,7 @@ export function parseStorage(p: P): Ast | null {
     loop: for (;;) {
       for (const [field, keyword, parse] of clauses) {
         if (!node.has(field) && kw(p, keyword)) {
-          if (!parse()) return null;
+          if (!keep(node, field, parse())) return null;
           node.flag(field);
           storageLike = true;
           continue loop;
@@ -489,8 +517,8 @@ export function parseStorage(p: P): Ast | null {
   });
 }
 
-/** One target of ParserViewTargets, such as TAGS INNER UUID '...' or DATA db.table. */
-function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>>, kind: string): boolean {
+/** One target of ParserViewTargets, such as TAGS INNER UUID '...' or DATA db.table; `node` keeps its parts. */
+function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>>, kind: string, node: Ast): boolean {
   const current = p.i;
   if (!kw(p, keyword)) return false;
   let target = targets.get(kind);
@@ -511,6 +539,7 @@ function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>
       if (["constraints", "projections", "primary_key", "primary_key_from_columns"].some((flag) => columns!.has(flag)))
         p.failOther("Only columns and indexes are supported in INNER COLUMNS");
       target.add("columns");
+      node.set(`${kind}_columns`, columns);
       return true;
     }
     p.restore(current);
@@ -518,8 +547,10 @@ function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>
   }
   if (!target.has("engine")) {
     kw(p, "INNER");
-    if (parseStorage(p)) {
+    const storage = parseStorage(p);
+    if (storage) {
       target.add("engine");
+      node.set(`${kind}_engine`, storage);
       return true;
     }
   }
@@ -544,14 +575,15 @@ function parseTimeSeriesTargets(p: P): Ast | null {
       ["metric_families", "METRIC FAMILIES"],
       ["metric_families", "METRICS"],
     ];
+    const node = new Ast("ViewTargets");
     let parsedAny = false;
     for (;;) {
       let parsed = false;
-      for (const [kind, keyword] of keywords) if (parseViewTarget(p, keyword, targets, kind)) parsed = true;
+      for (const [kind, keyword] of keywords) if (parseViewTarget(p, keyword, targets, kind, node)) parsed = true;
       if (!parsed) break;
       parsedAny = true;
     }
-    return parsedAny ? new Ast("ViewTargets") : null;
+    return parsedAny ? node : null;
   });
 }
 
@@ -605,11 +637,11 @@ export function parseCreateTableQuery(p: P): Ast | null {
     }
 
     let storage: Ast | null = null;
-    let targets = false;
+    let targets: Ast | null = null;
     const parseStorageAndTargets = (): boolean => {
       storage = parseStorage(p);
       if (!storage) return false;
-      if (storage.get("engine")?.name === "TimeSeries") targets = parseTimeSeriesTargets(p) !== null;
+      if (storage.get("engine")?.name === "TimeSeries") targets = parseTimeSeriesTargets(p);
       return true;
     };
     let empty = false;
@@ -623,9 +655,9 @@ export function parseCreateTableQuery(p: P): Ast | null {
     let columns: Ast | null = null;
     let comment = false;
     let sqlSecurity = false;
-    let select = false;
+    let select: Ast | null = null;
     let asTable = false;
-    let asTableFunction = false;
+    let asTableFunction: Ast | null = null;
     if (tok(p, T.OpeningRoundBracket)) {
       columns = parseTablePropertiesDeclarationList(p);
       if (!columns) return null;
@@ -640,12 +672,12 @@ export function parseCreateTableQuery(p: P): Ast | null {
       const hasAs = kw(p, "AS");
       if ((empty || clone) && !hasAs) return null;
       if ((hasStorage || temporary) && hasAs) {
-        if (!parseSelectWithUnionQuery(p)) return null;
-        select = true;
+        select = parseSelectWithUnionQuery(p);
+        if (!select) return null;
       }
       if (!hasStorage && !temporary && hasAs) {
-        if (!parseFunction(p, true, true)) return null;
-        asTableFunction = true;
+        asTableFunction = parseFunction(p, true, true);
+        if (!asTableFunction) return null;
       }
     } else {
       parseStorageAndTargets();
@@ -656,11 +688,9 @@ export function parseCreateTableQuery(p: P): Ast | null {
       const hasAs = kw(p, "AS");
       if ((empty || clone) && !hasAs) return null;
       if (hasAs) {
-        if (parseSelectWithUnionQuery(p)) {
-          select = true;
-        } else if (!storage && parseFunction(p, true, true)) {
-          asTableFunction = true;
-        } else {
+        select = parseSelectWithUnionQuery(p);
+        if (!select && !storage) asTableFunction = parseFunction(p, true, true);
+        if (!select && !asTableFunction) {
           if (!parseIdentifier(p)) return null;
           if (tok(p, T.Dot) && !parseIdentifier(p)) return null;
           asTable = true;
@@ -695,7 +725,12 @@ export function parseCreateTableQuery(p: P): Ast | null {
       if (targets) p.failOther("targets are already defined");
       rejectNilInnerUuid(p, innerUuid);
     }
-    return new Ast("CreateQuery").set("columns", columns);
+    return new Ast("CreateQuery")
+      .set("columns", columns)
+      .set("storage", storageNode)
+      .set("as_table_function", asTableFunction)
+      .set("select", select)
+      .set("targets", targets);
   });
 }
 
@@ -708,23 +743,25 @@ export function parseTableOverrideDeclaration(p: P, standalone = true): Ast | nu
       if (!tok(p, T.OpeningRoundBracket)) return null;
     }
     const seen = new Set<string>();
-    const clauses: [string, () => unknown][] = [
+    const clauses: [string, () => Ast | null][] = [
       ["PARTITION BY", () => parseExpression(p)],
       ["PRIMARY KEY", () => parseExpression(p)],
       ["ORDER BY", () => parseExpression(p)],
       ["SAMPLE BY", () => parseExpression(p)],
       ["TTL", () => parseTTLExpressionList(p)],
     ];
+    const node = new Ast("TableOverride");
+    const storage = new Ast("Storage");
     loop: for (;;) {
       if (!seen.has("COLUMNS") && kw(p, "COLUMNS")) {
         if (!tok(p, T.OpeningRoundBracket)) return null;
-        if (!parseTablePropertiesDeclarationList(p)) return null;
+        if (!keep(node, "columns", parseTablePropertiesDeclarationList(p))) return null;
         if (!tok(p, T.ClosingRoundBracket)) return null;
         seen.add("COLUMNS");
       }
       for (const [keyword, parse] of clauses) {
         if (!seen.has(keyword) && kw(p, keyword)) {
-          if (!parse()) return null;
+          if (!keep(storage, keyword, parse())) return null;
           seen.add(keyword);
           continue loop;
         }
@@ -732,15 +769,21 @@ export function parseTableOverrideDeclaration(p: P, standalone = true): Ast | nu
       break;
     }
     if (standalone && !tok(p, T.ClosingRoundBracket)) return null;
-    return new Ast("TableOverride");
+    return node.set("storage", storage);
   });
 }
 
 /** ParserTableOverridesDeclarationList: TABLE OVERRIDE ..., TABLE OVERRIDE ..., possibly none. */
 function parseTableOverridesDeclarationList(p: P): Ast | null {
-  return base(p, "table overrides declaration list", () =>
-    listUtil(p, () => parseTableOverrideDeclaration(p) !== null, undefined, true) ? new Ast("TableOverrideList") : null,
-  );
+  return base(p, "table overrides declaration list", () => {
+    const node = new Ast("TableOverrideList");
+    const element = (): boolean => {
+      const override = parseTableOverrideDeclaration(p);
+      if (override) node.children.push(override);
+      return override !== null;
+    };
+    return listUtil(p, element, undefined, true) ? node : null;
+  });
 }
 
 /** ParserCreateDatabaseQuery: CREATE|ATTACH DATABASE [IF NOT EXISTS] db [UUID '...'] [ON CLUSTER c] [ENGINE ...]. */
@@ -761,11 +804,12 @@ function parseCreateDatabaseQuery(p: P): Ast | null {
       uuid = uuidOf(p, literal, p.i - 1);
     }
     if (kw(p, "ON") && !parseCluster(p)) return null;
-    parseStorage(p);
+    const storage = parseStorage(p);
     parseComment(p);
-    if (!parseTableOverridesDeclarationList(p)) return null;
+    const overrides = parseTableOverridesDeclarationList(p);
+    if (!overrides) return null;
     if (attach && uuid && NIL_UUID.test(uuid)) p.failOther("ATTACH queries cannot use a Nil UUID");
-    return new Ast("CreateQuery");
+    return new Ast("CreateQuery").set("storage", storage).set("table_overrides", overrides);
   });
 }
 
@@ -886,7 +930,8 @@ function parseCreateViewQuery(p: P): Ast | null {
           "the first refresh fills the view (declare 'EMPTY' to skip it)",
       );
     if (!kw(p, "AS")) return null;
-    if (!parseSelectWithUnionQuery(p)) return null;
+    const select = parseSelectWithUnionQuery(p);
+    if (!select) return null;
     const beforeComment = p.i;
     if (parseComment(p) && comment)
       p.fail("Comment for a view cannot be specified both before and after AS SELECT; please use only one", beforeComment);
@@ -904,7 +949,11 @@ function parseCreateViewQuery(p: P): Ast | null {
       storagePrimaryKey = true;
     }
     if (innerUuid) rejectNilInnerUuid(p, innerUuid);
-    return new Ast("CreateQuery");
+    // The engine of a materialized view is a target of the view, and a PRIMARY KEY of the columns moves into it.
+    const primaryKey = columns?.get("primary_key");
+    if (primaryKey) storage = (storage ?? new Ast("Storage")).set("primary_key", primaryKey);
+    const targets = storage ? new Ast("ViewTargets").set("engine", storage) : null;
+    return new Ast("CreateQuery").set("columns", columns).set("select", select).set("targets", targets);
   });
 }
 
@@ -912,16 +961,17 @@ function parseCreateViewQuery(p: P): Ast | null {
 function parseDictionaryAttributeDeclaration(p: P): Ast | null {
   return base(p, "attribute declaration", () => {
     if (!parseIdentifier(p)) return null;
-    if (!parseDataType(p)) return null;
+    const node = new Ast("DictionaryAttributeDeclaration");
+    if (!keep(node, "type", parseDataType(p))) return null;
     const seen = new Set<string>();
     for (;;) {
       if (!seen.has("DEFAULT") && kw(p, "DEFAULT")) {
-        if (!parseLiteral(p) && !parseArrayOfLiterals(p)) return null;
+        if (!keep(node, "default", parseLiteral(p) ?? parseArrayOfLiterals(p))) return null;
         seen.add("DEFAULT");
         continue;
       }
       if (!seen.has("EXPRESSION") && kw(p, "EXPRESSION")) {
-        if (!parseExpression(p)) return null;
+        if (!keep(node, "expression", parseExpression(p))) return null;
         seen.add("EXPRESSION");
         continue;
       }
@@ -931,7 +981,7 @@ function parseDictionaryAttributeDeclaration(p: P): Ast | null {
       if (!flag) break;
       seen.add(flag);
     }
-    return new Ast("DictionaryAttributeDeclaration");
+    return node;
   });
 }
 
@@ -977,7 +1027,7 @@ function parseDictionaryLayout(p: P): Ast | null {
     const layout = parseFunctionWithKeyValueArguments(p, true);
     if (!layout) return null;
     if (layout.children.length && !layout.has("brackets")) return null;
-    return new Ast("Other");
+    return layout;
   });
 }
 
@@ -994,7 +1044,8 @@ function parseDictionary(p: P): Ast | null {
       if (!parseList(p, () => parseIdentifier(p), undefined, false)) return null;
       if (open && !tok(p, T.ClosingRoundBracket)) return null;
     }
-    const sections: [string, () => unknown][] = [
+    const node = new Ast("Dictionary");
+    const sections: [string, () => Ast | null][] = [
       ["SOURCE", () => parseFunctionWithKeyValueArguments(p)],
       ["LIFETIME", () => parseDictionaryLifetime(p)],
       ["LAYOUT", () => parseDictionaryLayout(p)],
@@ -1006,7 +1057,7 @@ function parseDictionary(p: P): Ast | null {
       for (const [keyword, parse] of sections) {
         if (!seen.has(keyword) && kw(p, keyword)) {
           if (!tok(p, T.OpeningRoundBracket)) return null;
-          if (!parse()) return null;
+          if (!keep(node, keyword, parse())) return null;
           if (!tok(p, T.ClosingRoundBracket)) return null;
           seen.add(keyword);
           continue loop;
@@ -1014,7 +1065,7 @@ function parseDictionary(p: P): Ast | null {
       }
       break;
     }
-    return new Ast("Dictionary");
+    return node;
   });
 }
 
@@ -1030,17 +1081,20 @@ function parseCreateDictionaryQuery(p: P): Ast | null {
     const name = parseCompoundIdentifier(p, true, true);
     if (!name) return null;
     if (kw(p, "ON") && !parseCluster(p)) return null;
+    const node = new Ast("CreateQuery");
     if (!attach) {
       if (!tok(p, T.OpeningRoundBracket)) return null;
-      if (!base(p, "attribute declaration list", () => parseList(p, () => parseDictionaryAttributeDeclaration(p), undefined, false)))
-        return null;
+      const attributes = base(p, "attribute declaration list", () =>
+        parseList(p, () => parseDictionaryAttributeDeclaration(p), undefined, false),
+      );
+      if (!keep(node, "attributes", attributes)) return null;
       tok(p, T.Comma);
       if (!tok(p, T.ClosingRoundBracket)) return null;
-      if (!parseDictionary(p)) return null;
+      if (!keep(node, "dictionary", parseDictionary(p))) return null;
     }
     parseComment(p);
     rejectNilUuid(p, attach, name);
-    return new Ast("CreateQuery");
+    return node;
   });
 }
 

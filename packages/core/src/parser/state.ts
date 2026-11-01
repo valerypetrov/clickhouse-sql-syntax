@@ -3,6 +3,7 @@
  * A parser function takes a P and returns a node, or null and leaves p.i where it was.
  */
 import { TokenKind as T, isErrorKind, type Token } from "../types.js";
+import type { NameMarks } from "./names.js";
 import type { Role, Roles } from "./roles.js";
 
 export { T };
@@ -14,6 +15,8 @@ export const MAX_PARSER_BACKTRACKS = 1_000_000;
 /** Backtracks shared by all statements of one check() call: about a second of work. */
 export class Budget {
   backtracks = 2 * MAX_PARSER_BACKTRACKS;
+  /** Tokens parsed again, as after a backtrack; only the keyword probes of complete() limit them. */
+  tokens = Infinity;
 }
 
 /** Thrown when a check() call has used up its Budget. */
@@ -81,6 +84,8 @@ export class P {
   backtracks = 0;
   /** Where the roles of consumed words go, when someone asked for them. */
   roles?: Roles;
+  /** Where the names analysis marks go, along with the roles. */
+  names?: NameMarks;
   readonly last: number;
   private readonly lowered: (string | undefined)[] = [];
 
@@ -179,10 +184,11 @@ export class P {
           this.i,
           false,
         );
-      if (this.budget && --this.budget.backtracks < 0) throw new OutOfBudget();
+      if (this.budget && (--this.budget.backtracks < 0 || (this.budget.tokens -= this.i - i) < 0)) throw new OutOfBudget();
     }
     this.i = i;
     this.roles?.rewind(i);
+    this.names?.rewind(i);
   }
 
   /** The tokens from `from` up to `to` have `role`. */
@@ -269,6 +275,7 @@ export function lookahead<R>(p: P, body: () => R, expected?: Expected): R {
     p.depth = depth;
     p.backtracks = backtracks;
     p.roles?.rewind(i);
+    p.names?.rewind(i);
   }
 }
 
@@ -327,6 +334,7 @@ export function peekKw(p: P, keyword: string): boolean {
   const ok = kw(p, keyword);
   p.i = begin;
   p.roles?.rewind(begin);
+  p.names?.rewind(begin);
   return ok;
 }
 

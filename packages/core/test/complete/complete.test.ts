@@ -14,6 +14,7 @@ import {
   tokenize,
 } from "../../src/index.js";
 import { expectedAt } from "../../src/parser/index.js";
+import { P } from "../../src/parser/state.js";
 
 const CORPUS = new URL("../../../../oracle/fixtures/corpus.jsonl.gz", import.meta.url);
 
@@ -54,6 +55,22 @@ function labels(text: string, withSchema = true): string[] {
 
 function kinds(text: string): Set<string> {
   return new Set(at(text).map((c) => c.kind));
+}
+
+/** How many times the parser looks at a token while `run` runs. */
+function tokenReads(run: () => unknown): number {
+  const read = P.prototype.at;
+  let reads = 0;
+  P.prototype.at = function (this: P, i: number) {
+    reads++;
+    return read.call(this, i);
+  };
+  try {
+    run();
+  } finally {
+    P.prototype.at = read;
+  }
+  return reads;
 }
 
 describe("complete()", () => {
@@ -353,6 +370,19 @@ describe("complete()", () => {
       best = Math.min(best, performance.now() - start);
     }
     assert.ok(best < 250, `took ${best.toFixed(1)} ms`);
+  });
+
+  // Each keyword used to be tried by parsing the whole statement again, 29 parses here.
+  test("tries the keywords of a place within about one more parse, after a long list or deep brackets", () => {
+    const list = Array.from({ length: 50_000 }, (_, i) => `'s${i}'`).join(", ");
+    for (const sql of [`SELECT count() FROM t WHERE s NOT IN (${list} `, `SELECT ${"[".repeat(983)}1${"]".repeat(200)} `]) {
+      const before = tokenize(sql).filter((token) => isSignificant(token.kind) && token.kind !== TokenKind.EndOfStream);
+      const parse = tokenReads(() => expectedAt(sql, before, sql.length));
+      let candidates: CompletionCandidate[] = [];
+      const completion = tokenReads(() => (candidates = complete(sql, sql.length)));
+      assert.ok(candidates.some((c) => c.kind === "keyword" && c.label === "AND"), sql.slice(0, 40));
+      assert.ok(completion < 3 * parse, `${completion} token reads, where one parse takes ${parse}`);
+    }
   });
 });
 

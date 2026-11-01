@@ -243,7 +243,7 @@ function parseInstrument(p: P, add: boolean): boolean {
 }
 
 /** What follows the type of a SYSTEM query. */
-function parseSystemBody(p: P, type: string): boolean {
+function parseSystemBody(p: P, type: string, node: Ast): boolean {
   switch (type) {
     case "RELOAD DICTIONARY":
     case "UNLOAD DICTIONARY":
@@ -424,7 +424,7 @@ function parseSystemBody(p: P, type: string): boolean {
       return kw(p, "WITH NAME") && parseStringLiteral(p) !== null;
     case "UNLOCK SNAPSHOT":
       if (!parseStringLiteral(p)) return false;
-      if (kw(p, "FROM")) parseIdentifierWithOptionalParameters(p);
+      if (kw(p, "FROM")) node.set("backup_source", parseIdentifierWithOptionalParameters(p));
       return true;
     case "START LISTEN":
     case "STOP LISTEN":
@@ -452,6 +452,7 @@ export function parseSystemQuery(p: P): Ast | null {
     }
     type ??= BACKGROUND_VERBS.find((name) => kw(p, name));
     if (!type || type === "UNKNOWN" || type === "END") return null;
-    return parseSystemBody(p, type) ? new Ast("SystemQuery") : null;
+    const node = new Ast("SystemQuery");
+    return parseSystemBody(p, type, node) ? node : null;
   });
 }

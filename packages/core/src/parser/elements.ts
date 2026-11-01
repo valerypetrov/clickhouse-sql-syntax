@@ -8,6 +8,7 @@ import {
   func,
   identifier,
   identifierName,
+  keep,
   list,
   literal,
   type Lit,
@@ -35,6 +36,7 @@ import {
   unquote,
 } from "./literals.js";
 import { parseSelectWithUnionQuery } from "./select.js";
+import { aliasKind } from "./names.js";
 import { base, kw, listUtil, P, peekKw, peekKwQuiet, T, tok, tokSeq } from "./state.js";
 
 /** ParserIdentifier: a bare word, a quoted name, or a {name:Identifier} parameter. */
@@ -194,19 +196,33 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
     if (startsWithFrom && parenthesesHoldExpressionOverColumnNamedFrom(p, open)) return null;
 
     let result = parseWithOptionalAlias(p, () => parseSelectWithUnionQuery(p), false);
+    let opaque = false;
     if (!result) {
       const explain = parseExplainQuery(p, true);
       if (explain) {
         checkExplainInSubquery(p, explain);
-        result = new Ast("SelectWithUnionQuery");
+        // SELECT * FROM viewExplain(kind, settings, (query)).
+        const args = [literal({ t: "String", v: explain.name }), literal({ t: "String", v: "" })];
+        const query = explain.get("query");
+        if (query) {
+          const explained = new Ast("Subquery");
+          explained.children = [query];
+          args.push(explained);
+        }
+        result = selectFromTableFunction(func("viewExplain", args));
+        opaque = true;
       } else if (kw(p, "VALUES")) {
         if (p.kind() !== T.OpeningRoundBracket) return null;
-        if (!parseExpression(p)) return null;
-        while (p.kind() === T.Comma) {
+        const rows: Ast[] = [];
+        for (;;) {
+          const row = parseExpression(p);
+          if (!row) return null;
+          rows.push(row);
+          if (p.kind() !== T.Comma) break;
           p.i++;
-          if (!parseExpression(p)) return null;
         }
-        result = new Ast("SelectWithUnionQuery");
+        result = selectFromTableFunction(func("SQLStandardValues", rows));
+        opaque = true;
       } else {
         return null;
       }
@@ -214,10 +230,20 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
     if (out) out.startsValid = !possibleInner && !startsWithFrom;
     if (p.kind() !== T.ClosingRoundBracket) return null;
     p.i++;
+    if (opaque) p.names?.add("opaque", open, p.i - 1);
     const node = new Ast("Subquery");
     node.children = [result];
     return node;
   });
+}
+
+/** buildSelectFromTableFunction: SELECT * FROM fn, which ParserSubquery makes of (EXPLAIN ...) and (VALUES ...). */
+function selectFromTableFunction(fn: Ast): Ast {
+  const tables = new Ast("TablesInSelectQuery");
+  tables.children = [new Ast("TablesInSelectQueryElement").set("table", new Ast("TableExpression").set("source", fn))];
+  const union = new Ast("SelectWithUnionQuery");
+  union.children = [new Ast("SelectQuery").set("select", list([new Ast("Asterisk")])).set("tables", tables)];
+  return union;
 }
 
 /** The checks ParserSubquery makes on (EXPLAIN ...); they throw BAD_ARGUMENTS. */
@@ -465,13 +491,16 @@ export function parseAlias(p: P, allowWithoutAs: boolean): Ast | null {
 /** ParserWithOptionalAlias: an element, then an alias if the element can carry one. */
 export function parseWithOptionalAlias(p: P, element: () => Ast | null, allowWithoutAs: boolean): Ast | null {
   return base(p, "element of expression with optional alias", () => {
+    const begin = p.i;
     const node = element();
     if (!node) return null;
+    const bodyEnd = p.i - 1;
     const allowNow = allowWithoutAs && identifierName(node)?.toLowerCase() !== "from";
     const alias = parseAlias(p, allowNow);
     if (alias) {
       if (canHaveAlias(node)) {
         node.alias = alias.name;
+        p.names?.add("alias", begin, p.i - 1, { part: [begin, bodyEnd], name: [p.i - 1, p.i - 1], flag: aliasKind(node) });
       } else {
         p.expect("alias cannot be here");
         return null;
@@ -564,7 +593,15 @@ export function parseColumnsTransformer(p: P, allowed: Transformers = ALL_TRANSF
     }
     if (allowed.replace && kw(p, "REPLACE")) {
       kw(p, "STRICT");
-      const parseReplacement = () => parseExpression(p) !== null && kw(p, "AS") && parseIdentifier(p) !== null;
+      const node = new Ast("ColumnsTransformer");
+      const parseReplacement = () => {
+        const expr = parseExpression(p);
+        if (!expr || !kw(p, "AS") || !parseIdentifier(p)) return false;
+        const replacement = new Ast("Replacement");
+        replacement.children = [expr];
+        node.children.push(replacement);
+        return true;
+      };
       if (p.kind() === T.OpeningRoundBracket) {
         p.i++;
         if (!listUtil(p, parseReplacement, undefined, false)) return null;
@@ -573,7 +610,7 @@ export function parseColumnsTransformer(p: P, allowed: Transformers = ALL_TRANSF
       } else if (!parseReplacement()) {
         return null;
       }
-      return new Ast("ColumnsTransformer");
+      return node;
     }
     return null;
   });
@@ -648,33 +685,52 @@ function parseLikePatternMatcher(p: P, qualified: boolean): Ast | null | "fail" 
 }
 
 function parseTransformers(p: P, node: Ast, allowed: Transformers = ALL_TRANSFORMERS): Ast {
-  while (parseColumnsTransformer(p, allowed)) node.flag("transformers");
+  const transformers: Ast[] = [];
+  for (;;) {
+    const transformer = parseColumnsTransformer(p, allowed);
+    if (!transformer) break;
+    transformers.push(transformer);
+  }
+  if (transformers.length) node.flag("transformers").set("transformers", list(transformers));
   return node;
 }
 
 /** ParserAsterisk: * with an optional LIKE pattern and transformers. */
 export function parseAsterisk(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
   return base(p, "asterisk", () => {
+    const begin = p.i;
     if (p.kind() !== T.Asterisk) return null;
     p.i++;
     const matcher = parseLikePatternMatcher(p, false);
     if (matcher === "fail") return null;
-    return parseTransformers(p, matcher ?? new Ast("Asterisk"), allowed);
+    const node = parseTransformers(p, matcher ?? new Ast("Asterisk"), allowed);
+    markMatcher(p, node, begin);
+    return node;
   });
 }
 
 /** ParserQualifiedAsterisk: t.* or db.t.*. */
 export function parseQualifiedAsterisk(p: P): Ast | null {
   return base(p, "qualified asterisk", () => {
+    const begin = p.i;
     if (!parseCompoundIdentifier(p, false, true)) return null;
+    const qualifier: [number, number] = [begin, p.i - 1];
     if (p.kind() !== T.Dot) return null;
     p.i++;
     if (p.kind() !== T.Asterisk) return null;
     p.i++;
     const matcher = parseLikePatternMatcher(p, true);
     if (matcher === "fail") return null;
-    return parseTransformers(p, matcher ?? new Ast("QualifiedAsterisk"));
+    const node = parseTransformers(p, matcher ?? new Ast("QualifiedAsterisk"));
+    markMatcher(p, node, begin, qualifier);
+    return node;
   });
+}
+
+/** A matcher mark: its kind, and whether transformers follow it. */
+function markMatcher(p: P, node: Ast, begin: number, qualifier?: [number, number]): void {
+  const flag = node.kind + (node.has("transformers") ? " transformers" : "");
+  p.names?.add("matcher", begin, p.i - 1, { name: qualifier, flag });
 }
 
 /** (columns, ...) or ('regexp') after COLUMNS. */
@@ -693,17 +749,26 @@ function parseColumnsMatcherBody(p: P, allowed: Transformers, qualified: boolean
 
 /** ParserColumnsMatcher: COLUMNS(a, b) or COLUMNS('regexp'). */
 export function parseColumnsMatcher(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
-  return base(p, "COLUMNS matcher", () => (kw(p, "COLUMNS") ? parseColumnsMatcherBody(p, allowed, false) : null));
+  return base(p, "COLUMNS matcher", () => {
+    const begin = p.i;
+    const node = kw(p, "COLUMNS") ? parseColumnsMatcherBody(p, allowed, false) : null;
+    if (node) markMatcher(p, node, begin);
+    return node;
+  });
 }
 
 /** ParserQualifiedColumnsMatcher: t.COLUMNS(...). */
 export function parseQualifiedColumnsMatcher(p: P, allowed: Transformers = ALL_TRANSFORMERS): Ast | null {
   return base(p, "qualified COLUMNS matcher", () => {
+    const begin = p.i;
     const name = parseCompoundIdentifier(p, false, true);
     if (!name) return null;
     const parts = name.parts!;
     if (parts.length === 1 || parts[parts.length - 1] !== "COLUMNS") return null;
-    return parseColumnsMatcherBody(p, allowed, true);
+    const node = parseColumnsMatcherBody(p, allowed, true);
+    // The qualifier ends before ".COLUMNS".
+    if (node) markMatcher(p, node, begin, [begin, begin + 2 * (parts.length - 2)]);
+    return node;
   });
 }
 
@@ -755,19 +820,21 @@ export function parseWindowReference(p: P, fn: Ast): boolean {
   return (
     base(p, "window reference", () => {
       if (p.kind() !== T.OpeningRoundBracket) return parseIdentifier(p) !== null;
-      return parseWindowDefinition(p) !== null;
+      const definition = parseWindowDefinition(p);
+      fn.set("window_definition", definition);
+      return definition !== null;
     }) !== null
   );
 }
 
 /** tryParseFrameDefinition: ROWS|RANGE|GROUPS [BETWEEN] bound [AND bound]. */
-function parseFrame(p: P): boolean {
+function parseFrame(p: P, node: Ast): boolean {
   if (!kw(p, "ROWS") && !kw(p, "GROUPS") && !kw(p, "RANGE")) return true;
   const hasEnd = kw(p, "BETWEEN");
   if (!kw(p, "CURRENT ROW")) {
     let unbounded = false;
     if (kw(p, "UNBOUNDED")) unbounded = true;
-    else if (!parseExpression(p)) return false;
+    else if (!keep(node, "frame_begin_offset", parseExpression(p))) return false;
     if (kw(p, "PRECEDING")) {
       // A frame start may precede.
     } else if (kw(p, "FOLLOWING")) {
@@ -781,7 +848,7 @@ function parseFrame(p: P): boolean {
     if (!kw(p, "CURRENT ROW")) {
       let unbounded = false;
       if (kw(p, "UNBOUNDED")) unbounded = true;
-      else if (!parseExpression(p)) return false;
+      else if (!keep(node, "frame_end_offset", parseExpression(p))) return false;
       if (kw(p, "PRECEDING")) {
         if (unbounded) p.failOther("Frame end cannot be UNBOUNDED PRECEDING");
       } else if (!kw(p, "FOLLOWING")) {
@@ -792,10 +859,10 @@ function parseFrame(p: P): boolean {
   return true;
 }
 
-function parseWindowDefinitionParts(p: P): boolean {
-  if (kw(p, "PARTITION BY") && !parseNotEmptyExpressionList(p, false)) return false;
-  if (kw(p, "ORDER BY") && !parseOrderByExpressionList(p)) return false;
-  return parseFrame(p);
+function parseWindowDefinitionParts(p: P, node: Ast): boolean {
+  if (kw(p, "PARTITION BY") && !keep(node, "partition_by", parseNotEmptyExpressionList(p, false))) return false;
+  if (kw(p, "ORDER BY") && !keep(node, "order_by", parseOrderByExpressionList(p))) return false;
+  return parseFrame(p, node);
 }
 
 /** ParserWindowDefinition: ([parent] [PARTITION BY ...] [ORDER BY ...] [frame]). */
@@ -803,25 +870,30 @@ export function parseWindowDefinition(p: P): Ast | null {
   return base(p, "window definition", () => {
     if (!tok(p, T.OpeningRoundBracket)) return null;
     const bodyBegin = p.i;
-    if (parseWindowDefinitionParts(p) && tok(p, T.ClosingRoundBracket)) return new Ast("Other");
+    const withoutParent = new Ast("WindowDefinition");
+    if (parseWindowDefinitionParts(p, withoutParent) && tok(p, T.ClosingRoundBracket)) return withoutParent;
     p.restore(bodyBegin);
     if (!parseIdentifier(p)) return null;
-    if (!parseWindowDefinitionParts(p)) return null;
+    const withParent = new Ast("WindowDefinition");
+    if (!parseWindowDefinitionParts(p, withParent)) return null;
     if (!tok(p, T.ClosingRoundBracket)) return null;
-    return new Ast("Other");
+    return withParent;
   });
 }
 
 /** ParserWindowList: name AS (definition), ... */
 export function parseWindowList(p: P): Ast | null {
   return base(p, "WINDOW clause", () => {
+    const windows: Ast[] = [];
     for (;;) {
       if (!parseIdentifier(p)) return null;
       if (!kw(p, "AS")) return null;
-      if (!parseWindowDefinition(p)) return null;
+      const definition = parseWindowDefinition(p);
+      if (!definition) return null;
+      windows.push(new Ast("WindowListElement").set("definition", definition));
       if (!p.quiet(() => tok(p, T.Comma))) break;
     }
-    return new Ast("Other");
+    return list(windows);
   });
 }
 
@@ -1014,10 +1086,9 @@ export function parseStorageOrderByElement(p: P, allowOrder: boolean): Ast | nul
     if (!expr) return null;
     if (expr.alias) return null;
     if (!allowOrder) return expr;
-    if (!kw(p, "DESCENDING") && !kw(p, "DESC")) {
-      if (!kw(p, "ASCENDING")) kw(p, "ASC");
-    }
-    const node = new Ast("Other");
+    const descending = kw(p, "DESCENDING") || kw(p, "DESC");
+    if (!descending && !kw(p, "ASCENDING")) kw(p, "ASC");
+    const node = new Ast("StorageOrderByElement").flag("desc", descending);
     node.children = [expr];
     return node;
   });
@@ -1026,7 +1097,8 @@ export function parseStorageOrderByElement(p: P, allowOrder: boolean): Ast | nul
 /** ParserOrderByElement: expr [ASC|DESC] [NULLS FIRST|LAST] [COLLATE 'x'] [WITH FILL ...]. */
 export function parseOrderByElement(p: P): Ast | null {
   return base(p, "element of ORDER BY expression", () => {
-    if (!parseExpressionWithOptionalAlias(p, false)) return null;
+    const expr = parseExpressionWithOptionalAlias(p, false);
+    if (!expr) return null;
     if (!kw(p, "DESCENDING") && !kw(p, "DESC")) {
       if (!kw(p, "ASCENDING")) kw(p, "ASC");
     }
@@ -1035,12 +1107,11 @@ export function parseOrderByElement(p: P): Ast | null {
     }
     if (kw(p, "COLLATE") && !parseStringLiteral(p)) return null;
     const node = new Ast("OrderByElement");
+    node.children = [expr];
     if (kw(p, "WITH FILL")) {
       node.flag("with_fill");
-      if (kw(p, "FROM") && !parseExpressionWithOptionalAlias(p, false)) return null;
-      if (kw(p, "TO") && !parseExpressionWithOptionalAlias(p, false)) return null;
-      if (kw(p, "STEP") && !parseExpressionWithOptionalAlias(p, false)) return null;
-      if (kw(p, "STALENESS") && !parseExpressionWithOptionalAlias(p, false)) return null;
+      for (const bound of ["FROM", "TO", "STEP", "STALENESS"])
+        if (kw(p, bound) && !keep(node, bound, parseExpressionWithOptionalAlias(p, false))) return null;
     }
     return node;
   });
@@ -1050,8 +1121,9 @@ export function parseOrderByElement(p: P): Ast | null {
 export function parseInterpolateElement(p: P): Ast | null {
   return base(p, "element of INTERPOLATE expression", () => {
     if (!parseIdentifier(p)) return null;
-    if (kw(p, "AS") && !parseExpression(p)) return null;
-    return new Ast("Other");
+    const node = new Ast("InterpolateElement");
+    if (kw(p, "AS") && !keep(node, "expr", parseExpression(p))) return null;
+    return node;
   });
 }
 
@@ -1086,8 +1158,8 @@ export function parseAssignment(p: P): Ast | null {
   return base(p, "column assignment", () => {
     if (!parseIdentifier(p)) return null;
     if (!tok(p, T.Equals)) return null;
-    if (!parseExpression(p)) return null;
-    return new Ast("Other");
+    const node = new Ast("Assignment");
+    return keep(node, "expr", parseExpression(p)) ? node : null;
   });
 }
 
@@ -1095,7 +1167,9 @@ export function parseAssignment(p: P): Ast | null {
 export function parseTTLElement(p: P): Ast | null {
   return base(p, "element of TTL expression", () => {
     if (peekKw(p, "MATERIALIZE TTL") || peekKw(p, "REMOVE TTL") || peekKw(p, "MODIFY TTL")) return null;
-    if (!parseExpression(p)) return null;
+    // Only the TTL expression and WHERE are children of ASTTTLElement.
+    const node = new Ast("TTLElement");
+    if (!keep(node, "ttl", parseExpression(p))) return null;
     let mode: "move" | "group" | "recompress" | "delete";
     if (kw(p, "TO DISK") || kw(p, "TO VOLUME")) mode = "move";
     else if (kw(p, "GROUP BY")) mode = "group";
@@ -1111,12 +1185,12 @@ export function parseTTLElement(p: P): Ast | null {
       if (!parseExpressionList(p, false)) return null;
       if (kw(p, "SET") && !parseList(p, () => parseAssignment(p))) return null;
     } else if (mode === "delete" && kw(p, "WHERE")) {
-      if (!parseExpression(p)) return null;
+      if (!keep(node, "where", parseExpression(p))) return null;
     } else if (mode === "recompress") {
       if (!kw(p, "CODEC")) return null;
       if (!parseCodec(p)) return null;
     }
-    return new Ast("Other");
+    return node;
   });
 }
 
