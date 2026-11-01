@@ -171,6 +171,9 @@ describe("Unexpected words after a statement", () => {
   rejects([
     ["CREATE USER u NOT IDENTIFIED, xyz", 28, "Expected one of: VALID UNTIL, VALID FOR, GRANTS, HOST, SettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, ROLE, DEFAULT ROLE, ON, GRANTEES, DEFAULT DATABASE, IN, ParallelWithClause, PARALLEL WITH, end of query"],
     ["CREATE USER u IDENTIFIED xyz", 25, "Expected one of: WITH, NO_PASSWORD, PLAINTEXT_PASSWORD, SHA256_PASSWORD, DOUBLE_SHA1_PASSWORD, LDAP, KERBEROS, SSL_CERTIFICATE, BCRYPT_PASSWORD, SSH_KEY, HTTP, JWT, SCRAM_SHA256_PASSWORD, NO_AUTHENTICATION, SHA256_HASH, SCRAM_SHA256_HASH, DOUBLE_SHA1_HASH, BCRYPT_HASH, BY, end of query"],
+    ["CREATE USER u HOST", 18, "Expected one of: NONE, ANY, LOCAL, REGEXP, NAME, IP, LIKE, end of query"],
+    ["ALTER USER u DROP HOST", 22, "Expected one of: NONE, ANY, LOCAL, REGEXP, NAME, IP, LIKE"],
+    ["CREATE USER u HOST IP '1.2.3.4', xyz", 33, "Expected one of: string literal, NONE, ANY, LOCAL, REGEXP, NAME, IP, LIKE, end of query"],
     ["ALTER USER u xyz", 13, "Expected one of: token, At, Comma, NOT IDENTIFIED, IDENTIFIED, ADD, RESET AUTHENTICATION METHODS TO NEW, HOST, AlterSettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, DROP, MODIFY, SET, DEFAULT ROLE, ON, GRANTEES, DEFAULT DATABASE, RENAME TO, IN, VALID UNTIL, VALID FOR"],
     ["CREATE ROLE r xyz", 14, "Expected one of: token, At, Comma, SettingsProfileElements, SETTINGS, SETTING, PROFILES, PROFILE, ON, IN, ParallelWithClause, PARALLEL WITH, end of query"],
     ["CREATE QUOTA q xyz", 15, "Expected one of: token, Comma, NOT KEYED, KEY BY, KEYED BY, IPV4_PREFIX_BITS, IPV6_PREFIX_BITS, FOR, ON, IN, TO, ParallelWithClause, PARALLEL WITH, end of query"],

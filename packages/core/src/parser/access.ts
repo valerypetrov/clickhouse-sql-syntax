@@ -672,18 +672,17 @@ function subnetError(text: string): string | undefined {
 function parseHosts(p: P, prefix: string): boolean {
   const host = () => {
     if (kw(p, "NONE") || kw(p, "ANY") || kw(p, "LOCAL")) return true;
-    if (kw(p, "IP")) {
-      const subnets: number[] = [];
-      const list = parseList(p, () => (subnets.push(p.i), parseStringLiteral(p)), undefined, false);
+    const keyword = ["REGEXP", "NAME", "IP", "LIKE"].find((keyword) => kw(p, keyword));
+    if (!keyword) return false;
+    const subnets: number[] = [];
+    const list = parseList(p, () => (subnets.push(p.i), parseStringLiteral(p)), undefined, false);
+    if (keyword === "IP") {
       for (const [i, subnet] of (list?.children ?? []).entries()) {
         const error = subnetError(stringValue(subnet)!);
         if (error) p.failOther(error, subnets[i]);
       }
-      return list !== null;
     }
-    if (kw(p, "REGEXP") || kw(p, "NAME") || kw(p, "LIKE"))
-      return parseList(p, () => parseStringLiteral(p), undefined, false) !== null;
-    return false;
+    return list !== null;
   };
   return (
     attempt(p, () => {
