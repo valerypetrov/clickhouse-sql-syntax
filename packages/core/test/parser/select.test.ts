@@ -77,3 +77,27 @@ describe("SELECT and expressions", () => {
     ["SELECT * FROM t SAMPLE", 22, "Expected Sample ratio or offset"],
   ]);
 });
+
+// ClickHouse reads (EXPLAIN ...) and (VALUES ...) as SELECT * FROM a table function, so view() bails out on them as on (SELECT ...).
+describe("view() over a subquery", () => {
+  accepts([
+    "SELECT * FROM view((EXPLAIN SELECT 1) UNION ALL SELECT 2)",
+    "SELECT * FROM view((EXPLAIN SELECT 1) UNION ALL (VALUES (1)))",
+    "SELECT * FROM ((EXPLAIN SELECT 1))",
+    "SELECT 1 IN ((EXPLAIN SELECT 1))",
+    "SELECT view((EXPLAIN SELECT 1))",
+    "INSERT INTO t SELECT * FROM (EXPLAIN SELECT * FROM input('x UInt8')) FORMAT Values (1)",
+  ]);
+
+  rejects([
+    ["SELECT * FROM view((SELECT 1))", 29, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM view((EXPLAIN SELECT 1))", 37, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM view(((EXPLAIN SELECT 1)))", 39, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM view((EXPLAIN SELECT 1) AS x)", 38, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM view((EXPLAIN CURRENT TRANSACTION))", 48, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM view((VALUES (1)))", 31, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM viewIfPermitted((EXPLAIN SELECT 1) ELSE null('x UInt8'))", 49, "Expected one of: UNION, EXCEPT, INTERSECT"],
+    ["SELECT * FROM obfuscate((EXPLAIN SELECT 1))", 42, "Expected one of: UNION, EXCEPT, INTERSECT, alias, AS, identifier, FINAL, SAMPLE, STREAM, table, tabl…"],
+    ["SELECT * FROM view(EXPLAIN SELECT 1)", 27, "Expected one of: token, Comma"],
+  ]);
+});

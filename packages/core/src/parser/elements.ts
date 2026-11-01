@@ -198,15 +198,26 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
       const explain = parseExplainQuery(p, true);
       if (explain) {
         checkExplainInSubquery(p, explain);
-        result = new Ast("SelectWithUnionQuery");
+        // SELECT * FROM viewExplain(kind, settings, (query)).
+        const args = [literal({ t: "String", v: explain.name }), literal({ t: "String", v: "" })];
+        const query = explain.get("query");
+        if (query) {
+          const explained = new Ast("Subquery");
+          explained.children = [query];
+          args.push(explained);
+        }
+        result = selectFromTableFunction(func("viewExplain", args));
       } else if (kw(p, "VALUES")) {
         if (p.kind() !== T.OpeningRoundBracket) return null;
-        if (!parseExpression(p)) return null;
-        while (p.kind() === T.Comma) {
+        const rows: Ast[] = [];
+        for (;;) {
+          const row = parseExpression(p);
+          if (!row) return null;
+          rows.push(row);
+          if (p.kind() !== T.Comma) break;
           p.i++;
-          if (!parseExpression(p)) return null;
         }
-        result = new Ast("SelectWithUnionQuery");
+        result = selectFromTableFunction(func("SQLStandardValues", rows));
       } else {
         return null;
       }
@@ -218,6 +229,15 @@ export function parseSubquery(p: P, out?: { startsValid: boolean }): Ast | null 
     node.children = [result];
     return node;
   });
+}
+
+/** buildSelectFromTableFunction: SELECT * FROM fn, which ParserSubquery makes of (EXPLAIN ...) and (VALUES ...). */
+function selectFromTableFunction(fn: Ast): Ast {
+  const tables = new Ast("TablesInSelectQuery");
+  tables.children = [new Ast("TablesInSelectQueryElement").set("table", new Ast("TableExpression").set("source", fn))];
+  const union = new Ast("SelectWithUnionQuery");
+  union.children = [new Ast("SelectQuery").set("select", list([new Ast("Asterisk")])).set("tables", tables)];
+  return union;
 }
 
 /** The checks ParserSubquery makes on (EXPLAIN ...); they throw BAD_ARGUMENTS. */

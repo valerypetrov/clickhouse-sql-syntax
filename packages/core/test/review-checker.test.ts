@@ -55,6 +55,9 @@ describe("AST depth", () => {
     ["nested column types", `CREATE TABLE t (a ${repeat("Array(", 497)}UInt8${repeat(")", 497)}) ENGINE = Memory`, `CREATE TABLE t (a ${repeat("Array(", 498)}UInt8${repeat(")", 498)}) ENGINE = Memory`],
     // ClickHouse makes each (t JOIN t ...) a subquery, seven levels deep.
     ["joins in brackets", `SELECT * FROM ${repeat("(", 141)}t${repeat(" JOIN t USING (a))", 141)}`, `SELECT * FROM ${repeat("(", 142)}t${repeat(" JOIN t USING (a))", 142)}`],
+    // ClickHouse reads (EXPLAIN SELECT ...) as SELECT * FROM viewExplain(..., (SELECT ...)), and (VALUES ...) likewise.
+    ["calls in an EXPLAIN subquery", `SELECT * FROM (EXPLAIN SELECT ${repeat("f(", 489)}1${repeat(")", 489)})`, `SELECT * FROM (EXPLAIN SELECT ${repeat("f(", 490)}1${repeat(")", 490)})`],
+    ["calls in a VALUES subquery", `SELECT * FROM (VALUES (${repeat("f(", 492)}1${repeat(")", 492)}))`, `SELECT * FROM (VALUES (${repeat("f(", 493)}1${repeat(")", 493)}))`],
   ];
   for (const [name, fits, tooDeep] of cases) {
     test(`rejects ${name} one level deeper than ClickHouse allows`, () => {
