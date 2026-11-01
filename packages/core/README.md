@@ -69,6 +69,15 @@ combinator, and the syntax and arguments of a function:
 describe("toDate"); // { name: "toDate", kind: "function", syntax: "toDate(x)", arguments: [{ name: "x", ... }], documentation: "..." }
 ```
 
+### foldingRanges(sql)
+
+The lines an editor can fold: statements, bracket groups and block comments of several lines, runs of line comments,
+and `-- #region` ... `-- #endregion` blocks. Lines count from 1, and `startLine` stays in view.
+
+```ts
+foldingRanges("SELECT *\nFROM (\n    SELECT 1\n)"); // [{ startLine: 1, endLine: 4 }, { startLine: 2, endLine: 3 }]
+```
+
 ### highlight(sql) and tokenize(sql)
 
 ```ts

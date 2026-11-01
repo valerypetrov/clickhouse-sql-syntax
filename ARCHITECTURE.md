@@ -17,10 +17,11 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()` and `describe()`.
+- `structure/`: `foldingRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
 
-`types.ts` holds the public types. `index.ts` exports them and the functions by name, and the six main functions as one default object.
+`types.ts` holds the public types. `index.ts` exports them and the functions by name, and the main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,
 `\r\n` or a lone `\r`, as in VS Code.
 
@@ -97,6 +98,14 @@ ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 ba
 the other ones (an expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and
 from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
 
+## foldingRanges()
+
+It reads the units of `split()`, so that inline data is never looked into. A statement, a pair of brackets of the
+same kind and a block comment fold when they take several lines, and so do runs of lines with nothing but a line
+comment, and the lines from `-- #region` to `-- #endregion`. A fold leaves the line of a closing bracket in view,
+and never ends inside a token that goes on below it. Of the ranges that start on one line the longest stays, and a
+range that crosses an earlier one is dropped, so the rest nest.
+
 ## The VS Code extension
 
 In `packages/vscode/src`:
@@ -105,6 +114,7 @@ In `packages/vscode/src`:
   statements parsed, so that the diagnostics, the semantic tokens and hover parse a statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
   characters.
+- `folding.ts`: folding ranges from `foldingRanges()`.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()` and `describe()`;

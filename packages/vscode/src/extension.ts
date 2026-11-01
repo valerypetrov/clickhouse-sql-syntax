@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
+import { registerFolding } from "./folding.js";
 import { registerFormatter } from "./format.js";
 import { registerHover } from "./hover.js";
 import { registerSemanticTokens } from "./semantic.js";
@@ -49,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
 
   context.subscriptions.push(
     registerFormatter(LANGUAGE_ID),
+    registerFolding(LANGUAGE_ID),
     registerCompletion(LANGUAGE_ID, (document, offset) => server.schema.completion(document.getText(), offset)),
     registerHover(LANGUAGE_ID, cacheOf),
     registerSignatureHelp(LANGUAGE_ID),

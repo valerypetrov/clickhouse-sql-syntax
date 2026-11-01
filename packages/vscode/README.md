@@ -8,6 +8,7 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Syntax errors as you type**, in ClickHouse's words, such as `Expected one of: BY, end of query`.
 - **Formatting.** Format Document and Format Selection lay out queries like `clickhouse format`, changing only whitespace and the case of keywords.
 - **Autocomplete** of the keywords that fit at the cursor and of ClickHouse's functions, types, settings, table engines and formats.
+- **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, and the arguments of the function you are typing.
 - **Server check** (off by default). Your ClickHouse server checks the names, functions and types in each SELECT, and autocomplete offers its databases, tables and columns.
 

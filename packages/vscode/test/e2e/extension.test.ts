@@ -122,6 +122,8 @@ describe("ClickHouse SQL extension", () => {
     assert.deepEqual(list.items.filter((item) => item.kind !== vscode.CompletionItemKind.Text), []);
     assert.deepEqual(await vscode.commands.executeCommand("vscode.executeHoverProvider", uri, inName), []);
     assert.equal(await vscode.commands.executeCommand("vscode.executeSignatureHelpProvider", uri, inArguments), undefined);
+    // Indentation folds nothing here, where the extension would fold the comments.
+    assert.deepEqual(await vscode.commands.executeCommand("vscode.executeFoldingRangeProvider", uri), []);
   });
 
   it("leaves other languages alone", async () => {

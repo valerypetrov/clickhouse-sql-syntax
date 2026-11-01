@@ -192,6 +192,8 @@ export interface ClickHouseSqlSyntax {
   complete(sql: string, offset: number, options?: CompleteOptions): CompletionCandidate[];
   /** The documentation of a function, setting, table function, table engine, format or combinator. */
   describe(name: string, kind?: CompletionKind): Description | undefined;
+  /** The lines an editor can fold: statements, brackets and comments of several lines, and -- #region blocks. */
+  foldingRanges(sql: string): FoldingRange[];
 }
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
@@ -261,4 +263,14 @@ export interface Description {
   arguments?: readonly ArgumentInfo[];
   /** The parameters of a parametric aggregate function, as `level` in quantile(level)(x). */
   parameters?: readonly ArgumentInfo[];
+}
+
+/**
+ * Lines that an editor can fold, numbered as in Token. The first line stays in view, and the
+ * lines after it up to endLine fold under it.
+ */
+export interface FoldingRange {
+  startLine: number;
+  endLine: number;
+  kind?: "comment" | "region";
 }
