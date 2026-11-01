@@ -8,6 +8,7 @@ import { SETTINGS, type SettingInfo } from "../generated/settings.js";
 import { TABLE_ENGINES, type TableEngineInfo } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS, type TableFunctionInfo } from "../generated/table-functions.js";
 import type { CompletionKind, Description } from "../types.js";
+import { engineSignature, parameterDescription } from "./engines.js";
 
 const functionsByName = new Map(FUNCTIONS.map((f) => [f.name, f]));
 const functionsByLowerName = new Map(FUNCTIONS.filter((f) => f.caseInsensitive).map((f) => [f.name.toLowerCase(), f]));
@@ -116,7 +117,12 @@ function describeAs(name: string, kind: CompletionKind): Description | undefined
     }
     case "table engine": {
       const info = TABLE_ENGINES.find((e) => e.name === name);
-      return info && { name: info.name, kind, documentation: engineDocumentation(info), syntax: info.syntax };
+      if (!info) return undefined;
+      // The call and its parameters for signature help, where the syntax reads as one.
+      const signature = engineSignature(info);
+      const syntax = signature?.label ?? info.syntax;
+      const args = signature?.parameters.map((p) => ({ name: p.name, description: parameterDescription(p) }));
+      return { name: info.name, kind, documentation: engineDocumentation(info), syntax, arguments: args };
     }
     case "format": {
       const info = FORMATS.find((f) => f.name === name);
