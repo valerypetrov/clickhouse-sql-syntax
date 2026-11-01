@@ -126,7 +126,8 @@ describe("ClickHouse SQL extension", () => {
     assert.deepEqual(await vscode.commands.executeCommand("vscode.executeFoldingRangeProvider", uri), []);
     assert.deepEqual((await vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", uri)) ?? [], []);
     assert.deepEqual(await vscode.commands.executeCommand("vscode.executeDefinitionProvider", uri, inName), []);
-    assert.deepEqual(await vscode.commands.executeCommand("vscode.executeDocumentHighlights", uri, inName), []);
+    // VS Code 1.90 gives undefined when there are no highlights.
+    assert.deepEqual((await vscode.commands.executeCommand("vscode.executeDocumentHighlights", uri, inName)) ?? [], []);
   });
 
   it("leaves other languages alone", async () => {
