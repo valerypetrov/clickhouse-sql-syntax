@@ -43,6 +43,8 @@ function config(dir: string, port: number): string {
     <profiles><default/></profiles>
     <quotas><default/></quotas>
     <users>${user("default", "")}${user(USER, PASSWORD)}</users>
+    <remote_servers><test_cluster><shard><replica><host>127.0.0.1</host><port>9000</port></replica></shard></test_cluster></remote_servers>
+    <macros><cluster>test_cluster</cluster></macros>
   </clickhouse>`;
 }
 
@@ -283,6 +285,26 @@ describe("ClickHouse server check", function () {
     } finally {
       await settings().update("database", undefined, global);
     }
+  });
+
+  it("completes the clusters and columns of the server in Distributed, and says what its macros stand for", async () => {
+    assert.deepEqual(await api.schema.macros(), [{ name: "cluster", value: "test_cluster" }]);
+    const { Field, Value } = vscode.CompletionItemKind;
+    const table = "CREATE TABLE d AS logs.rc_logs_replicated_365 ENGINE = Distributed(";
+    assert.deepEqual(await completions(`${table}|)`, Value, "("), [
+      ["'{cluster}'", "cluster macro"],
+      ["test_cluster", "cluster"],
+    ]);
+    const editor = await open(`${table})`);
+    const list = await vscode.commands.executeCommand<vscode.CompletionList>(
+      "vscode.executeCompletionItemProvider",
+      editor.document.uri,
+      editor.document.positionAt(table.length),
+    );
+    const macro = list.items.find((item) => item.label === "'{cluster}'")!;
+    assert.equal((macro.documentation as vscode.MarkdownString).value, "`{cluster}` is `test_cluster` on the server.");
+    // Of the columns, only an integer, a date or a time picks a shard.
+    assert.deepEqual(await completions(`${table}test_cluster, logs, rc_logs_replicated_365, |)`, Field), [["Timestamp", "DateTime"]]);
   });
 
   it("completes without the names of a server that does not answer", async () => {

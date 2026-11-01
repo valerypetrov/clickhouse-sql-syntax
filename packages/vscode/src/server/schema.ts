@@ -33,9 +33,20 @@ export class Schema {
     return rows.map((row) => ({ name: row.name!, type: row.type! }));
   }
 
+  async clusters(): Promise<string[]> {
+    const rows = await this.rows("SELECT DISTINCT cluster FROM system.clusters ORDER BY cluster", {});
+    return rows.map((row) => row.cluster!);
+  }
+
+  async macros(): Promise<{ name: string; value: string }[]> {
+    const rows = await this.rows("SELECT macro, substitution FROM system.macros ORDER BY macro", {});
+    return rows.map((row) => ({ name: row.macro!, value: row.substitution! }));
+  }
+
   /**
    * What completion in the statement at `offset` needs: every database, the tables of the current
-   * database and of the databases the statement names, and the columns of the tables it names.
+   * database and of the databases the statement names, the columns of the tables it names, and for
+   * an ENGINE the clusters and macros, which are left out when the user may not read them.
    */
   async completion(sql: string, offset: number): Promise<CompletionSchema> {
     const [databases, current] = await Promise.all([this.databases(), this.currentDatabase()]);
@@ -47,7 +58,9 @@ export class Schema {
       ...table,
       columns: names.has(table.name) ? await this.columns(table.database, table.name) : [],
     }));
-    return { databases, tables: await Promise.all(tables) };
+    const engine = [...names].some((name) => name.toLowerCase() === "engine");
+    const [clusters, macros] = engine ? await Promise.all([this.clusters().catch(() => undefined), this.macros().catch(() => undefined)]) : [];
+    return { databases, tables: await Promise.all(tables), clusters, macros };
   }
 
   refresh(): void {
