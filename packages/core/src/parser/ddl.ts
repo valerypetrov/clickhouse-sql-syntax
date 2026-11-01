@@ -2,7 +2,7 @@
  * Smaller DDL statements: functions, workloads, resources, named collections, handlers, indexes,
  * hypothetical objects and COPY. Ports of the ClickHouse parsers with the same names.
  */
-import { Ast } from "./ast.js";
+import { Ast, func, keep } from "./ast.js";
 import { parseCluster, parseDatabaseAndTableAsAST } from "./common.js";
 import { parseProjectionDeclarationBody } from "./create.js";
 import { parseDataType, parseNameTypePair } from "./datatype.js";
@@ -36,26 +36,26 @@ function parseDropNamed(p: P, what: string): boolean {
   return parseIdentifier(p) !== null && parseOnCluster(p);
 }
 
-/** ParserNameTypePairList or ParserTypeList inside ARGUMENTS (...). */
-function parseFunctionArguments(p: P): boolean {
+/** ParserNameTypePairList or ParserTypeList inside ARGUMENTS (...), kept as `arguments` of the node. */
+function parseFunctionArguments(p: P, node: Ast): boolean {
   if (!tok(p, T.OpeningRoundBracket)) return false;
   if (tok(p, T.ClosingRoundBracket)) return true;
   const arguments_ =
     base(p, "name and type pair list", () => parseList(p, () => parseNameTypePair(p), undefined, false)) ??
     base(p, "type list", () => parseList(p, () => parseDataType(p), undefined, false));
-  return arguments_ !== null && tok(p, T.ClosingRoundBracket);
+  return keep(node, "arguments", arguments_) && tok(p, T.ClosingRoundBracket);
 }
 
 /** ARGUMENTS (...) RETURNS Type ENGINE = name(key = value, ...) AS 'code' of a function with a driver. */
-function parseFunctionWithDriver(p: P): boolean | null {
+function parseFunctionWithDriver(p: P, node: Ast): boolean | null {
   const saved = p.i;
   let consumed = false;
   if (kw(p, "ARGUMENTS")) {
-    if (!parseFunctionArguments(p)) return false;
+    if (!parseFunctionArguments(p, node)) return false;
     consumed = true;
   }
   if (kw(p, "RETURNS")) {
-    if (!parseDataType(p)) return false;
+    if (!keep(node, "return_type", parseDataType(p))) return false;
     consumed = true;
   }
   if (kw(p, "ENGINE")) {
@@ -77,7 +77,7 @@ function parseFunctionWithDriver(p: P): boolean | null {
 }
 
 /** The clauses of CREATE FUNCTION f LANGUAGE WASM, in any order, then SETTINGS. */
-function parseWasmFunction(p: P): boolean {
+function parseWasmFunction(p: P, node: Ast): boolean {
   const language = parseIdentifier(p);
   if (!language || language.name !== "WASM") return false;
   const pending = new Set(["ABI", "ARGUMENTS", "RETURNS", "FROM", "SHA256_HASH", "DETERMINISTIC"]);
@@ -86,9 +86,9 @@ function parseWasmFunction(p: P): boolean {
     if (clause("ABI")) {
       if (!parseIdentifier(p)) return false;
     } else if (clause("ARGUMENTS")) {
-      if (!parseFunctionArguments(p)) return false;
+      if (!parseFunctionArguments(p, node)) return false;
     } else if (clause("RETURNS")) {
-      if (!parseDataType(p)) return false;
+      if (!keep(node, "return_type", parseDataType(p))) return false;
     } else if (clause("FROM")) {
       if (!parseStringLiteral(p)) return false;
       if (tok(p, T.DoubleColon) && !parseStringLiteral(p)) return false;
@@ -117,11 +117,12 @@ export function parseCreateFunctionQuery(p: P): Ast | null {
     if (!replace) kw(p, "IF NOT EXISTS");
     if (!parseIdentifier(p)) return null;
     if (!parseOnCluster(p)) return null;
-    const driver = parseFunctionWithDriver(p);
-    if (driver !== null) return driver ? new Ast("CreateFunctionQuery") : null;
+    const node = new Ast("CreateFunctionQuery");
+    const driver = parseFunctionWithDriver(p, node);
+    if (driver !== null) return driver ? node : null;
     if (attach) return null;
-    if (kw(p, "AS")) return parseExpression(p) ? new Ast("CreateFunctionQuery") : null;
-    if (kw(p, "LANGUAGE")) return parseWasmFunction(p) ? new Ast("CreateFunctionQuery") : null;
+    if (kw(p, "AS")) return keep(node, "function_core", parseExpression(p)) ? node : null;
+    if (kw(p, "LANGUAGE")) return parseWasmFunction(p, node) ? node : null;
     return null;
   });
 }
@@ -266,13 +267,14 @@ export function parseCreateHandlerQuery(p: P): Ast | null {
       if (!tok(p, T.ClosingRoundBracket)) return null;
     }
     if (kw(p, "TYPE") && !parseIdentifier(p)) return null;
-    if (kw(p, "AS") && !parseQuery(p)) {
+    const node = new Ast("CreateHandlerQuery");
+    if (kw(p, "AS") && !keep(node, "query", parseQuery(p))) {
       if (!tok(p, T.OpeningRoundBracket)) return null;
-      if (!parseQuery(p)) return null;
+      if (!keep(node, "query", parseQuery(p))) return null;
       if (!tok(p, T.ClosingRoundBracket)) return null;
     }
     if (!alter && !url) return null;
-    return new Ast("CreateHandlerQuery");
+    return node;
   });
 }
 
@@ -284,15 +286,22 @@ export function parseDropHandlerQuery(p: P): Ast | null {
 /** ParserCreateIndexDeclaration: (expr [ASC|DESC], ...) or expr, then [TYPE type(args)] [GRANULARITY n]. */
 function parseCreateIndexDeclaration(p: P): Ast | null {
   return base(p, "index declaration in create index", () => {
+    let expr: Ast | null;
     if (tok(p, T.OpeningRoundBracket)) {
-      if (!parseOrderByExpressionList(p)) return null;
+      const keys = parseOrderByExpressionList(p);
+      if (!keys) return null;
       if (!tok(p, T.ClosingRoundBracket)) return null;
-    } else if (!parseExpression(p)) {
-      return null;
+      // One key is the expression itself, more are a tuple of them.
+      const exprs = keys.children.map((key) => key.children[0]!);
+      expr = exprs.length === 1 ? exprs[0]! : func("tuple", exprs);
+    } else {
+      expr = parseExpression(p);
+      if (!expr) return null;
     }
-    if (kw(p, "TYPE") && !parseExpressionWithOptionalArguments(p)) return null;
+    const node = new Ast("IndexDeclaration").set("expr", expr);
+    if (kw(p, "TYPE") && !keep(node, "type", parseExpressionWithOptionalArguments(p))) return null;
     if (kw(p, "GRANULARITY") && !parseUnsignedInteger(p)) return null;
-    return new Ast("IndexDeclaration");
+    return node;
   });
 }
 
@@ -307,7 +316,8 @@ export function parseCreateIndexQuery(p: P): Ast | null {
     if (!kw(p, "ON")) return null;
     if (!parseDatabaseAndTableAsAST(p)) return null;
     if (!parseOnCluster(p)) return null;
-    return parseCreateIndexDeclaration(p) ? new Ast("CreateIndexQuery") : null;
+    const node = new Ast("CreateIndexQuery");
+    return keep(node, "index_decl", parseCreateIndexDeclaration(p)) ? node : null;
   });
 }
 
@@ -338,8 +348,11 @@ export function parseHypotheticalObjectQuery(p: P): Ast | null {
       if (!parseIdentifier(p)) return null;
       if (!kw(p, "ON")) return null;
       if (!parseDatabaseAndTableAsAST(p)) return null;
-      if (projection) return parseProjectionDeclarationBody(p) ? node : null;
-      return parseCreateIndexDeclaration(p) ? node : null;
+      if (projection) {
+        const declaration = new Ast("ProjectionDeclaration");
+        return parseProjectionDeclarationBody(p, declaration) ? node.set("projection_decl", declaration) : null;
+      }
+      return keep(node, "index_decl", parseCreateIndexDeclaration(p)) ? node : null;
     }
     if (!kw(p, "DROP")) return null;
     if (kw(p, "ALL")) {

@@ -2,7 +2,7 @@
  * Smaller statements: RENAME, DROP, UNDROP, CHECK, KILL, OPTIMIZE, USE, transactions, DELETE, UPDATE
  * and SNAPSHOT. Ports of the ClickHouse parsers with the same names.
  */
-import { Ast, stringValue } from "./ast.js";
+import { Ast, keep, stringValue } from "./ast.js";
 import {
   parseCluster,
   parseDatabaseAndTableAsAST,
@@ -165,9 +165,10 @@ export function parseKillQueryQuery(p: P): Ast | null {
     if (!kw(p, "KILL")) return null;
     if (!kw(p, "QUERY") && !kw(p, "MUTATION") && !kw(p, "PART_MOVE_TO_SHARD") && !kw(p, "TRANSACTION")) return null;
     if (kw(p, "ON") && !parseCluster(p)) return null;
-    if (!kw(p, "WHERE") || !parseExpression(p)) return null;
+    const node = new Ast("KillQuery");
+    if (!kw(p, "WHERE") || !keep(node, "where", parseExpression(p))) return null;
     if (!kw(p, "SYNC") && !kw(p, "ASYNC")) kw(p, "TEST");
-    return new Ast("KillQuery");
+    return node;
   });
 }
 
@@ -188,7 +189,8 @@ export function parseOptimizeQuery(p: P): Ast | null {
     if (!parseIdentifier(p, true)) return null;
     if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
     if (kw(p, "ON") && !parseCluster(p)) return null;
-    if (kw(p, "PARTITION") && !parsePartition(p)) return null;
+    const node = new Ast("OptimizeQuery");
+    if (kw(p, "PARTITION") && !keep(node, "partition", parsePartition(p))) return null;
     if (kw(p, "DRY RUN")) {
       if (!kw(p, "PARTS")) return null;
       if (!parseList(p, () => parseStringLiteral(p), undefined, false)) return null;
@@ -198,7 +200,7 @@ export function parseOptimizeQuery(p: P): Ast | null {
     kw(p, "CLEANUP");
     kw(p, "MANIFEST");
     if (deduplicate && kw(p, "BY") && !parseList(p, () => parseOptimizeColumns(p), undefined, false)) return null;
-    return new Ast("OptimizeQuery");
+    return node;
   });
 }
 
@@ -226,16 +228,21 @@ export function parseTransactionControl(p: P): Ast | null {
   });
 }
 
-/** IN PARTITION p, ... of lightweight DELETE and UPDATE. */
-function parseInPartition(p: P): boolean {
-  return !kw(p, "IN PARTITION") || parseList(p, () => parsePartition(p), undefined, false) !== null;
+/** IN PARTITION p, ... of lightweight DELETE and UPDATE: one partition is a child of the query, more are a list. */
+function parseInPartition(p: P, node: Ast): boolean {
+  if (!kw(p, "IN PARTITION")) return true;
+  const partitions = parseList(p, () => parsePartition(p), undefined, false);
+  if (!partitions) return false;
+  node.set("partition", partitions.children.length === 1 ? partitions.children[0]! : partitions);
+  return true;
 }
 
 /** WHERE expr without an alias, then optional SETTINGS. */
-function parsePredicateAndSettings(p: P): boolean {
+function parsePredicateAndSettings(p: P, node: Ast): boolean {
   if (!kw(p, "WHERE")) return false;
   const predicate = parseExpression(p);
   if (!predicate || predicate.alias) return false;
+  node.set("predicate", predicate);
   if (kw(p, "SETTINGS") && !parseSetQuery(p, true)) return false;
   return true;
 }
@@ -247,8 +254,9 @@ export function parseDeleteQuery(p: P): Ast | null {
     if (!kw(p, "FROM")) return null;
     if (!parseDatabaseAndTableAsAST(p)) return null;
     if (kw(p, "ON") && !parseCluster(p)) return null;
-    if (!parseInPartition(p)) return null;
-    return parsePredicateAndSettings(p) ? new Ast("DeleteQuery") : null;
+    const node = new Ast("DeleteQuery");
+    if (!parseInPartition(p, node)) return null;
+    return parsePredicateAndSettings(p, node) ? node : null;
   });
 }
 
@@ -259,9 +267,10 @@ export function parseUpdateQuery(p: P): Ast | null {
     if (!parseDatabaseAndTableAsAST(p)) return null;
     if (kw(p, "ON") && !parseCluster(p)) return null;
     if (!kw(p, "SET")) return null;
-    if (!parseList(p, () => parseAssignment(p))) return null;
-    if (!parseInPartition(p)) return null;
-    return parsePredicateAndSettings(p) ? new Ast("UpdateQuery") : null;
+    const node = new Ast("UpdateQuery");
+    if (!keep(node, "assignments", parseList(p, () => parseAssignment(p)))) return null;
+    if (!parseInPartition(p, node)) return null;
+    return parsePredicateAndSettings(p, node) ? node : null;
   });
 }
 
@@ -311,7 +320,7 @@ export function parseSnapshotQuery(p: P): Ast | null {
       return null;
     }
     if (!kw(p, "TO")) return null;
-    if (!parseIdentifierWithOptionalParameters(p)) return null;
-    return new Ast("SnapshotQuery");
+    const node = new Ast("SnapshotQuery");
+    return keep(node, "snapshot_destination", parseIdentifierWithOptionalParameters(p)) ? node : null;
   });
 }

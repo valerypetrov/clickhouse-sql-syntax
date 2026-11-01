@@ -1,7 +1,7 @@
 /**
  * BACKUP and RESTORE: a port of src/Parsers/ParserBackupQuery.cpp.
  */
-import { Ast } from "./ast.js";
+import { Ast, keep } from "./ast.js";
 import { parseCluster, parseDatabaseAndTableName, parsePartition } from "./common.js";
 import { parseCompoundIdentifier, parseIdentifier, parseIdentifierWithOptionalParameters } from "./elements.js";
 import { parseArray, parseFunction } from "./expression.js";
@@ -132,13 +132,13 @@ function parseElement(p: P, backup: boolean): boolean {
 }
 
 /** parseBackupName: Disk('disk', 'path'), File('path'), S3(...) and so on. */
-function parseBackupName(p: P): boolean {
-  return parseIdentifierWithOptionalParameters(p) !== null;
+function parseBackupName(p: P): Ast | null {
+  return parseIdentifierWithOptionalParameters(p);
 }
 
 /** base_backup = Disk(...) and cluster_host_ids = [[...]] are kept apart from the other settings. */
-function parseBaseBackupSetting(p: P): boolean {
-  return attempt(p, () => kw(p, "base_backup") && tok(p, T.Equals) && parseBackupName(p)) !== null;
+function parseBaseBackupSetting(p: P): Ast | null {
+  return attempt(p, () => (kw(p, "base_backup") && tok(p, T.Equals) ? parseBackupName(p) : null));
 }
 
 function parseClusterHostIdsSetting(p: P): boolean {
@@ -160,27 +160,33 @@ interface SettingsList {
   ok: boolean;
   /** A query parameter, or a {name:Type} value: then the list with DEFAULT is not used. */
   parameters: boolean;
+  /** The base_backup backup name, which is a child of the query. */
+  baseBackup: Ast | null;
 }
 
 /** parseSettingsList: settings, where `defaultAware` allows name = DEFAULT and query parameters. */
 function parseSettingsList(p: P, defaultAware: boolean): SettingsList {
-  let baseBackup = false;
+  let baseBackup: Ast | null = null;
+  let resetBaseBackup = false;
   let clusterHostIds = false;
   let parameters = false;
   const setting = () => {
     const defaulted = defaultAware && isDefaultedSetting(p);
-    if (!defaulted && !baseBackup && parseBaseBackupSetting(p)) return (baseBackup = true);
+    if (!defaulted && !baseBackup && (baseBackup = parseBaseBackupSetting(p))) return true;
     if (!defaulted && !clusterHostIds && parseClusterHostIdsSetting(p)) return (clusterHostIds = true);
     if (!defaultAware) return parseNameValuePair(p);
+    if (defaulted && p.lower() === "base_backup") resetBaseBackup = true;
     const kind = parseSetting(p, false);
     if (kind === "parameter" || kind === "substitution") parameters = true;
     return kind !== null;
   };
-  return { ok: listUtil(p, setting, undefined, false), parameters };
+  const ok = listUtil(p, setting, undefined, false);
+  return { ok, parameters, baseBackup: resetBaseBackup ? null : baseBackup };
 }
 
-/** SETTINGS ...: read without DEFAULT first, and with it when that reads further. */
-function parseSettings(p: P): void {
+/** SETTINGS ...: read without DEFAULT first, and with it when that reads further; returns the base backup. */
+function parseSettings(p: P): Ast | null {
+  let baseBackup: Ast | null = null;
   attempt(p, () => {
     if (!kw(p, "SETTINGS")) return false;
     const listBegin = p.i;
@@ -189,11 +195,16 @@ function parseSettings(p: P): void {
     if (!plain.ok || p.kind() === T.Comma) {
       p.restore(listBegin);
       const withDefault = parseSettingsList(p, true);
-      if (withDefault.ok && p.kind() !== T.Comma && !withDefault.parameters) return true;
+      if (withDefault.ok && p.kind() !== T.Comma && !withDefault.parameters) {
+        baseBackup = withDefault.baseBackup;
+        return true;
+      }
       p.restore(plainEnd);
     }
+    if (plain.ok) baseBackup = plain.baseBackup;
     return plain.ok;
   });
+  return baseBackup;
 }
 
 /** ParserBackupQuery: BACKUP elements TO name | RESTORE elements FROM name, with SETTINGS and ASYNC|SYNC. */
@@ -204,16 +215,17 @@ export function parseBackupQuery(p: P): Ast | null {
       if (!kw(p, "RESTORE")) return null;
       backup = false;
     }
+    const node = new Ast("BackupQuery");
     if (backup && kw(p, "FROM SNAPSHOT")) {
-      if (!parseBackupName(p)) return null;
+      if (!keep(node, "base_snapshot_name", parseBackupName(p))) return null;
     } else if (!attempt(p, () => listUtil(p, () => parseElement(p, backup), undefined, false))) {
       return null;
     }
     attempt(p, () => kw(p, "ON") && parseCluster(p));
     if (!kw(p, backup ? "TO" : "FROM")) return null;
-    if (!parseBackupName(p)) return null;
-    parseSettings(p);
+    if (!keep(node, "backup_name", parseBackupName(p))) return null;
+    node.set("base_backup_name", parseSettings(p));
     if (!kw(p, "ASYNC")) kw(p, "SYNC");
-    return new Ast("BackupQuery");
+    return node;
   });
 }

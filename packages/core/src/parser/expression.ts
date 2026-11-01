@@ -4,7 +4,7 @@
  */
 import { tokenize } from "../lexer/index.js";
 import { isSignificant } from "../types.js";
-import { Ast, canHaveAlias, func, identifierName, list, literal, stringValue, type Lit } from "./ast.js";
+import { Ast, canHaveAlias, func, identifier, identifierName, list, literal, stringValue, type Lit } from "./ast.js";
 import { parseDataTypeAsText } from "./datatype.js";
 import {
   parseAlias,
@@ -937,7 +937,7 @@ class DateAddLayer extends LayerWithSeparator {
   protected override getResultImpl(): Ast | null {
     if (this.parsedIntervalKind) {
       if (this.elements.length < 2) return null;
-      return func(this.functionName, [this.elements[1]!, this.elements[0]!]);
+      return func(this.functionName, [this.elements[1]!, func("toInterval", [this.elements[0]!])]);
     }
     return func(this.functionName, this.elements);
   }
@@ -1364,6 +1364,32 @@ const ARRAY_QUANTIFIER_PREDICATES = new Set([
 
 const ESCAPE_PREDICATES = new Set(["like", "ilike", "notLike", "notILike", "similarTo", "notSimilarTo"]);
 
+/** modifyAST: x = ANY (q) is x IN q, and the other comparisons read min, max or the only value of q. */
+function quantifiedSubquery(name: string, all: boolean, argument: Ast, subquery: Ast): Ast {
+  const equality = name === "equals" || name === "notEquals";
+  const rewritten = name === "equals" ? "in" : name === "notEquals" ? "notIn" : name;
+  if ((name === "equals" && !all) || (name === "notEquals" && all)) return func(rewritten, [argument, subquery]);
+  const greater = name === "greater" || name === "greaterOrEquals";
+  const aggregate = equality ? "singleValueOrNull" : greater !== all ? "min" : "max";
+  const tables = new Ast("TablesInSelectQuery");
+  const table = new Ast("TableExpression").set("source", subquery);
+  tables.children = [new Ast("TablesInSelectQueryElement").set("table", table)];
+  const select = new Ast("SelectQuery").set("select", list([func(aggregate, [new Ast("Asterisk")])])).set("tables", tables);
+  const union = new Ast("SelectWithUnionQuery");
+  union.children = [select];
+  const wrapped = new Ast("Subquery");
+  wrapped.children = [union];
+  return func(rewritten, [argument, wrapped]);
+}
+
+/** x op SOME|ALL (array): has() for = SOME and <> ALL, otherwise arrayExists or arrayAll of _a -> x op _a. */
+function quantifiedArray(name: string, some: boolean, argument: Ast, array: Ast): Ast {
+  if (some && name === "equals") return func("has", [array, argument]);
+  if (!some && name === "notEquals") return func("not", [func("has", [array, argument])]);
+  const lambda = func("lambda", [func("tuple", [identifier(["_a"])]), func(name, [argument, identifier(["_a"])])]);
+  return func(some ? "arrayExists" : "arrayAll", [lambda, array]);
+}
+
 /** x = ANY|SOME|ALL (subquery) and x OP SOME|ALL (array). */
 function tryParseQuantifier(top: Layer, p: P): Action | null {
   const previous = top.previousOperator();
@@ -1405,12 +1431,15 @@ function tryParseQuantifier(top: Layer, p: P): Action | null {
       const name = operator.name;
       const supported = ["equals", "notEquals", "greaterOrEquals", "greater", "lessOrEquals", "less"];
       if (!supported.includes(name)) return Action.None;
-    } else if (ESCAPE_PREDICATES.has(operator.name) && peekKwQuiet(p, "ESCAPE")) {
+      top.operands.push(quantifiedSubquery(name, allKeyword, argument, rhs!));
+      return Action.Operator;
+    }
+    if (ESCAPE_PREDICATES.has(operator.name) && peekKwQuiet(p, "ESCAPE")) {
       const escapeBegin = p.i;
       kw(p, "ESCAPE");
       if (!parseStringLiteral(p)) p.restore(escapeBegin);
     }
-    top.operands.push(func(operator.name, [argument, rhs!]));
+    top.operands.push(quantifiedArray(operator.name, someKeyword, argument, rhs!));
     return Action.Operator;
   }
   p.restore(begin);
@@ -1859,8 +1888,10 @@ export function parseGroupingSetsExpressionList(p: P): Ast | null {
         let set: Ast | null;
         if (!tok(p, T.OpeningRoundBracket)) {
           p.restore(begin);
-          set = parseExpressionWithOptionalAlias(p, false);
-          if (!set) return null;
+          const expr = parseExpressionWithOptionalAlias(p, false);
+          if (!expr) return null;
+          // A set without brackets is a list of one too.
+          set = list([expr]);
         } else {
           set = parseList(p, () => parseExpressionWithOptionalAlias(p, false), undefined, true);
           if (!set) return null;

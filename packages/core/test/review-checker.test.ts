@@ -71,6 +71,62 @@ describe("AST depth", () => {
     ["max_dynamic_paths under nested JSON paths", column(`${repeat("JSON(k ", 247)}JSON(max_dynamic_paths=1)${repeat(")", 247)}`), column(`${repeat("JSON(k ", 248)}JSON(max_dynamic_paths=1)${repeat(")", 248)}`)],
     ["max_types in nested arrays", column(`${repeat("Array(", 495)}Dynamic(max_types=1)${repeat(")", 495)}`), column(`${repeat("Array(", 496)}Dynamic(max_types=1)${repeat(")", 496)}`)],
   ];
+  const calls = (n: number) => `${repeat("f(", n)}1${repeat(")", n)}`;
+  const arrays = (n: number) => `${repeat("Array(", n)}UInt8${repeat(")", n)}`;
+  // Parts of statements that the depth did not count, each with the first n at which ClickHouse rejects it.
+  const statements: [name: string, statement: (n: number) => string, n: number][] = [
+    ["a column type in ALTER TABLE ... ADD COLUMN", (n) => `ALTER TABLE t ADD COLUMN a ${arrays(n)}`, 498],
+    ["a DEFAULT in ALTER TABLE ... MODIFY COLUMN", (n) => `ALTER TABLE t MODIFY COLUMN a UInt8 DEFAULT ${calls(n)}`, 498],
+    ["a CODEC in ALTER TABLE ... MODIFY COLUMN", (n) => `ALTER TABLE t MODIFY COLUMN a UInt8 CODEC(ZSTD(${calls(n)}))`, 496],
+    ["ALTER TABLE ... UPDATE", (n) => `ALTER TABLE t UPDATE a = ${calls(n)} WHERE 1`, 498],
+    ["ALTER TABLE ... DELETE WHERE", (n) => `ALTER TABLE t DELETE WHERE ${calls(n)}`, 499],
+    ["ALTER TABLE ... DELETE IN PARTITION", (n) => `ALTER TABLE t DELETE IN PARTITION tuple(${calls(n)}) WHERE 1`, 497],
+    ["ALTER TABLE ... MODIFY TTL", (n) => `ALTER TABLE t MODIFY TTL ${calls(n)}`, 498],
+    ["ALTER TABLE ... ADD INDEX", (n) => `ALTER TABLE t ADD INDEX i ${calls(n)} TYPE minmax`, 498],
+    ["ALTER TABLE ... ADD PROJECTION", (n) => `ALTER TABLE t ADD PROJECTION p (SELECT ${calls(n)})`, 497],
+    ["ALTER TABLE ... MODIFY ORDER BY", (n) => `ALTER TABLE t MODIFY ORDER BY ${calls(n)}`, 499],
+    ["ALTER TABLE ... MODIFY QUERY", (n) => `ALTER TABLE t MODIFY QUERY SELECT ${calls(n)}`, 497],
+    ["CREATE VIEW ... AS SELECT", (n) => `CREATE VIEW v AS SELECT ${calls(n)}`, 498],
+    ["the engine of a materialized view", (n) => `CREATE MATERIALIZED VIEW v ENGINE = MergeTree ORDER BY ${calls(n)} AS SELECT 1`, 499],
+    ["CREATE FUNCTION", (n) => `CREATE FUNCTION g AS x -> ${calls(n)}`, 499],
+    ["the engine arguments of CREATE TABLE", (n) => `CREATE TABLE t (a UInt8) ENGINE = MergeTree(${calls(n)})`, 498],
+    ["the ORDER BY of CREATE TABLE", (n) => `CREATE TABLE t (a UInt8) ENGINE = MergeTree ORDER BY ${calls(n)}`, 499],
+    ["a DESC key in the ORDER BY of CREATE TABLE", (n) => `CREATE TABLE t (a UInt8) ENGINE = MergeTree ORDER BY (${calls(n)} DESC, a)`, 498],
+    ["the PARTITION BY of CREATE TABLE", (n) => `CREATE TABLE t (a UInt8) ENGINE = MergeTree PARTITION BY ${calls(n)} ORDER BY a`, 499],
+    ["the TTL of CREATE TABLE", (n) => `CREATE TABLE t (a UInt8) ENGINE = MergeTree ORDER BY a TTL ${calls(n)}`, 498],
+    ["CREATE TABLE ... AS SELECT", (n) => `CREATE TABLE t ENGINE = Memory AS SELECT ${calls(n)}`, 498],
+    ["an INDEX in CREATE TABLE", (n) => `CREATE TABLE t (a UInt8, INDEX i ${calls(n)} TYPE minmax) ENGINE = Memory`, 498],
+    ["DELETE FROM", (n) => `DELETE FROM t WHERE ${calls(n)}`, 500],
+    ["UPDATE", (n) => `UPDATE t SET a = ${calls(n)} WHERE 1`, 499],
+    ["an attribute type in CREATE DICTIONARY", (n) => `CREATE DICTIONARY d (a ${arrays(n)}) PRIMARY KEY a SOURCE(NULL()) LIFETIME(0) LAYOUT(FLAT())`, 499],
+    ["the SOURCE of CREATE DICTIONARY", (n) => `CREATE DICTIONARY d (a UInt8) PRIMARY KEY a SOURCE(CLICKHOUSE(query ${calls(n)})) LIFETIME(0) LAYOUT(FLAT())`, 498],
+    ["GROUP BY", (n) => `SELECT 1 GROUP BY ${calls(n)}`, 498],
+    ["ORDER BY", (n) => `SELECT 1 ORDER BY ${calls(n)}`, 498],
+    ["LIMIT", (n) => `SELECT 1 LIMIT ${calls(n)}`, 499],
+    ["a window", (n) => `SELECT count() OVER (ORDER BY ${calls(n)})`, 496],
+    ["JOIN ... ON", (n) => `SELECT 1 FROM t JOIN u ON ${calls(n)}`, 497],
+    ["ARRAY JOIN", (n) => `SELECT 1 FROM t ARRAY JOIN ${calls(n)} AS a`, 497],
+    ["* REPLACE", (n) => `SELECT * REPLACE (${calls(n)} AS a) FROM t`, 496],
+    ["a WITH subquery", (n) => `WITH c AS (SELECT ${calls(n)}) SELECT 1`, 495],
+    // x > ANY (q) is x > (SELECT min(*) FROM q), and x < ALL (array) arrayAll(_a -> x < _a, array).
+    ["a comparison with ANY (subquery)", (n) => `SELECT 1 > ANY (SELECT ${calls(n)})`, 491],
+    ["a comparison with ALL (array)", (n) => `SELECT ${calls(n)} < ALL ([1])`, 495],
+    ["DATE_ADD with a unit", (n) => `SELECT DATE_ADD(YEAR, ${calls(n)}, d)`, 496],
+    // Each pipe operator makes the query before it a subquery of a new SELECT, seven levels deep.
+    ["pipe operators", (n) => `FROM t${repeat(" |> WHERE 1", n)}`, 142],
+    ["INSERT INTO FUNCTION", (n) => `INSERT INTO FUNCTION null(${calls(n)}) SELECT 1`, 499],
+    ["DESCRIBE (SELECT ...)", (n) => `DESCRIBE (SELECT ${calls(n)})`, 497],
+    ["KILL QUERY", (n) => `KILL QUERY WHERE ${calls(n)}`, 500],
+    ["OPTIMIZE ... PARTITION", (n) => `OPTIMIZE TABLE t PARTITION tuple(${calls(n)})`, 498],
+    ["CREATE INDEX", (n) => `CREATE INDEX i ON t (${calls(n)}) TYPE minmax`, 499],
+    ["the engine arguments of CREATE DATABASE", (n) => `CREATE DATABASE d ENGINE = Replicated(${calls(n)})`, 498],
+    ["the destination of BACKUP", (n) => `BACKUP TABLE t TO Disk(${calls(n)})`, 499],
+    ["SNAPSHOT", (n) => `SNAPSHOT TABLE t TO Disk(${calls(n)})`, 499],
+    ["EXECUTE AS", (n) => `EXECUTE AS u SELECT ${calls(n)}`, 498],
+    ["CREATE HANDLER", (n) => `CREATE HANDLER h URL '/a' AS SELECT ${calls(n)}`, 498],
+    ["VALID FOR of CREATE USER", (n) => `CREATE USER u VALID FOR ${calls(n)}`, 500],
+  ];
+  for (const [name, statement, n] of statements) cases.push([name, statement(n - 1), statement(n)]);
   for (const [name, fits, tooDeep] of cases) {
     test(`rejects ${name} one level deeper than ClickHouse allows`, () => {
       assert.deepEqual(check(fits), []);
@@ -79,6 +135,12 @@ describe("AST depth", () => {
       assert.ok(found[0]!.message.startsWith(TOO_DEEP_AST), found[0]!.message);
     });
   }
+
+  // ClickHouse keeps the filter of a row policy and the partition of CHECK TABLE out of the AST it checks.
+  test("accepts the parts that ClickHouse does not count, however deep", () => {
+    assert.deepEqual(check(`CREATE ROW POLICY p ON t USING ${calls(600)}`), []);
+    assert.deepEqual(check(`CHECK TABLE t PARTITION tuple(${calls(600)})`), []);
+  });
 
   test("checks the statements after one with too deep an AST", () => {
     const found = errors(`SELECT ${repeat("1", 499, " + ")}; SELECT 1 +`);

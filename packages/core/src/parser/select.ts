@@ -2,7 +2,7 @@
  * SELECT queries: a port of ParserSelectWithUnionQuery.cpp, ParserSelectQuery.cpp,
  * ParserTablesInSelectQuery.cpp, ParserWithElement.cpp, ParserSampleRatio.cpp and ParserPipeOperators.cpp.
  */
-import { Ast, list } from "./ast.js";
+import { Ast, keep, list } from "./ast.js";
 import {
   parseAlias,
   parseCompoundIdentifier,
@@ -96,7 +96,7 @@ export function parseUnionQueryElement(p: P): Ast | null {
 }
 
 /** parseOrderByClauseBody: ORDER BY ALL [ASC|DESC] [NULLS ...] or a list with WITH FILL and INTERPOLATE. */
-export function parseOrderByClauseBody(p: P): boolean {
+export function parseOrderByClauseBody(p: P, node: Ast): boolean {
   const saved = p.i;
   let orderByAll = false;
   if (kw(p, "ALL")) {
@@ -116,9 +116,12 @@ export function parseOrderByClauseBody(p: P): boolean {
   if (!orderByAll) {
     const orderList = parseOrderByExpressionList(p);
     if (!orderList) return false;
+    node.set("order_by", orderList);
     if (orderList.children.some((element) => element.has("with_fill")) && kw(p, "INTERPOLATE")) {
       if (tok(p, T.OpeningRoundBracket)) {
-        if (!parseInterpolateExpressionList(p)) return false;
+        const interpolate = parseInterpolateExpressionList(p);
+        if (!interpolate) return false;
+        node.set("interpolate", interpolate);
         if (!tok(p, T.ClosingRoundBracket)) return false;
       }
     }
@@ -127,7 +130,7 @@ export function parseOrderByClauseBody(p: P): boolean {
 }
 
 /** parseLimitRange: AFTER start [ALL] [UNTIL end] or UNTIL end; AFTER and UNTIL may be names. */
-function parseLimitRange(p: P): boolean {
+function parseLimitRange(p: P, node: Ast): boolean {
   const begin = p.i;
   const hasAfter = kw(p, "AFTER");
   if (!hasAfter && !kw(p, "UNTIL")) return false;
@@ -141,20 +144,25 @@ function parseLimitRange(p: P): boolean {
       return false;
     }
   }
+  let after: Ast | null = null;
+  let until: Ast | null = null;
   let parsed: boolean;
   if (hasAfter) {
-    parsed = parseExpressionWithOptionalAlias(p, false) !== null;
+    after = parseExpressionWithOptionalAlias(p, false);
+    parsed = after !== null;
     if (parsed) {
       kw(p, "ALL");
-      if (kw(p, "UNTIL")) parsed = parseExpressionWithOptionalAlias(p, false) !== null;
+      if (kw(p, "UNTIL")) parsed = (until = parseExpressionWithOptionalAlias(p, false)) !== null;
     }
   } else {
-    parsed = parseExpressionWithOptionalAlias(p, false) !== null;
+    until = parseExpressionWithOptionalAlias(p, false);
+    parsed = until !== null;
   }
   if (!parsed) {
     p.restore(begin);
     return false;
   }
+  node.set("limit_after", after).set("limit_until", until);
   return true;
 }
 
@@ -223,8 +231,11 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
       let distinctOn = false;
       if (kw(p, "DISTINCT ON")) {
         if (!tok(p, T.OpeningRoundBracket)) return null;
-        if (!parseNotEmptyExpressionList(p, false)) return null;
+        const distinctOnList = parseNotEmptyExpressionList(p, false);
+        if (!distinctOnList) return null;
         if (!tok(p, T.ClosingRoundBracket)) return null;
+        // ClickHouse makes DISTINCT ON (list) a LIMIT 1 BY list.
+        node.set("limit_by", distinctOnList);
         distinctOn = true;
       } else if (kw(p, "DISTINCT")) {
         distinct = true;
@@ -263,13 +274,17 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
         node.set(clause.toLowerCase(), condition);
       }
     }
-    if (!parseGroupBy(p)) return null;
+    if (!parseGroupBy(p, node)) return null;
     if (kw(p, "HAVING")) {
       const condition = parseExpressionWithOptionalAlias(p, false);
       if (!condition) return null;
       node.set("having", condition);
     }
-    if (kw(p, "WINDOW") && !parseWindowList(p)) return null;
+    if (kw(p, "WINDOW")) {
+      const windows = parseWindowList(p);
+      if (!windows) return null;
+      node.set("window", windows);
+    }
     if (kw(p, "QUALIFY")) {
       const condition = parseExpressionWithOptionalAlias(p, false);
       if (!condition) return null;
@@ -277,7 +292,7 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
     }
     let hasOrderBy = false;
     if (kw(p, "ORDER BY")) {
-      if (!parseOrderByClauseBody(p)) return null;
+      if (!parseOrderByClauseBody(p, node)) return null;
       hasOrderBy = true;
     }
     if (!parseLimitClauses(p, node, hasOrderBy)) return null;
@@ -302,7 +317,7 @@ function nextClauseCannotFollowOffset(p: P): boolean {
 }
 
 /** GROUP BY [ROLLUP|CUBE|GROUPING SETS|ALL] ... and the WITH ROLLUP|CUBE|TOTALS modifiers. */
-function parseGroupBy(p: P): boolean {
+function parseGroupBy(p: P, node: Ast): boolean {
   let rollup = false;
   let cube = false;
   let totals = false;
@@ -316,9 +331,13 @@ function parseGroupBy(p: P): boolean {
     const bracketed = rollup || cube || groupingSets;
     if (bracketed && !tok(p, T.OpeningRoundBracket)) return false;
     if (groupingSets) {
-      if (!parseGroupingSetsExpressionList(p)) return false;
+      const sets = parseGroupingSetsExpressionList(p);
+      if (!sets) return false;
+      node.set("group_by", sets);
     } else if (!all) {
-      if (!parseNotEmptyExpressionList(p, false)) return false;
+      const keys = parseNotEmptyExpressionList(p, false);
+      if (!keys) return false;
+      node.set("group_by", keys);
     }
     if (bracketed && !tok(p, T.ClosingRoundBracket)) return false;
   }
@@ -348,18 +367,24 @@ function parseLimitClauses(p: P, node: Ast, hasOrderBy: boolean): boolean {
   let limitRange = false;
   let hasOffsetClause = false;
   let offsetHasRows = false;
+  // The expressions of these clauses, which ClickHouse moves between its fields as it reads them.
+  let length: Ast | null = null;
+  let offset: Ast | null = null;
+  let byLength: Ast | null = null;
+  let byOffset: Ast | null = null;
   if (kw(p, "LIMIT")) {
-    if (parseLimitRange(p)) {
+    if (parseLimitRange(p, node)) {
       limitRange = true;
     } else {
-      if (!parseExpressionWithOptionalAlias(p, false)) return false;
+      if (!(length = parseExpressionWithOptionalAlias(p, false))) return false;
       limitLength = true;
       let tiesHere = false;
       if (tok(p, T.Comma)) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return false;
+        offset = length;
+        if (!(length = parseExpressionWithOptionalAlias(p, false))) return false;
         if (kw(p, "WITH TIES")) tiesHere = true;
       } else if (kw(p, "OFFSET")) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return false;
+        if (!(offset = parseExpressionWithOptionalAlias(p, false))) return false;
         hasOffsetClause = true;
         if (kw(p, "WITH TIES")) tiesHere = true;
       } else if (kw(p, "WITH TIES")) {
@@ -373,14 +398,21 @@ function parseLimitClauses(p: P, node: Ast, hasOrderBy: boolean): boolean {
         if (distinctOn) p.fail("Can not use DISTINCT ON alongside LIMIT BY", p.i - 1);
         limitByLength = true;
         limitLength = false;
-        if (!kw(p, "ALL") && !parseNotEmptyExpressionList(p, false)) return false;
+        byLength = length;
+        byOffset = offset;
+        length = offset = null;
+        if (!kw(p, "ALL")) {
+          const by = parseNotEmptyExpressionList(p, false);
+          if (!by) return false;
+          node.set("limit_by", by);
+        }
       }
-      if (limitLength && parseLimitRange(p)) limitRange = true;
+      if (limitLength && parseLimitRange(p, node)) limitRange = true;
     }
     if (node.has("top") && (limitLength || limitRange)) p.failOther("Can not use TOP and LIMIT together", p.i - 1);
   } else if (kw(p, "OFFSET")) {
     hasOffsetClause = true;
-    if (!parseExpressionWithOptionalAlias(p, false)) return false;
+    if (!(offset = parseExpressionWithOptionalAlias(p, false))) return false;
     if (kw(p, "ROW")) offsetHasRows = true;
     if (kw(p, "ROWS")) {
       if (offsetHasRows) p.failOther("Can not use ROW and ROWS together", p.i - 1);
@@ -394,7 +426,7 @@ function parseLimitClauses(p: P, node: Ast, hasOrderBy: boolean): boolean {
     } else if (!kw(p, "NEXT")) {
       return false;
     }
-    if (!parseExpressionWithOptionalAlias(p, false)) return false;
+    if (!(length = parseExpressionWithOptionalAlias(p, false))) return false;
     limitLength = true;
     if (kw(p, "ROW")) {
       if (kw(p, "ROWS")) p.failOther("Can not use ROW and ROWS together", p.i - 1);
@@ -406,21 +438,27 @@ function parseLimitClauses(p: P, node: Ast, hasOrderBy: boolean): boolean {
     else return false;
   }
   if (distinctOn) limitByLength = true;
-  if (node.has("top")) limitLength = true;
+  if (node.has("top")) {
+    limitLength = true;
+    length = null;
+  }
   if (kw(p, "LIMIT")) {
     if (!limitByLength || limitLength || limitRange) return false;
-    if (!parseLimitRange(p)) {
-      if (!parseExpressionWithOptionalAlias(p, false)) return false;
+    if (!parseLimitRange(p, node)) {
+      if (!(length = parseExpressionWithOptionalAlias(p, false))) return false;
       if (tok(p, T.Comma)) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return false;
+        offset = length;
+        if (!(length = parseExpressionWithOptionalAlias(p, false))) return false;
       } else if (kw(p, "OFFSET")) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return false;
+        if (!(offset = parseExpressionWithOptionalAlias(p, false))) return false;
       }
       if (kw(p, "WITH TIES")) withTies = true;
-      parseLimitRange(p);
+      parseLimitRange(p, node);
     }
   }
   if (!hasOrderBy && withTies) p.failOther("Can not use WITH TIES without ORDER BY", p.i - 1);
+  node.set("limit_length", length).set("limit_offset", offset);
+  node.set("limit_by_length", byLength).set("limit_by_offset", byOffset);
   return true;
 }
 
@@ -441,7 +479,8 @@ export function parseWithElement(p: P): Ast | null {
       kw(p, "AS");
     if (isCte) {
       kw(p, "MATERIALIZED");
-      if (parseSubquery(p)) return new Ast("WithElement");
+      const subquery = parseSubquery(p);
+      if (subquery) return new Ast("WithElement").set("subquery", subquery);
     }
     p.restore(begin);
     return parseExpressionWithOptionalAlias(p, false);
@@ -478,8 +517,9 @@ function parseArrayJoin(p: P): Ast | null {
       found = kw(p, "ARRAY JOIN");
     }
     if (!found) return null;
-    if (!parseNotEmptyExpressionList(p, false)) return null;
-    return new Ast("ArrayJoin");
+    const columns = parseNotEmptyExpressionList(p, false);
+    if (!columns) return null;
+    return new Ast("ArrayJoin").set("columns", columns);
   });
 }
 
@@ -501,7 +541,8 @@ export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWit
       if (!table) return null;
       return node.set("table", table);
     }
-    if (parseArrayJoin(p)) return node.flag("array_join");
+    const arrayJoin = parseArrayJoin(p);
+    if (arrayJoin) return node.flag("array_join").set("array_join", arrayJoin);
 
     let kind = "";
     let strictness = "";
@@ -567,10 +608,11 @@ export function parseTablesInSelectQueryElement(p: P, isFirst: boolean, allowWit
           if (p.kind() !== T.ClosingRoundBracket) return null;
           p.i++;
         }
+        node.set("join", new Ast("TableJoin").set("using", columns));
       } else if (kw(p, "ON")) {
         const condition = parseExpression(p);
         if (!condition) return null;
-        node.set("on", condition);
+        node.set("join", new Ast("TableJoin").set("on", condition));
       } else {
         return null;
       }
@@ -626,7 +668,11 @@ export function parseTableExpression(p: P, allowWithoutAs = true): Ast | null {
         node.flag("sample_offset");
       }
     }
-    if (kw(p, "STREAM") && !parseStreamSettings(p)) return null;
+    if (kw(p, "STREAM")) {
+      const stream = parseStreamSettings(p);
+      if (!stream) return null;
+      node.set("stream", stream);
+    }
     return node;
   });
 }
@@ -699,18 +745,20 @@ function parseStreamSettings(p: P): Ast | null {
     kw(p, "BOUNDED");
     kw(p, "UNORDERED");
     if (kw(p, "CURSOR") && !parseCursorObject(p)) return null;
+    let watermark: Ast | null = null;
     if (kw(p, "WATERMARK")) {
       if (!kw(p, "FOR")) return null;
       if (!parseIdentifier(p)) return null;
       if (!kw(p, "AS")) return null;
-      if (!parseExpression(p)) return null;
+      watermark = parseExpression(p);
+      if (!watermark) return null;
       if (kw(p, "IDLE TIMEOUT")) {
         if (!kw(p, "INTERVAL")) return null;
         if (!parseUnsignedInteger(p)) return null;
         if (parseIntervalKind(p) === null) return null;
       }
     }
-    return new Ast("Other");
+    return new Ast("StreamSettings").set("watermark", watermark);
   });
 }
 
@@ -719,6 +767,19 @@ function wrapped(select: Ast): Ast {
   const node = new Ast("SelectWithUnionQuery");
   node.children = [select];
   return node;
+}
+
+/** wrapQueryIntoSelect: `select` reads FROM (query) and the joined tables, with the WITH of the first SELECT of the query. */
+function selectFrom(select: Ast, query: Ast, joined: Ast[] = []): Ast {
+  let first: Ast | undefined = query;
+  while (first?.kind === "SelectWithUnionQuery") first = first.children[0];
+  const subquery = new Ast("Subquery");
+  subquery.children = [query];
+  const tables = new Ast("TablesInSelectQuery");
+  const element = new Ast("TablesInSelectQueryElement").set("table", new Ast("TableExpression").set("source", subquery));
+  tables.children = [element, ...joined];
+  if (!select.get("select")) select.set("select", list([new Ast("Asterisk")]));
+  return select.set("with", first?.get("with")).set("tables", tables);
 }
 
 /** Comma-separated items after a pipe operator; a comma that has no item after it is left alone. */
@@ -735,71 +796,98 @@ function parsePipeItems(p: P, item: () => boolean): boolean {
   return true;
 }
 
-/** ParserPipeOperators: FROM t |> WHERE x |> SELECT y |> ... */
+/** ParserPipeOperators: FROM t |> WHERE x |> SELECT y |> ...; each operator makes a SELECT from the query before it. */
 function parsePipeOperators(p: P, query: Ast): Ast | null {
   return base(p, "pipe operators", () => {
     const depth = p.depth;
     let current = query;
+    // AS names the query for the next operator to wrap.
+    let pendingAlias = false;
     while (p.kind() === T.PipeOperator) {
       p.i++;
       p.increaseDepth();
       let select: Ast | null = new Ast("SelectQuery");
+      const joined: Ast[] = [];
       if (kw(p, "WHERE")) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return null;
+        if (!keep(select, "where", parseExpressionWithOptionalAlias(p, false))) return null;
       } else if (kw(p, "SELECT")) {
         kw(p, "DISTINCT");
-        if (!parseNotEmptyExpressionList(p, true, true)) return null;
+        if (!keep(select, "select", parseNotEmptyExpressionList(p, true, true))) return null;
       } else if (kw(p, "EXTEND")) {
-        if (!parseNotEmptyExpressionList(p, true, true)) return null;
+        const extend = parseNotEmptyExpressionList(p, true, true);
+        if (!extend) return null;
+        select.set("select", list([new Ast("Asterisk"), ...extend.children]));
       } else if (kw(p, "SET")) {
+        const transformer = new Ast("ColumnsTransformer");
         const replacement = () => {
           if (!parseIdentifier(p)) return false;
           if (p.kind() !== T.Equals) return false;
           p.i++;
-          return parseExpression(p) !== null;
+          const expr = parseExpression(p);
+          if (!expr) return false;
+          const node = new Ast("Replacement");
+          node.children = [expr];
+          transformer.children.push(node);
+          return true;
         };
         if (!parsePipeItems(p, replacement)) return null;
+        select.set("select", list([new Ast("Asterisk").set("transformers", list([transformer]))]));
       } else if (kw(p, "DROP")) {
         if (!parsePipeItems(p, () => parseIdentifier(p, true) !== null)) return null;
       } else if (kw(p, "AS")) {
         if (!parseIdentifier(p)) return null;
+        pendingAlias = true;
         select = null;
       } else if (kw(p, "AGGREGATE")) {
-        if (!parseNotEmptyExpressionList(p, true, true)) return null;
-        if (kw(p, "GROUP BY") && !parseNotEmptyExpressionList(p, true)) return null;
+        const aggregates = parseNotEmptyExpressionList(p, true, true);
+        if (!aggregates) return null;
+        let keys: Ast | null = null;
+        if (kw(p, "GROUP BY") && !(keys = parseNotEmptyExpressionList(p, true))) return null;
+        // The grouping keys come first in the SELECT list, and are the GROUP BY too.
+        select.set("select", list([...(keys?.children ?? []), ...aggregates.children])).set("group_by", keys);
       } else if (kw(p, "DISTINCT")) {
         // SELECT DISTINCT *.
       } else if (kw(p, "ORDER BY")) {
-        if (!parseOrderByClauseBody(p)) return null;
+        if (!parseOrderByClauseBody(p, select)) return null;
       } else if (kw(p, "LIMIT")) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return null;
-        if (kw(p, "OFFSET") && !parseExpressionWithOptionalAlias(p, false)) return null;
+        if (!keep(select, "limit_length", parseExpressionWithOptionalAlias(p, false))) return null;
+        if (kw(p, "OFFSET") && !keep(select, "limit_offset", parseExpressionWithOptionalAlias(p, false))) return null;
       } else if (kw(p, "OFFSET")) {
-        if (!parseExpressionWithOptionalAlias(p, false)) return null;
+        if (!keep(select, "limit_offset", parseExpressionWithOptionalAlias(p, false))) return null;
       } else if (kw(p, "UNION") || kw(p, "INTERSECT") || kw(p, "EXCEPT")) {
         if (!kw(p, "ALL")) kw(p, "DISTINCT");
         let lastParenthesized = p.kind() === T.OpeningRoundBracket;
-        if (!parseUnionQueryElement(p)) return null;
+        const first = parseUnionQueryElement(p);
+        if (!first) return null;
+        const elements = [first];
         while (p.kind() === T.Comma) {
           const saved = p.i;
           p.i++;
           const parenthesized = p.kind() === T.OpeningRoundBracket;
-          if (!parseUnionQueryElement(p)) {
+          const element = parseUnionQueryElement(p);
+          if (!element) {
             p.restore(saved);
             break;
           }
+          elements.push(element);
           lastParenthesized = parenthesized;
         }
         if (!lastParenthesized && p.kind() === T.PipeOperator) {
           p.expect("parenthesized set operation operand before a pipe operator");
           return null;
         }
-        current = new Ast("SelectWithUnionQuery");
-        current.children = [new Ast("SelectQuery"), new Ast("SelectQuery")];
+        // An aliased query gets a level of its own, and a single SELECT is not kept in a union.
+        if (pendingAlias) current = wrapped(selectFrom(new Ast("SelectQuery"), current));
+        pendingAlias = false;
+        if (current.kind === "SelectWithUnionQuery" && current.children.length === 1) current = current.children[0]!;
+        const union = new Ast("SelectWithUnionQuery");
+        union.children = [current, ...elements];
+        current = union;
         select = null;
       } else {
         const first = parseTablesInSelectQueryElement(p, false);
         if (!first) return null;
+        joined.push(first);
         let previous = first;
         for (;;) {
           if (previous.has("array_join") && p.kind() === T.Comma) break;
@@ -809,10 +897,14 @@ function parsePipeOperators(p: P, query: Ast): Ast | null {
             p.restore(saved);
             break;
           }
+          joined.push(element);
           previous = element;
         }
       }
-      if (select) current = wrapped(select);
+      if (select) {
+        current = wrapped(selectFrom(select, current, joined));
+        pendingAlias = false;
+      }
       // A SETTINGS clause goes to the SELECT made by the operator.
       if (peekKw(p, "SETTINGS")) {
         const only = current.children.length === 1 ? current.children[0]! : null;

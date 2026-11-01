@@ -2,7 +2,7 @@
  * INSERT queries: a port of src/Parsers/ParserInsertQuery.cpp.
  * The node remembers where the inline data starts, as an offset into the text.
  */
-import { Ast } from "./ast.js";
+import { Ast, keep } from "./ast.js";
 import {
   parseAsterisk,
   parseColumnsMatcher,
@@ -58,9 +58,10 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
     }
     if (!kw(p, "INSERT INTO")) return null;
     kw(p, "TABLE");
+    const node = new Ast("InsertQuery");
     if (kw(p, "FUNCTION")) {
-      if (!parseFunction(p, false, true)) return null;
-      if (kw(p, "PARTITION BY") && !parseExpressionWithOptionalAlias(p, false)) return null;
+      if (!keep(node, "table_function", parseFunction(p, false, true))) return null;
+      if (kw(p, "PARTITION BY") && !keep(node, "partition_by", parseExpressionWithOptionalAlias(p, false))) return null;
     } else {
       if (!parseIdentifier(p, true)) return null;
       if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
@@ -79,7 +80,7 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
 
     if (kw(p, "RETURNING")) {
       if (!tok(p, T.OpeningRoundBracket)) return null;
-      if (!parseSelectWithUnionQuery(p)) return null;
+      if (!keep(node, "returning", parseSelectWithUnionQuery(p))) return null;
       if (!tok(p, T.ClosingRoundBracket)) return null;
     }
 
@@ -96,7 +97,6 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
       settings = true;
     }
 
-    const node = new Ast("InsertQuery");
     let data = -1;
     let format = false;
     let select: Ast | null = null;
@@ -115,8 +115,10 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
       select = parseSelectWithUnionQuery(p);
       if (withList && select) {
         for (const child of select.children) {
-          if (child.kind === "SelectQuery" && child.get("with"))
-            p.fail("Only one WITH should be presented, either before INSERT or SELECT.");
+          if (child.kind !== "SelectQuery") continue;
+          if (child.get("with")) p.fail("Only one WITH should be presented, either before INSERT or SELECT.");
+          // ClickHouse moves the WITH of the INSERT into each SELECT.
+          child.set("with", withList);
         }
       }
       if (kw(p, "FORMAT")) {

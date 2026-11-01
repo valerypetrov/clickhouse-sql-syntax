@@ -199,21 +199,27 @@ export function parseDescribeTableQuery(p: P): Ast | null {
     }
     let asSelect = false;
     const beforeSelect = p.i;
-    if (parseSelectWithUnionQuery(p)) {
+    const select = parseSelectWithUnionQuery(p);
+    if (select) {
       if (p.kindAt(beforeSelect) !== T.OpeningRoundBracket || isTopLevelSetOperation(p, beforeSelect)) asSelect = true;
       else p.restore(beforeSelect);
     }
+    let table: Ast | null;
     if (asSelect) {
       if (temporary) return null;
+      // ClickHouse describes a SELECT as a table expression with that subquery.
+      const subquery = new Ast("Subquery");
+      subquery.children = [select!];
+      table = new Ast("TableExpression").set("source", subquery);
     } else {
-      const table = parseTableExpression(p);
+      table = parseTableExpression(p);
       if (!table) return null;
       if (temporary) {
         const source = table.get("source");
         if (!source || source.kind !== "TableIdentifier") return null;
       }
     }
-    const node = new Ast("DescribeQuery");
+    const node = new Ast("DescribeQuery").set("table_expression", table);
     if (kw(p, "SETTINGS")) {
       if (!parseSetQuery(p, true)) return null;
       node.flag("settings_ast");
