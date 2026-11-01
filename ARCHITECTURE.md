@@ -17,6 +17,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()` and `describe()`.
+- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
@@ -124,6 +125,22 @@ clauses and queries. Every bracket group and what it holds is a range too, so a 
 nests too deep for `analyze()`, still has those. The statement follows, then with its `;`, then with its comments.
 A range that does not hold the one before it is left out, so they nest. Operators make no ranges of their own: in
 `a + b > c` there is none for `a + b`.
+
+## definition(), references() and rename()
+
+1. Along with the roles, the parser marks what names analysis needs: each SELECT and UNION, WITH element, table
+   expression, join, ARRAY JOIN, alias with the expression it names, lambda, identifier and function name
+   (`parser/names.ts`). Moving back drops the marks past the position, and the `ParseCache` keeps them with the roles.
+2. `names/tree.ts` nests the marks of the statement at the offset into a tree.
+3. `names/resolve.ts` walks the tree as `QueryAnalyzer` walks a query (`src/Analyzer/Resolve`): lambda parameters
+   first, then aliases, then the tables of FROM, then the enclosing queries. An alias is resolved again at each place it
+   is used, without itself inside its own expression, and a CTE is resolved at each place that reads it. Each word
+   records what it resolved to each time.
+4. A word that resolved to more than one thing, or to something the analysis does not follow, is ambiguous: it has no
+   definition, and the names it may stand for cannot be renamed. A table of the database or a table function other than
+   a few known ones, such as `numbers()`, may have any column, except one named like a table or alias of the same FROM.
+5. `rename()` checks its result: the renamed statement must parse, and every word must resolve as before.
+
 
 ## The VS Code extension
 

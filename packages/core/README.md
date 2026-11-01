@@ -102,6 +102,23 @@ selectionRanges("SELECT f(a + 1) FROM t", [9]).map((r) => r.map(({ start, end })
 // [[[9, 10], [9, 14], [8, 15], [7, 15], [0, 15], [0, 22]]]: a, a + 1, (a + 1), f(a + 1), SELECT f(a + 1), the statement
 ```
 
+### definition(sql, offset, options?), references(), prepareRename() and rename()
+
+For the names a statement defines: aliases, CTEs and their columns, table aliases, lambda parameters and query parameters.
+
+```ts
+references("SELECT a + 1 AS x FROM t WHERE x > 0", 31); // [{ start: 16, end: 17, definition: true }, { start: 31, end: 32, definition: false }]
+rename("SELECT a + 1 AS x FROM t WHERE x > 0", 31, "total sum"); // { edits: [{ start: 16, end: 17, newText: "`total sum`" }, ...] }
+prepareRename("SELECT a FROM t", 7); // { error: "`a` is not defined in this query: ..." }
+```
+
+Names resolve as ClickHouse's analyzer resolves them: an alias anywhere in its query, before or after it is defined,
+and inside its own expression the column of that name; a lambda parameter first; inner queries hiding outer names; a
+CTE read again at each place it is used. Where ClickHouse could read a name in more than one way, as when a table of
+the database may have a column of that name, there are no results, and `rename()` gives the reason. `rename()` quotes
+the new name where ClickHouse would, and refuses one that would change what the query means. With `{ cache }`, the
+statements come from the `ParseCache` of `checkWithRoles()`.
+
 ### highlight(sql) and tokenize(sql)
 
 ```ts
