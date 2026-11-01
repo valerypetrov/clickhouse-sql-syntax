@@ -2,6 +2,7 @@
  * Shared contracts of the library. Every other module builds on these types,
  * so change them only together with all their users.
  */
+import type { ParseCache } from "./parser/index.js";
 
 /** Token kinds of ClickHouse's lexer, named as in src/Parsers/Lexer.h. */
 export enum TokenKind {
@@ -194,6 +195,8 @@ export interface ClickHouseSqlSyntax {
   describe(name: string, kind?: CompletionKind): Description | undefined;
   /** The lines an editor can fold: statements, brackets and comments of several lines, and -- #region blocks. */
   foldingRanges(sql: string): FoldingRange[];
+  /** Each statement with its kind and a short name, and its CTEs and columns; a ParseCache saves parsing again. */
+  outline(sql: string, cache?: ParseCache): OutlineSymbol[];
 }
 
 /** How format() writes keywords: in upper case, in lower case, or as they are. */
@@ -273,4 +276,21 @@ export interface FoldingRange {
   startLine: number;
   endLine: number;
   kind?: "comment" | "region";
+}
+
+/** What a symbol of outline() is: what a CREATE statement makes, a query, another statement, a CTE or a column. */
+export type OutlineKind = "table" | "view" | "dictionary" | "database" | "function" | "query" | "statement" | "cte" | "column";
+
+/** A statement, or a CTE or column of one, for an editor's outline. Offsets follow the rules of Token. */
+export interface OutlineSymbol {
+  /** A short name: "CREATE TABLE db.t", "SELECT … FROM db.t", or the name of the CTE or column. */
+  name: string;
+  kind: OutlineKind;
+  /** The whole statement, CTE or column. */
+  start: number;
+  end: number;
+  /** Where its name is written; the SELECT keyword of a query, and the leading keywords of a statement without a name. */
+  nameStart: number;
+  nameEnd: number;
+  children: OutlineSymbol[];
 }

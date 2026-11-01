@@ -123,15 +123,24 @@ const BINARY = new Set([
 
 const COMPARISONS = new Set([T.Equals, T.NotEquals, T.Less, T.Greater, T.LessOrEquals, T.GreaterOrEquals, T.Spaceship]);
 
-export function analyze(sig: Tok[]): Shape {
-  return new Analyzer(sig).run();
+/** What a part of a statement that analyze() read as one piece is. */
+export type RegionKind = "clause" | "column";
+
+/** Takes the parts that analyze() reads: tokens from `start` up to `end`, and a clause's keyword as `name`. */
+export type RegionRecorder = (kind: RegionKind, start: number, end: number, name?: string) => void;
+
+export function analyze(sig: Tok[], record?: RegionRecorder): Shape {
+  return new Analyzer(sig, record).run();
 }
 
 class Analyzer {
   private readonly n: number;
   private readonly shape: Shape;
 
-  constructor(private readonly sig: Tok[]) {
+  constructor(
+    private readonly sig: Tok[],
+    private readonly record?: RegionRecorder,
+  ) {
     this.n = sig.length;
     this.shape = {
       keyword: new Uint8Array(this.n),
@@ -193,6 +202,12 @@ class Analyzer {
   private end(i: number): number {
     while (i < this.n && !this.is(i, T.Semicolon)) i++;
     return i;
+  }
+
+  /** Passes the part from `start` up to `end` to the recorder, if any, and returns `end`. */
+  private note(kind: RegionKind, start: number, end: number, name?: string): number {
+    if (this.record && end > start) this.record(kind, start, end, name);
+    return end;
   }
 
   /** The index after the bracket group that starts at `i`. */
@@ -435,6 +450,10 @@ class Analyzer {
   }
 
   private clause(name: string, count: number, i: number, end: number): number {
+    return this.note("clause", i, this.clauseBody(name, count, i, end), name);
+  }
+
+  private clauseBody(name: string, count: number, i: number, end: number): number {
     let j = this.kw(i, count);
     const q: Ctx = { query: true };
     switch (name) {
@@ -1334,7 +1353,9 @@ class Analyzer {
     if ((w === "STATISTICS" || w === "FOREIGN" || w === "UNIQUE") && !nameNext) {
       return end;
     }
-    return this.columnDef(i, end);
+    const next = this.columnDef(i, end);
+    this.note("column", i, end);
+    return next;
   }
 
   /** The first index of `word` between `i` and `end` at this level, or -1. */
@@ -1572,7 +1593,8 @@ class Analyzer {
       }
       if (previous === "SYSTEM" && this.word(i - 1) === "SYSTEM") {
         const command = SYSTEM_COMMANDS.find((words) => this.words(i, ...words));
-        i = command ? this.kw(i, command.length) : this.systemWords(i, end);
+        // At least one word, so that a statement that does not parse, as SYSTEM FROM 'x', ends.
+        i = command ? this.kw(i, command.length) : Math.max(this.systemWords(i, end), i + 1);
         expectName = true;
         continue;
       }

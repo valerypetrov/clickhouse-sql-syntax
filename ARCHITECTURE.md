@@ -17,7 +17,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()` and `describe()`.
-- `structure/`: `foldingRanges()`.
+- `structure/`: `outline()` and `foldingRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions and combinators that completion offers.
 
@@ -98,6 +98,16 @@ ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 ba
 the other ones (an expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and
 from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
 
+## outline()
+
+Each unit of `split()` with a statement is a symbol, named by its leading keywords without `IF [NOT] EXISTS` and the
+name after them, such as `CREATE TABLE db.t`; a query is `SELECT … FROM` the first table of its first `FROM`. The
+words are read by their roles from `checkWithRoles()`, with the cache of the document, and in a statement that does
+not parse by the keyword list. For a statement with `WITH`, or one that makes a table, view or dictionary,
+`analyze()` of the formatter passes on the WITH clauses and column declarations it reads: the elements of a WITH
+clause written `name AS (query)` are CTEs, each under the CTE that holds it, and the declarations one bracket deep
+are the columns.
+
 ## foldingRanges()
 
 It reads the units of `split()`, so that inline data is never looked into. A statement, a pair of brackets of the
@@ -111,9 +121,12 @@ range that crosses an earlier one is dropped, so the rest nest.
 In `packages/vscode/src`:
 
 - `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
-  statements parsed, so that the diagnostics, the semantic tokens and hover parse a statement once, until it changes.
+  statements parsed, so that the diagnostics, the semantic tokens, hover and the outline parse a statement once, until
+  it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
   characters.
+- `outline.ts`: the document symbols of the Outline view, breadcrumbs and Go to Symbol from `outline()`, which takes
+  the `ParseCache` of the document.
 - `folding.ts`: folding ranges from `foldingRanges()`.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.

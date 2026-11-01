@@ -69,6 +69,19 @@ combinator, and the syntax and arguments of a function:
 describe("toDate"); // { name: "toDate", kind: "function", syntax: "toDate(x)", arguments: [{ name: "x", ... }], documentation: "..." }
 ```
 
+### outline(sql, cache?)
+
+Each statement with its kind and a short name, for an editor's outline, with its CTEs and the columns that
+CREATE TABLE, VIEW or DICTIONARY defines as children. `start` and `end` cover the statement up to its `;`, and
+`nameStart` and `nameEnd` its name; for a query, its `SELECT`. With the `ParseCache` of `checkWithRoles()`, nothing
+is parsed again.
+
+```ts
+outline("CREATE TABLE db.t (id UInt64) ENGINE = Memory");
+// [{ name: "CREATE TABLE db.t", kind: "table", start: 0, end: 45, nameStart: 13, nameEnd: 17,
+//    children: [{ name: "id", kind: "column", start: 19, end: 28, nameStart: 19, nameEnd: 21, children: [] }] }]
+```
+
 ### foldingRanges(sql)
 
 The lines an editor can fold: statements, bracket groups and block comments of several lines, runs of line comments,
