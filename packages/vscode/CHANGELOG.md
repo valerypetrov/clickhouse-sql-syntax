@@ -16,6 +16,10 @@ First release.
 - Autocomplete and signature help for the arguments of table engines, read from their syntax in ClickHouse:
   ZooKeeper paths and replica names, columns of a type that fits, formats, compression methods, keywords such as
   NOSIGN, and the databases, tables, clusters and macros of the server.
+- Autocomplete for the arguments of functions, by what ClickHouse's documentation of each one says: units and other
+  listed values, data types, time zones, formats and JSONPaths, with the columns of a fitting type first, opening by
+  itself after the comma before such an argument; the parameters of the JSON type and the typed paths of a JSON
+  column; and signature help past optional and repeated arguments.
 - Go to definition, references, highlights and rename of aliases, CTEs, table aliases and lambda and query
   parameters, scoped as ClickHouse's analyzer scopes them.
 - An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its

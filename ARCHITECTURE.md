@@ -16,11 +16,11 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `parser/`: `check()`, `roles()`, and the Expected set at a position, which completion uses.
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
-- `complete/`: `complete()`, `describe()` and `engineArgument()`.
+- `complete/`: `complete()`, `describe()`, `engineArgument()` and `functionArgument()`.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
-  formats, table functions and combinators that completion offers.
+  formats, table functions, combinators and time zones that completion offers.
 
 `types.ts` holds the public types. `index.ts` exports them and the functions by name, and the main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,
@@ -114,6 +114,29 @@ At the top level of the brackets of `ENGINE = Name(...)`, the suggestions for th
 `describe()` gives the engine's call and parameters, which signature help shows with the one at the cursor from
 `engineArgument()`.
 
+In the brackets of a function, the suggestions for the argument at the cursor come first:
+
+1. `syntax.ts`, the reader of engine arguments, reads each line of the function's syntax in the catalog, such as
+   `JSONExtract(json[, indices_or_keys, ...], return_type)`, into every list of arguments it allows. A parameter after
+   a repeated one follows the repetitions, words with no comma between them are one argument, as `INTERVAL x unit`,
+   and a string in quotes that names no documented argument is a value that the form takes, as `'chinese'` in
+   `tokens(value, 'chinese'[, granularity])`. A function whose syntax it cannot read has its documented arguments in order.
+2. All the arguments in the brackets, those after the cursor too, pick the parameter at the cursor, so that
+   `JSONExtract(j, 'a', |)` is at `return_type`; `functionArgument()` names it for signature help.
+3. `kinds.ts` tells what each documented argument takes from its documentation: the values that
+   `scripts/function-docs.ts` reads from a table of possible values, a list after a colon or a list in the function's
+   description, as the units of dateDiff or the modes of encrypt, and phrases such as "data type", "time zone",
+   "format name" and "JSONPath". An argument documented with types other than strings has no kind.
+4. `functions.ts` offers each kind: the values in quotes, or as keywords after INTERVAL; type names in quotes, with
+   arguments where a type needs them, only those that ClickHouse takes there for the JSON functions, the OrNull and
+   OrDefault functions, reinterpret and variantElement; the time zones and formats of the catalog, only those that
+   write one row for a function that is not an aggregate; and `'$.'` with the cursor inside. The columns of the table
+   the statement makes and of the tables it reads in the schema follow, those whose type fits the documented types
+   of the argument first.
+
+In the brackets of `JSON(...)` in a type, `json.ts` offers its parameters and SKIP, and after `column.` of a JSON
+column, of the schema or of a CREATE TABLE in the document, the typed paths that its type declares.
+
 ## outline()
 
 Each unit of `split()` with a statement is a symbol, named by its leading keywords without `IF [NOT] EXISTS` and the
@@ -173,7 +196,7 @@ In `packages/vscode/src`:
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()`, `describe()`
-  and, in the brackets of an engine, `engineArgument()`;
+  and, in the brackets of an engine or a function, `engineArgument()` or `functionArgument()`;
   hover takes the role of the word from the parser where completion does not tell what it is.
 - `names.ts`: go to definition, references, document highlights and rename through `names/`, with the document's `ParseCache`.
 - `server/`: the server check. `statements.ts` finds the SELECTs the server can explain: SELECT and WITH statements,

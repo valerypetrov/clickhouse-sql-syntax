@@ -64,8 +64,11 @@ complete("SELECT * FROM t SETTINGS max_th", 31)[0]; // { label: "max_threads", k
 With `{ schema: { databases, tables } }` it also offers your databases, tables and columns; columns come from the tables
 the statement uses. In `ENGINE = Name(...)`, the suggestions for the argument at the cursor come first, by what the
 engine's syntax names it, such as ZooKeeper paths, columns of a type that fits, formats, and the `clusters` and
-`macros` of the schema; `engineArgument(sql, offset)` names the parameters that argument may be. `describe()` gives the documentation of a function, setting, table engine, format, table function or
-combinator, and the syntax and arguments of a function or table engine:
+`macros` of the schema; `engineArgument(sql, offset)` names the parameters that argument may be. In the brackets of a
+function, what its documentation says the argument takes comes first, such as a unit, a data type, a time zone, a
+format or a JSONPath, and the columns of a type that fits; `functionArgument(sql, offset)` names the arguments it may
+be, past optional and repeated ones. `describe()` gives the documentation of a function, setting, table engine, format, table function or
+combinator, and the syntax and arguments of a function or table engine, with the `kind` of each argument that has one:
 
 ```ts
 describe("toDate"); // { name: "toDate", kind: "function", syntax: "toDate(x)", arguments: [{ name: "x", ... }], documentation: "..." }
