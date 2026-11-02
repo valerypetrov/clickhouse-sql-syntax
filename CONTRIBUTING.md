@@ -101,10 +101,12 @@ generated lists, the oracle's numbers, the statements the release accepts and `c
 Visual Studio Marketplace, and to Open VSX when `OVSX_PAT` is set, then creates the GitHub release and its tag with the
 `.vsix`. So a version bump, by hand or by the ClickHouse release pipeline, is published once its pull request is merged.
 
-- `VSCE_PAT`: an Azure DevOps personal access token for the publisher `valerypetrov`, with the **Marketplace, Manage**
-  scope and **All accessible organizations**. Without it the workflow only packs the `.vsix` and says so.
-- `OVSX_PAT`: optional, an Open VSX access token.
-- Both go in Settings, Secrets and variables, Actions.
+- The Marketplace takes the workflow's GitHub identity (`vsce publish --oidc`): the publisher `valerypetrov` has a
+  Trusted Publishing policy for this repository and `release.yml`, so there is no token to store or renew.
+- `PUBLISH_EXTENSION`: a repository variable that must be `true` to publish. Without it the workflow only packs the
+  `.vsix` and says so.
+- `OVSX_PAT`: optional, an Open VSX access token, as a repository secret.
+- Variables and secrets go in Settings, Secrets and variables, Actions.
 - A pull request that changes `release.yml` runs it without publishing. Running it by hand on `main` retries a failed
   publish.
 
