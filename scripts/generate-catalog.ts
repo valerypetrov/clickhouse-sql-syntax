@@ -1,10 +1,12 @@
-// Regenerates the completion catalog of functions, settings, engines, formats and combinators from a ClickHouse binary.
+// Regenerates the completion catalog of functions, settings, engines, formats, combinators and time zones from ClickHouse.
 // Usage: npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse binary>
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+
+import { argumentTypes, argumentValues } from "./function-docs.js";
 
 const { values: args } = parseArgs({ options: { clickhouse: { type: "string" } } });
 
@@ -62,13 +64,19 @@ function summary(markdown: string, limit: number): string {
 interface Argument {
   name: string;
   description: string;
+  types?: string[];
+  values?: string[][];
 }
 
-/** The items "- `name` — description" of a documented argument list. */
-function argumentList(markdown: string): Argument[] {
+/** The items "- `name` — description" of a documented argument list, with the types and values each one names. */
+function argumentList(markdown: string, functionDescription: string): Argument[] {
   return markdown.split(/(?:^|\s)- (?=`)/).flatMap((item) => {
     const match = /^`([^`]+)`\s*[—–-]?\s*([\s\S]*)$/.exec(item.trim());
-    return match ? [{ name: match[1]!, description: shorten(plain(match[2]!), 120) }] : [];
+    if (!match) return [];
+    const [, name, text] = match as unknown as [string, string, string];
+    const types = argumentTypes(text);
+    const values = argumentValues(text, functionDescription, name);
+    return [{ name, description: shorten(plain(text), 120), ...(types.length ? { types } : {}), ...(values.length ? { values } : {}) }];
   });
 }
 
@@ -98,6 +106,10 @@ const ARGUMENT = [
   "export interface Argument {",
   "  name: string;",
   "  description: string;",
+  "  /** The types its documentation ends with, such as `String` or `(U)Int*`. */",
+  "  types?: readonly string[];",
+  "  /** The values its documentation lists, each with the other spellings that ClickHouse takes for it. */",
+  "  values?: readonly (readonly string[])[];",
   "}",
   "",
 ];
@@ -125,8 +137,8 @@ const functions = rows<FunctionRow>(
   caseInsensitive: r.case_insensitive === 1,
   aliasTo: r.alias_to,
   syntax: r.syntax.trim(),
-  arguments: argumentList(r.arguments),
-  parameters: argumentList(r.parameters),
+  arguments: argumentList(r.arguments, r.description),
+  parameters: argumentList(r.parameters, r.description),
   returns: shorten(plain(r.returned_value), 120),
   description: summary(r.description, 250),
   category: r.categories.trim(),
@@ -227,10 +239,30 @@ interface FormatRow {
   description: string;
 }
 
-const formats = rows<FormatRow>("SELECT name, is_input, is_output, description FROM system.formats ORDER BY name").map((r) => ({
+const formatRows = rows<FormatRow>("SELECT name, is_input, is_output, description FROM system.formats ORDER BY name");
+
+// system.formats does not say which formats write each row by itself, as formatRow() needs, so formatRow() is asked.
+const rowFormats = new Set(
+  spawnSync(
+    args.clickhouse,
+    [
+      "local",
+      "--ignore-error",
+      "--query",
+      formatRows
+        .filter((r) => r.is_output === 1 && /^\w+$/.test(r.name))
+        .map((r) => `SELECT '${r.name}' FROM (SELECT formatRow('${r.name}', 1 AS x));`)
+        .join("\n"),
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  ).stdout.split("\n"),
+);
+
+const formats = formatRows.map((r) => ({
   name: r.name,
   input: r.is_input === 1,
   output: r.is_output === 1,
+  rows: rowFormats.has(r.name),
   description: summary(r.description, 300),
 }));
 
@@ -244,6 +276,8 @@ write(
     "  input?: boolean;",
     "  /** Whether SELECT can write its result in it. */",
     "  output?: boolean;",
+    "  /** Whether formatRow() can write one row in it. */",
+    "  rows?: boolean;",
     "  description?: string;",
     "}",
   ],
@@ -297,8 +331,12 @@ write(
   combinators,
 );
 
+const timeZones = rows<{ time_zone: string }>("SELECT time_zone FROM system.time_zones ORDER BY time_zone").map((r) => ({ name: r.time_zone }));
+
+write("time-zones.ts", "system.time_zones", ["export interface TimeZoneInfo {", "  name: string;", "}"], "TIME_ZONES", "TimeZoneInfo", timeZones);
+
 console.log(
   `Wrote ${functions.length} functions, ${settings.length} settings, ${engines.length} table engines, ` +
-    `${formats.length} formats, ${tableFunctions.length} table functions and ${combinators.length} combinators ` +
-    `from ClickHouse ${version}.`,
+    `${formats.length} formats, ${tableFunctions.length} table functions, ${combinators.length} combinators ` +
+    `and ${timeZones.length} time zones from ClickHouse ${version}.`,
 );

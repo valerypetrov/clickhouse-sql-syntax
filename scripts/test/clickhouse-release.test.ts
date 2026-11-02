@@ -12,6 +12,7 @@ import { PRIVILEGES } from "../../packages/core/src/generated/privileges.js";
 import { SETTINGS } from "../../packages/core/src/generated/settings.js";
 import { TABLE_ENGINES } from "../../packages/core/src/generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../../packages/core/src/generated/table-functions.js";
+import { TIME_ZONES } from "../../packages/core/src/generated/time-zones.js";
 import { type VersionFile, compareVersions, isNewer, listChanges, namesOf, pullRequestBody, stableReleases } from "../clickhouse-release.js";
 
 const release = (tag_name: string, extra: { draft?: boolean; prerelease?: boolean } = {}) => ({
@@ -58,6 +59,7 @@ test("reads every name of every generated list", () => {
     "table functions": names(TABLE_FUNCTIONS),
     combinators: names(COMBINATORS),
     privileges: names(PRIVILEGES),
+    "time zones": names(TIME_ZONES),
   });
 });
 
