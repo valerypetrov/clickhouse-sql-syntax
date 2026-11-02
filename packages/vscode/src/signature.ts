@@ -78,7 +78,12 @@ function labelRange(label: string, group: number, name: string): [number, number
 
 /** The signature of a function or engine, its parameters in the brackets of `groups`, and the one at `active`. */
 function signatureHelp(description: Description, groups: [number, readonly ArgumentInfo[]][], active: number): vscode.SignatureHelp {
-  const label = description.syntax!.split("\n")[0]!;
+  const activeName = groups.flatMap(([, list]) => list)[active]?.name;
+  const lines = description.syntax!.split("\n");
+  const parametric = groups.some(([group, list]) => group > 0 && list.length > 0);
+  const forms = parametric ? lines.filter((line) => /\)\s*\(/.test(line)) : lines;
+  const labels = forms.length ? forms : lines;
+  const label = labels.find((line) => activeName && new RegExp(`\\b${activeName.replace(/\W/g, "\\$&")}\\b`).test(line)) ?? labels[0]!;
   const signature = new vscode.SignatureInformation(label, new vscode.MarkdownString(description.documentation));
   signature.parameters = groups.flatMap(([group, list]) =>
     list.map((a) => new vscode.ParameterInformation(labelRange(label, group, a.name), new vscode.MarkdownString(a.description))),
@@ -107,13 +112,13 @@ export function registerSignatureHelp(languageId: string): vscode.Disposable {
         const active = list.findIndex((a) => a.name === engine.parameters[0]);
         return signatureHelp(description, [[0, list]], active < 0 ? list.length : active);
       }
-      const description = call && describe(call.name, "function");
+      const argument = functionArgument(text, offset);
+      const description = call && describe(call.name, argument?.kind ?? "function");
       if (!call || !description?.syntax) return undefined;
       const parameters = description.parameters ?? [];
       const inParameters = parameters.length > 0 && call.group === 0 && call.nextGroup;
       let active = inParameters ? call.argument : parameters.length + call.argument;
       // The documented argument that the one at the cursor is, past optional and repeated ones, by the function's syntax.
-      const argument = functionArgument(text, offset);
       if (argument) {
         const list = argument.parameters ? parameters : (description.arguments ?? []);
         const at = list.findIndex((a) => a.name === argument.arguments[0]);

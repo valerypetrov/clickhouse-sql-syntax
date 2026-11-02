@@ -67,7 +67,7 @@ function opensAfterSpace(text: string, offset: number): boolean {
 function takesKind(text: string, offset: number): boolean {
   if (!/,\s*$/.test(text.slice(Math.max(0, offset - 100), offset))) return false;
   const argument = functionArgument(text, offset);
-  const description = argument && describe(argument.function, "function");
+  const description = argument && describe(argument.function, argument.kind ?? "function");
   const list = argument?.parameters ? description?.parameters : description?.arguments;
   return list?.some((a) => a.kind && argument!.arguments.includes(a.name)) ?? false;
 }

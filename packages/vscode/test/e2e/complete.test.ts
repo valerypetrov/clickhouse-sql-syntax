@@ -239,6 +239,29 @@ describe("Completion, hover and signature help", () => {
     assert.equal(active(await help("SELECT quantile(0.5)(|)")), "expr");
   });
 
+  it("helps fill table functions, combined aggregates and window functions", async () => {
+    const parquet = (await items("SELECT * FROM file('data', |)")).find((item) => label(item) === "Parquet")!;
+    assert.equal(parquet.insertText, "'Parquet'");
+    const compression = await items("SELECT * FROM file('data', 'CSV', 'x UInt8', |)");
+    assert.ok(compression.some((item) => label(item) === "gzip" && item.insertText === "'gzip'"));
+    for (const [text, expected] of [
+      ["SELECT * FROM file('data', |)", "format"],
+      ["SELECT * FROM numbers(|)", "count"],
+      ["SELECT sumIf(x, |)", "condition"],
+      ["SELECT quantileIf(0.5)(x, |)", "condition"],
+      ["SELECT histogram(|)(x)", "number_of_bins"],
+      ["SELECT lag(x, |) OVER ()", "offset"],
+    ]) {
+      const { editor, position } = await open(text!);
+      const help = await vscode.commands.executeCommand<vscode.SignatureHelp>("vscode.executeSignatureHelpProvider", editor.document.uri, position);
+      assert.ok(help?.signatures.length, text);
+      const signature = help.signatures[0]!;
+      const parameter = signature.parameters[help.activeParameter]!;
+      assert.ok(parameter, text);
+      assert.equal(typeof parameter.label === "string" ? parameter.label : signature.label.slice(...parameter.label), expected, text);
+    }
+  });
+
   it("shows the documentation of functions and settings on hover", async () => {
     const { editor } = await open("SELECT toDate(x) FROM t SETTINGS max_threads = 1|");
     const hover = async (offset: number) => {
@@ -271,8 +294,8 @@ describe("Completion, hover and signature help", () => {
       const hovers = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", editor.document.uri, position);
       return hovers.flatMap((h) => h.contents.map((c) => (c as vscode.MarkdownString).value)).join("\n");
     };
-    assert.match(await hover("file"), /^A table engine which provides a table-like interface to SELECT from and INSERT into files/);
-    assert.match(await hover("view"), /^Turns a subquery into a table/);
+    assert.match(await hover("file"), /A table engine which provides a table-like interface to SELECT from and INSERT into files/);
+    assert.match(await hover("view"), /Turns a subquery into a table/);
     for (const [name, syntax] of [
       ["quantile", "quantile(level)(expr)"],
       ["tcpPort", "tcpPort()"],

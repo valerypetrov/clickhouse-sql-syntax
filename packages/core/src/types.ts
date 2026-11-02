@@ -305,6 +305,8 @@ export interface EngineArgument {
 
 /** The function whose brackets an offset is in, and the documented arguments that the argument there may be. */
 export interface FunctionArgument {
+  /** Present for calls that read tables, such as s3(). */
+  kind?: "table function";
   /** The function as ClickHouse spells it, the one an alias stands for. */
   function: string;
   /** Whether the brackets hold the parameters of a parametric aggregate function, as the first ones of quantile(0.5)(x). */

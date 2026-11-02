@@ -11,6 +11,13 @@ import type { ArgumentInfo, CompletionKind, Description } from "../types.js";
 import { engineSignature, parameterDescription } from "./engines.js";
 import { argumentKind } from "./kinds.js";
 
+const tableFunctionsByName = new Map(TABLE_FUNCTIONS.map((f) => [f.name, f]));
+
+/** A table function by its registered name. */
+export function findTableFunction(name: string): TableFunctionInfo | undefined {
+  return tableFunctionsByName.get(name);
+}
+
 const functionsByName = new Map(FUNCTIONS.map((f) => [f.name, f]));
 const functionsByLowerName = new Map(FUNCTIONS.filter((f) => f.caseInsensitive).map((f) => [f.name.toLowerCase(), f]));
 
@@ -19,7 +26,73 @@ export const AGGREGATES = FUNCTIONS.filter((f) => f.aggregate);
 
 /** A function by the name a query uses, in any case for case-insensitive ones. */
 export function findFunction(name: string): FunctionInfo | undefined {
-  return functionsByName.get(name) ?? functionsByLowerName.get(name.toLowerCase());
+  const direct = functionsByName.get(name) ?? functionsByLowerName.get(name.toLowerCase());
+  if (direct) return direct;
+  if (name.length > 256) return undefined;
+  const cached = combinedFunctions.get(name);
+  if (cached) return cached;
+  for (const combinator of suffixes) {
+    if (!name.endsWith(combinator.name)) continue;
+    const base = findFunction(name.slice(0, -combinator.name.length));
+    if (!base?.aggregate) continue;
+    const target = base.aliasTo ? (findFunction(base.aliasTo) ?? base) : base;
+    const info = combinedFunction(name, target, combinator);
+    combinedFunctions.set(name, info);
+    return info;
+  }
+  return undefined;
+}
+
+const combinedFunctions = new Map<string, FunctionInfo>();
+const suffixes = [...COMBINATORS].sort((a, b) => b.name.length - a.name.length);
+
+/** Apply a suffix to the arguments of its nested aggregate. */
+function combinedFunction(name: string, base: FunctionInfo, combinator: CombinatorInfo): FunctionInfo {
+  let args = [...(base.arguments ?? [])];
+  let parameters = [...(base.parameters ?? [])];
+  let syntax = (base.syntax ?? `${base.name}(${args.map((a) => a.name).join(", ")})`).replaceAll(base.name, name);
+  const append = (arg: Argument) => {
+    args.push(arg);
+    syntax = syntax.split("\n").map((line) => {
+      const close = line.lastIndexOf(")");
+      return line.slice(0, close) + (line[close - 1] === "(" ? "" : ", ") + arg.name + line.slice(close);
+    }).join("\n");
+  };
+  switch (combinator.name) {
+    case "If": append({ name: "condition", description: "Only aggregate rows where this condition is true.", types: ["UInt8"] }); break;
+    case "ArgMin":
+    case "ArgMax": append({ name: "key", description: "Comparable expression selecting the rows to aggregate." }); break;
+    case "Resample": {
+      const resampling = ["start", "end", "step"].map((name) => ({ name, description: `Resampling ${name}.`, types: ["Int64", "UInt64"] }));
+      syntax = syntax.split("\n").map((line) => {
+        const at = /\)\s*\(/.test(line) ? line.indexOf(")") : line.indexOf("(");
+        const names = resampling.map((a) => a.name).join(", ");
+        return /\)\s*\(/.test(line) ? line.slice(0, at) + `, ${names}` + line.slice(at)
+          : line.slice(0, at) + `(${names})` + line.slice(at);
+      }).join("\n");
+      parameters = [...parameters, ...resampling];
+      append({ name: "resampling_key", description: "Numeric expression assigning each row to an interval.", types: ["Int64", "UInt64"] });
+      break;
+    }
+    case "Merge":
+      args = [{ name: "state", description: "Intermediate aggregate state.", types: ["AggregateFunction"] }];
+      syntax = `${name}(state)`;
+      parameters = [];
+      break;
+    case "Map": {
+      append({ name: "key", description: "Key used to group the nested aggregate's arguments." });
+      const mapSyntax = `${name}${parameters.length ? `(${parameters.map((a) => a.name).join(", ")})` : ""}(map)`;
+      syntax = `${mapSyntax}\n${syntax}`;
+      args = [{ name: "map", description: "Map whose values are aggregated by key.", types: ["Map"] }, ...args];
+      break;
+    }
+    case "Array":
+    case "ForEach":
+    case "Tuple":
+      args = args.map((a) => ({ ...a, description: `${combinator.name === "Tuple" ? "Tuple" : "Array"} of values for ${a.name}.`, types: [combinator.name === "Tuple" ? "Tuple" : "Array"] }));
+      break;
+  }
+  return { name, aggregate: true, syntax, arguments: args, parameters, description: [base.description, combinator.description].filter(Boolean).join("\n\n") };
 }
 
 function fenced(code: string): string {
@@ -74,7 +147,7 @@ export function formatDocumentation(info: FormatInfo): string {
 }
 
 export function tableFunctionDocumentation(info: TableFunctionInfo): string {
-  return info.description ?? "";
+  return paragraphs(info.syntax && fenced(info.syntax), info.description, argumentLines("Arguments", info.arguments));
 }
 
 export function combinatorDocumentation(info: CombinatorInfo): string {
@@ -122,7 +195,7 @@ function describeAs(name: string, kind: CompletionKind): Description | undefined
     }
     case "table function": {
       const info = TABLE_FUNCTIONS.find((f) => f.name === name);
-      return info && { name: info.name, kind, documentation: tableFunctionDocumentation(info) };
+      return info && { name: info.name, kind, documentation: tableFunctionDocumentation(info), syntax: info.syntax, arguments: withKinds(info, info.arguments) };
     }
     case "table engine": {
       const info = TABLE_ENGINES.find((e) => e.name === name);

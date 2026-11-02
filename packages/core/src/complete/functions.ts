@@ -7,8 +7,8 @@ import { FORMATS } from "../generated/formats.js";
 import type { Argument, FunctionInfo } from "../generated/functions.js";
 import { TIME_ZONES } from "../generated/time-zones.js";
 import { stringLiteralValue } from "../parser/index.js";
-import { type CompletionCandidate, type Token, TokenKind as T } from "../types.js";
-import { findFunction, formatDetail, formatDocumentation } from "./catalog.js";
+import { type CompletionCandidate, type CompletionSchema, type Token, TokenKind as T } from "../types.js";
+import { findFunction, findTableFunction, formatDetail, formatDocumentation } from "./catalog.js";
 import { argumentKind } from "./kinds.js";
 import { type DeclaredColumn, isWord, named, nameOf } from "./schema.js";
 import { type ArgumentList, closingBracket, type Parameter, parameterAt, readArguments } from "./syntax.js";
@@ -146,6 +146,7 @@ function holds(list: ArgumentList, count: number): boolean {
 /** The function call whose brackets the cursor is in, at the top level of them. */
 export interface FunctionCall {
   info: FunctionInfo;
+  tableFunction?: boolean;
   /** The function the name stands for, the target of an alias. */
   target: FunctionInfo;
   /** Whether the brackets hold the parameters of a parametric aggregate function, the first of two pairs. */
@@ -218,8 +219,9 @@ export function functionCall(sql: string, statement: Token[], before: Token[]): 
   }
   const name = before[nameAt];
   if (name?.kind !== T.BareWord || before[nameAt - 1]?.kind === T.Dot) return undefined;
-  if (TABLE_FUNCTION_WORDS.some((word) => isWord(sql, before[nameAt - 1], word))) return undefined;
-  const info = findFunction(sql.slice(name.start, name.end));
+  const tableFunction = TABLE_FUNCTION_WORDS.some((word) => isWord(sql, before[nameAt - 1], word));
+  const writtenName = sql.slice(name.start, name.end);
+  const info: FunctionInfo | undefined = tableFunction ? findTableFunction(writtenName) : (findFunction(writtenName) ?? findTableFunction(writtenName));
   if (!info) return undefined;
   const target = info.aliasTo ? (findFunction(info.aliasTo) ?? info) : info;
 
@@ -261,6 +263,7 @@ export function functionCall(sql: string, statement: Token[], before: Token[]): 
     if (!param) continue;
     const differs = written.some((value, j) => {
       const before = parameterAt(list, j, count);
+      if (before?.keyword && written[j] === undefined && names[j] !== undefined) return before.name !== names[j];
       return value !== undefined && before !== undefined && fixed(before) && before.name !== value;
     });
     if (differs) continue;
@@ -271,7 +274,7 @@ export function functionCall(sql: string, statement: Token[], before: Token[]): 
   }
   // In the order of the documentation.
   found.sort((a, b) => docs!.indexOf(a.arg) - docs!.indexOf(b.arg));
-  return { info, target, inParameters, index, count, current, names, arguments: found };
+  return { info, target, tableFunction: tableFunction || info === findTableFunction(writtenName), inParameters, index, count, current, names, arguments: found };
 }
 
 /** The families of types that ClickHouse converts into one another where a documented type of the group is taken. */
@@ -299,6 +302,7 @@ export interface Ranked {
 
 export interface FunctionContext {
   call: FunctionCall;
+  schema?: CompletionSchema;
   /** The columns the statement may use: of the table it makes, and of the tables it reads in the schema. */
   columns: { column: DeclaredColumn; documentation?: string }[];
   /** The tier of the columns that fit no documented type. */
@@ -329,6 +333,19 @@ export function functionCandidates(context: FunctionContext): Ranked[] {
     // Values come where the argument starts, or as keywords after the keyword before them, as DAY in INTERVAL 1 DAY.
     if (call.current.length && !(afterKeyword && kind === "value")) continue;
     const detail = arg.name;
+    if (call.tableFunction) {
+      const schema = context.schema;
+      if (arg.name === "cluster_name" || arg.name === "cluster")
+        for (const name of schema?.clusters ?? []) add(VALUES, { label: name, kind: "value", detail: "cluster", insertText: literal(name) });
+      if (arg.name === "database" || arg.name === "external_database")
+        for (const name of new Set([...(schema?.databases ?? []), ...(schema?.tables ?? []).map((t) => t.database)]))
+          add(VALUES, { label: name, kind: "database", detail, insertText: literal(name) });
+      if (arg.name === "table" || arg.name === "time_series_table") {
+        const database = call.names[call.names.length - 1];
+        for (const table of schema?.tables ?? [])
+          if (!database || table.database === database) add(VALUES, { label: table.name, kind: "table", detail: table.database, insertText: literal(table.name) });
+      }
+    }
     switch (kind) {
       case "value":
         for (const [value, ...spellings] of arg.values!) {
