@@ -1,6 +1,6 @@
 {
   "name": "clickhouse-sql-syntax",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tokenizer, syntax highlighter and syntax checker for ClickHouse SQL",
   "keywords": [
     "clickhouse",
