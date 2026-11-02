@@ -51,7 +51,8 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 
 - `npm run generate -- --src <ClickHouse checkout> --clickhouse <clickhouse>`: the keywords, data types and privileges in `packages/core/src/generated/`.
 - `npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse>`: the functions, settings, table engines, formats,
-  table functions, combinators and time zones that completion offers.
+  table functions, combinators and time zones that completion offers. Signatures missing from the server metadata
+  are maintained in `scripts/catalog-signatures.ts`.
 - `npm run generate -w packages/vscode`: the TextMate grammar in `packages/vscode/syntaxes/`. Edit
   `packages/vscode/scripts/grammar.ts` instead of the JSON, and run it after the keyword or data type lists change.
 

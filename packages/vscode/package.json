@@ -175,7 +175,7 @@
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
     "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts test/e2e/folding.test.ts test/e2e/outline.test.ts test/e2e/selection.test.ts test/e2e/names.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@vscode/test-electron --log-override:require-resolve-not-external=silent --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\"",
+    "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\" \"test/complete/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
     "build:e2e:stress": "esbuild test/e2e/stress-run.ts test/e2e/stress-index.ts test/e2e/stress.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/e2e",
     "test:e2e:stress": "npm run build && npm run build:e2e:stress && node out/e2e/stress-run.js",

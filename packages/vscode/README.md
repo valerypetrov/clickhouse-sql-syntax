@@ -13,6 +13,7 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Outline and breadcrumbs** list each statement, such as `CREATE TABLE db.t` or `SELECT … FROM db.t`, with its CTEs and the columns it defines.
 - **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Expand Selection** grows from the word at the cursor to its expression, call, clause, subquery and statement, and Shrink Selection goes back.
+- **Table function arguments.** Calls such as `file`, `s3` and `cluster` show their arguments and suggest formats, compression methods and names from the server. Aggregate combinators such as `sumIf` and window functions also have signature help.
 - **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, and the arguments of the function you are typing.
 - **Go to definition, references and rename** of aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them; a name that ClickHouse could read otherwise is left alone.
 - **Server check** (off by default). Your ClickHouse server checks the names, functions and types in each SELECT, and autocomplete offers its databases, tables and columns.

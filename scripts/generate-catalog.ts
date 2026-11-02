@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { argumentTypes, argumentValues } from "./function-docs.js";
+import { FUNCTION_SYNTAX, tableSyntax, withSignature } from "./catalog-signatures.js";
 
 const { values: args } = parseArgs({ options: { clickhouse: { type: "string" } } });
 
@@ -142,11 +143,11 @@ const functions = rows<FunctionRow>(
   returns: shorten(plain(r.returned_value), 120),
   description: summary(r.description, 250),
   category: r.categories.trim(),
-}));
+})).map((info) => withSignature(info, Object.hasOwn(FUNCTION_SYNTAX, info.name) ? FUNCTION_SYNTAX[info.name] : info.syntax));
 
 write(
   "functions.ts",
-  "system.functions",
+  "system.functions and scripts/catalog-signatures.ts",
   [
     ...ARGUMENT,
     "export interface FunctionInfo {",
@@ -294,12 +295,17 @@ interface TableFunctionRow {
 const tableFunctions = rows<TableFunctionRow>("SELECT name, description FROM system.table_functions ORDER BY name").map((r) => ({
   name: r.name,
   description: summary(r.description, 300),
-}));
+})).map((info) => withSignature(info, tableSyntax(info.name)));
 
 write(
   "table-functions.ts",
-  "system.table_functions",
-  ["export interface TableFunctionInfo {", "  name: string;", "  description?: string;", "}"],
+  "system.table_functions and scripts/catalog-signatures.ts",
+  [
+    'import type { Argument } from "./functions.js";',
+    "",
+    "export interface TableFunctionInfo {", "  name: string;", "  description?: string;",
+    "  syntax?: string;", "  arguments?: readonly Argument[];", "}",
+  ],
   "TABLE_FUNCTIONS",
   "TableFunctionInfo",
   tableFunctions,

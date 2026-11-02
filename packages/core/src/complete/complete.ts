@@ -30,6 +30,7 @@ import {
   formatDetail,
   formatDocumentation,
   functionDocumentation,
+  findFunction,
   settingDocumentation,
   tableFunctionDocumentation,
 } from "./catalog.js";
@@ -208,11 +209,12 @@ function addCombinators(out: Candidates, tier: number): void {
     }
     for (const combinator of COMBINATORS) {
       if (!combinator.name.toLowerCase().startsWith(rest.toLowerCase())) continue;
+      const info = findFunction(applied + combinator.name);
       out.add(tier, {
         label: applied + combinator.name,
         kind: "combinator",
         detail: `${name} with ${combinator.name}`,
-        documentation: combinatorDocumentation(combinator),
+        documentation: info ? functionDocumentation(info) : combinatorDocumentation(combinator),
       });
     }
   }
@@ -362,7 +364,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
         table.columns.map((c) => ({ column: schemaColumn(c.name, c.type), documentation: `Column of \`${table.database}.${table.name}\`` })),
       ),
     ];
-    const context = { call: fn, columns, columnTier: schemaTier, lower: isLower(prefix) };
+    const context = { call: fn, columns, schema, columnTier: schemaTier, lower: isLower(prefix) };
     for (const { tier, candidate } of functionCandidates(context)) out.add(tier, candidate);
   }
 
@@ -455,7 +457,7 @@ export function functionArgument(sql: string, offset: number): FunctionArgument 
   const tokens = statementTokens(sql, offset);
   if (!tokens || engineCall(sql, tokens.statement, tokens.before)) return undefined;
   const call = functionCall(sql, tokens.statement, tokens.before);
-  return call && { function: call.target.name, parameters: call.inParameters, arguments: call.arguments.map((a) => a.arg.name) };
+  return call && { function: call.target.name, parameters: call.inParameters, ...(call.tableFunction ? { kind: "table function" as const } : {}), arguments: call.arguments.map((a) => a.arg.name) };
 }
 
 /** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */

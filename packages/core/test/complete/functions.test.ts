@@ -144,8 +144,8 @@ describe("functionArgument()", () => {
 
   test("is undefined outside the brackets of a function", () => {
     assert.equal(argumentAt("SELECT a|"), undefined);
-    assert.equal(argumentAt("SELECT * FROM numbers(|)"), undefined);
-    assert.equal(argumentAt("INSERT INTO FUNCTION file(|) SELECT 1"), undefined);
+    assert.equal(argumentAt("SELECT * FROM numbers(|)")?.kind, "table function");
+    assert.deepEqual(argumentAt("INSERT INTO FUNCTION file(|) SELECT 1")?.arguments, ["path"]);
     assert.equal(argumentAt("CREATE TABLE t (a UInt8) ENGINE = MergeTree(|) ORDER BY a"), undefined);
     assert.equal(argumentAt("SELECT noSuchFunction(|)"), undefined);
     assert.equal(argumentAt("SELECT t.toDate(|)"), undefined);
