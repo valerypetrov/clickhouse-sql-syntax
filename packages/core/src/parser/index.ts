@@ -2,4 +2,4 @@ export { check, checkWithRoles, ParseCache, type ParsedStatement, parsedStatemen
 export type { NameMark, NameMarkKind } from "./names.js";
 export type { Role, RoleSpan } from "./roles.js";
 export { expectedAt, keywordFilter } from "./expected.js";
-export { quotedIdentifierName as quotedName } from "./literals.js";
+export { quotedIdentifierName as quotedName, stringLiteralValue } from "./literals.js";

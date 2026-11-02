@@ -8,6 +8,7 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Syntax errors as you type**, in ClickHouse's words, such as `Expected one of: BY, end of query`.
 - **Formatting.** Format Document and Format Selection lay out queries like `clickhouse format`, changing only whitespace and the case of keywords.
 - **Autocomplete** of the keywords that fit at the cursor and of ClickHouse's functions, types, settings, table engines and formats.
+- **Engine arguments.** In `ENGINE = Name(...)`, autocomplete offers what the argument at the cursor takes, such as a ZooKeeper path, a column of the table of a type that fits, a format or a cluster, and signature help shows the engine's parameters.
 - **Outline and breadcrumbs** list each statement, such as `CREATE TABLE db.t` or `SELECT … FROM db.t`, with its CTEs and the columns it defines.
 - **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Expand Selection** grows from the word at the cursor to its expression, call, clause, subquery and statement, and Shrink Selection goes back.

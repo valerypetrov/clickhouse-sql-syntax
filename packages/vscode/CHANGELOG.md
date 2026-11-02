@@ -13,6 +13,9 @@ First release.
   slowing VS Code down.
 - Autocomplete, hover documentation and signature help for ClickHouse's keywords, functions, data types, settings,
   table engines, formats and table functions.
+- Autocomplete and signature help for the arguments of table engines, read from their syntax in ClickHouse:
+  ZooKeeper paths and replica names, columns of a type that fits, formats, compression methods, keywords such as
+  NOSIGN, and the databases, tables, clusters and macros of the server.
 - Go to definition, references, highlights and rename of aliases, CTEs, table aliases and lambda and query
   parameters, scoped as ClickHouse's analyzer scopes them.
 - An optional check against a ClickHouse server, with completion of its databases, tables and columns. Its

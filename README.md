@@ -6,6 +6,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Error checking**: the syntax errors that ClickHouse would report, shown as you type.
 - **Formatting**: queries laid out as `clickhouse format` does.
 - **Autocomplete**: keywords, functions, types, settings, engines and formats that fit where you type.
+- **Engine arguments**: in `ENGINE = Name(...)`, what the argument at the cursor takes, and the engine's parameters as you type.
 - **Outline**: each statement with its CTEs and columns, in the Outline view and breadcrumbs.
 - **Folding**: statements, subqueries and comments of several lines, and `-- #region` blocks.
 - **Expand Selection**: grows from a word to its expression, call, clause, subquery and statement.

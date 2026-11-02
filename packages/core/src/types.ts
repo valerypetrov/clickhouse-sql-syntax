@@ -261,7 +261,9 @@ export type CompletionKind =
   | "data type"
   | "database"
   | "table"
-  | "column";
+  | "column"
+  /** A value to write, such as a ZooKeeper path in the arguments of an engine. */
+  | "value";
 
 /** One suggestion of complete(). */
 export interface CompletionCandidate {
@@ -279,12 +281,24 @@ export interface CompletionCandidate {
 export interface CompletionSchema {
   databases?: string[];
   tables?: { database: string; name: string; columns: { name: string; type: string }[] }[];
+  /** The clusters of the server, for the arguments of engines like Distributed. */
+  clusters?: string[];
+  /** The macros of the server, such as replica; when given, suggestions that use macros say what they stand for. */
+  macros?: { name: string; value: string }[];
 }
 
 /** Options of complete(). */
 export interface CompleteOptions {
   /** Names to offer besides those ClickHouse knows; columns come from the tables the statement uses. */
   schema?: CompletionSchema;
+}
+
+/** The engine whose brackets an offset is in, and the parameters that the argument there may be. */
+export interface EngineArgument {
+  /** The engine as ClickHouse spells it. */
+  engine: string;
+  /** Names of the parameters that describe() gives for the engine, in its order; empty past the last one. */
+  parameters: string[];
 }
 
 /** A documented argument of a function. */

@@ -1,5 +1,5 @@
 import { check } from "./parser/index.js";
-import { complete, describe } from "./complete/index.js";
+import { complete, describe, engineArgument } from "./complete/index.js";
 import { format, split } from "./format/index.js";
 import { highlight } from "./highlight/index.js";
 import { tokenize } from "./lexer/index.js";
@@ -14,7 +14,7 @@ export { SYSTEM_COMMANDS } from "./highlight/index.js";
 export { checkWithRoles, ParseCache, roles, type Role, type RoleSpan } from "./parser/index.js";
 export type { Unit } from "./format/index.js";
 export {
-  check, complete, definition, describe, foldingRanges, format, highlight, outline, prepareRename, references, rename,
+  check, complete, definition, describe, engineArgument, foldingRanges, format, highlight, outline, prepareRename, references, rename,
   selectionRanges, split, tokenize,
 };
 

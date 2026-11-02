@@ -43,6 +43,8 @@ function config(dir: string, port: number): string {
     <profiles><default/></profiles>
     <quotas><default/></quotas>
     <users>${user("default", "")}${user(USER, PASSWORD)}</users>
+    <remote_servers><test_cluster><shard><replica><host>127.0.0.1</host><port>9000</port></replica></shard></test_cluster></remote_servers>
+    <macros><cluster>test_cluster</cluster></macros>
   </clickhouse>`;
 }
 
@@ -285,6 +287,26 @@ describe("ClickHouse server check", function () {
     }
   });
 
+  it("completes the clusters and columns of the server in Distributed, and says what its macros stand for", async () => {
+    assert.deepEqual(await api.schema.macros(), [{ name: "cluster", value: "test_cluster" }]);
+    const { Field, Value } = vscode.CompletionItemKind;
+    const table = "CREATE TABLE d AS logs.rc_logs_replicated_365 ENGINE = Distributed(";
+    assert.deepEqual(await completions(`${table}|)`, Value, "("), [
+      ["'{cluster}'", "cluster macro"],
+      ["test_cluster", "cluster"],
+    ]);
+    const editor = await open(`${table})`);
+    const list = await vscode.commands.executeCommand<vscode.CompletionList>(
+      "vscode.executeCompletionItemProvider",
+      editor.document.uri,
+      editor.document.positionAt(table.length),
+    );
+    const macro = list.items.find((item) => item.label === "'{cluster}'")!;
+    assert.equal((macro.documentation as vscode.MarkdownString).value, "`{cluster}` is `test_cluster` on the server.");
+    // Of the columns, only an integer, a date or a time picks a shard.
+    assert.deepEqual(await completions(`${table}test_cluster, logs, rc_logs_replicated_365, |)`, Field), [["Timestamp", "DateTime"]]);
+  });
+
   it("completes without the names of a server that does not answer", async () => {
     const silent = createServer(() => {});
     await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
@@ -447,14 +469,14 @@ describe("ClickHouse server check", function () {
     assert.ok(sent.length > 0);
     for (const request of sent) {
       assert.equal(request.params.get("readonly"), "1", request.sql);
-      assert.match(request.sql, /^(EXPLAIN QUERY TREE |SELECT .* FROM system\.(databases|tables|columns)\b)/s);
+      assert.match(request.sql, /^(EXPLAIN QUERY TREE |SELECT .* FROM system\.(databases|tables|columns|clusters|macros)\b)/s);
     }
     await admin("SYSTEM FLUSH LOGS");
     const logged = await rows(`SELECT DISTINCT query_kind, query FROM system.query_log WHERE user = '${USER}'`);
     assert.ok(logged.some((row) => row.query_kind === "Explain"));
     for (const row of logged) {
       const explain = row.query_kind === "Explain" && row.query!.startsWith("EXPLAIN QUERY TREE ");
-      const schema = row.query_kind === "Select" && /^SELECT .* FROM system\.(databases|tables|columns)\b/s.test(row.query!);
+      const schema = row.query_kind === "Select" && /^SELECT .* FROM system\.(databases|tables|columns|clusters|macros)\b/s.test(row.query!);
       assert.ok(explain || schema, row.query);
     }
     const tables = await rows("SELECT name FROM system.tables WHERE database = 'logs' ORDER BY name");

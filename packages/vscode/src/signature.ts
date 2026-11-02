@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import { type ArgumentInfo, describe, isSignificant, TokenKind as T, type Token, tokenize } from "clickhouse-sql-syntax";
+import {
+  type ArgumentInfo, type Description, describe, engineArgument, isSignificant, TokenKind as T, type Token, tokenize,
+} from "clickhouse-sql-syntax";
 import { tooLarge } from "./size.js";
 
 /** The function call the cursor is in. */
@@ -11,6 +13,8 @@ interface Call {
   argument: number;
   /** Whether another pair of brackets follows, so that these hold parameters. */
   nextGroup: boolean;
+  /** Whether ENGINE or ENGINE = comes before the name, so that it is a table engine. */
+  engine: boolean;
 }
 
 const isOpening = (kind: T) => kind === T.OpeningRoundBracket || kind === T.OpeningSquareBracket;
@@ -52,7 +56,9 @@ function callAt(text: string, offset: number): Call | undefined {
   if (name?.kind !== T.BareWord) return undefined;
   const close = matching(tokens, top.index, 1);
   const nextGroup = close >= 0 && tokens[close + 1]?.kind === T.OpeningRoundBracket;
-  return { name: text.slice(name.start, name.end), group, argument: top.commas, nextGroup };
+  const word = tokens[nameIndex - 1]?.kind === T.Equals ? tokens[nameIndex - 2] : tokens[nameIndex - 1];
+  const engine = group === 0 && word?.kind === T.BareWord && text.slice(word.start, word.end).toLowerCase() === "engine";
+  return { name: text.slice(name.start, name.end), group, argument: top.commas, nextGroup, engine };
 }
 
 /** Where `name` is in the `group`-th brackets of the label, for VS Code to highlight it. */
@@ -70,29 +76,43 @@ function labelRange(label: string, group: number, name: string): [number, number
   return found ? [from + found.index, from + found.index + name.length] : name;
 }
 
-/** The arguments of the function call the cursor is in, from the ClickHouse documentation. */
+/** The signature of a function or engine, its parameters in the brackets of `groups`, and the one at `active`. */
+function signatureHelp(description: Description, groups: [number, readonly ArgumentInfo[]][], active: number): vscode.SignatureHelp {
+  const label = description.syntax!.split("\n")[0]!;
+  const signature = new vscode.SignatureInformation(label, new vscode.MarkdownString(description.documentation));
+  signature.parameters = groups.flatMap(([group, list]) =>
+    list.map((a) => new vscode.ParameterInformation(labelRange(label, group, a.name), new vscode.MarkdownString(a.description))),
+  );
+  const help = new vscode.SignatureHelp();
+  help.signatures = [signature];
+  help.activeSignature = 0;
+  help.activeParameter = active;
+  return help;
+}
+
+/** The arguments of the function call or engine the cursor is in, from the ClickHouse documentation. */
 export function registerSignatureHelp(languageId: string): vscode.Disposable {
   const provider: vscode.SignatureHelpProvider = {
     provideSignatureHelp(document, position) {
       if (tooLarge(document)) return undefined;
-      const call = callAt(document.getText(), document.offsetAt(position));
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const call = callAt(text, offset);
+      // In ENGINE = Name(...), the parameter that the argument at the cursor is, by the arguments before it.
+      const engine = call?.engine ? engineArgument(text, offset) : undefined;
+      if (engine) {
+        const description = describe(engine.engine, "table engine");
+        const list = description?.arguments;
+        if (!description?.syntax || !list) return undefined;
+        const active = list.findIndex((a) => a.name === engine.parameters[0]);
+        return signatureHelp(description, [[0, list]], active < 0 ? list.length : active);
+      }
       const description = call && describe(call.name, "function");
       if (!call || !description?.syntax) return undefined;
-      const label = description.syntax.split("\n")[0]!;
       const parameters = description.parameters ?? [];
-      const toParameter = (group: number) => (a: ArgumentInfo) =>
-        new vscode.ParameterInformation(labelRange(label, group, a.name), new vscode.MarkdownString(a.description));
-      const signature = new vscode.SignatureInformation(label, new vscode.MarkdownString(description.documentation));
-      signature.parameters = [
-        ...parameters.map(toParameter(0)),
-        ...(description.arguments ?? []).map(toParameter(parameters.length ? 1 : 0)),
-      ];
-      const help = new vscode.SignatureHelp();
-      help.signatures = [signature];
-      help.activeSignature = 0;
       const inParameters = parameters.length > 0 && call.group === 0 && call.nextGroup;
-      help.activeParameter = inParameters ? call.argument : parameters.length + call.argument;
-      return help;
+      const active = inParameters ? call.argument : parameters.length + call.argument;
+      return signatureHelp(description, [[0, parameters], [parameters.length ? 1 : 0, description.arguments ?? []]], active);
     },
   };
   return vscode.languages.registerSignatureHelpProvider(languageId, provider, { triggerCharacters: ["(", ","], retriggerCharacters: [")"] });

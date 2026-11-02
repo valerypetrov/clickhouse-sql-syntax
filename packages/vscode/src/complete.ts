@@ -20,6 +20,7 @@ const KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
   database: vscode.CompletionItemKind.Module,
   table: vscode.CompletionItemKind.Struct,
   column: vscode.CompletionItemKind.Field,
+  value: vscode.CompletionItemKind.Value,
 };
 
 /** Kinds that are called, so they are inserted with brackets and the cursor between them. */

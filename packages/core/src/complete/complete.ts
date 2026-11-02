@@ -16,6 +16,7 @@ import {
   type CompleteOptions,
   type CompletionCandidate,
   type CompletionSchema,
+  type EngineArgument,
   isErrorKind,
   isSignificant,
   type Token,
@@ -31,7 +32,11 @@ import {
   settingDocumentation,
   tableFunctionDocumentation,
 } from "./catalog.js";
-import { databases, isWord, nameOf, resolve, type SchemaTable, tableRefs } from "./schema.js";
+import { engineCandidates } from "./arguments.js";
+import { engineCall } from "./engines.js";
+import {
+  createdTable, databases, isWord, keyNames, named, nameOf, resolve, schemaColumn, type SchemaTable, tableRefs,
+} from "./schema.js";
 
 /** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
 const KEYWORD_VARIANT = /^[A-Z][A-Z0-9_]*( [A-Z][A-Z0-9_]*)*$/;
@@ -147,13 +152,6 @@ const isUpper = (text: string) => /[A-Z]/.test(text) && !/[a-z]/.test(text);
 /** A case-insensitive name in capitals after a prefix in capitals, as ClickHouse spells it otherwise. */
 function nameCase(name: string, caseInsensitive: boolean | undefined, prefix: string): string {
   return caseInsensitive && isUpper(prefix) ? name.toUpperCase() : name;
-}
-
-/** A database, table or column, inserted in back quotes when it is not a plain identifier. */
-function named(candidate: CompletionCandidate): CompletionCandidate {
-  const name = candidate.label;
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return candidate;
-  return { ...candidate, insertText: `\`${name.replace(/\\/g, "\\\\").replace(/`/g, "\\`")}\`` };
 }
 
 /**
@@ -272,6 +270,16 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     return out.sorted();
   }
 
+  const call = engineCall(sql, statement, before);
+  if (call) {
+    // The columns of the table being made, or of the table it is made AS.
+    const created = createdTable(sql, statement);
+    const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
+    const columns = [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+    const keys = keyNames(sql, statement);
+    for (const { tier, candidate } of engineCandidates({ sql, call, columns, keys, schema, lower: isLower(prefix) })) out.add(tier, candidate);
+  }
+
   const accepts = keywordFilter(sql, before, word.start);
   for (const variant of variants)
     if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && accepts(variant))
@@ -343,4 +351,14 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   }
 
   return out.sorted();
+}
+
+/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
+export function engineArgument(sql: string, offset: number): EngineArgument | undefined {
+  const at = Math.max(0, Math.min(offset, sql.length));
+  const unit = statementAt(split(sql), at);
+  if (!unit || (unit.data.start >= 0 && at > unit.data.start)) return undefined;
+  const statement = unit.tokens.filter((token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream);
+  const call = engineCall(sql, statement, statement.filter((token) => token.start < at));
+  return call && { engine: call.info.name, parameters: call.parameters.map((p) => p.name) };
 }

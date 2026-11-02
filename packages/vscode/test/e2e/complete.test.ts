@@ -110,6 +110,71 @@ describe("Completion, hover and signature help", () => {
     assert.equal(substring.activeParameter, 1);
   });
 
+  it("offers what the argument of an engine takes before the expressions that any argument takes", async () => {
+    const table = "CREATE TABLE t (k UInt64, ver UInt32, name String) ENGINE = ReplicatedReplacingMergeTree(";
+    const first = await items(`${table}|) ORDER BY k`, "(");
+    assert.deepEqual(
+      first.slice(0, 2).map((item) => [label(item), item.kind]),
+      [
+        ["'/clickhouse/tables/{shard}/{database}/{table}', '{replica}'", vscode.CompletionItemKind.Value],
+        ["'/clickhouse/tables/{uuid}/{shard}', '{replica}'", vscode.CompletionItemKind.Value],
+      ],
+    );
+    assert.ok(first.some((item) => label(item) === "abs"));
+    const ver = (await items(`${table}'/p', '{replica}', |) ORDER BY k`)).slice(0, 2).map((item) => [label(item), item.kind, item.detail]);
+    assert.deepEqual(ver, [
+      ["k", vscode.CompletionItemKind.Field, "UInt64"],
+      ["ver", vscode.CompletionItemKind.Field, "UInt32"],
+    ]);
+    const csv = (await items("CREATE TABLE f (x UInt8) ENGINE = File(CS|)")).find((item) => label(item) === "CSV")!;
+    assert.equal(csv.kind, vscode.CompletionItemKind.Constant);
+    assert.equal(typeof csv.insertText === "string" ? csv.insertText : csv.insertText?.value, "'CSV'");
+  });
+
+  it("inserts the ZooKeeper path and the replica name of a replicated engine at once", async () => {
+    const { editor } = await open("CREATE TABLE t (k UInt64) ENGINE = ReplicatedMergeTree(|) ORDER BY k");
+    const before = editor.document.getText();
+    await vscode.commands.executeCommand("editor.action.triggerSuggest");
+    await until(() => {
+      void vscode.commands.executeCommand("acceptSelectedSuggestion");
+      return editor.document.getText() !== before;
+    }, "the suggestion to be inserted");
+    assert.equal(
+      editor.document.getText(),
+      "CREATE TABLE t (k UInt64) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}') ORDER BY k",
+    );
+  });
+
+  it("gives signature help for the argument of an engine at the cursor", async () => {
+    const help = async (text: string) => {
+      const { editor, position } = await open(text);
+      // VS Code 1.90 gives undefined where there is no signature help.
+      return vscode.commands.executeCommand<vscode.SignatureHelp | undefined>("vscode.executeSignatureHelpProvider", editor.document.uri, position);
+    };
+    const replicated = await help("CREATE TABLE t (k UInt64, v UInt32) ENGINE = ReplicatedReplacingMergeTree('/p', '{replica}', v|) ORDER BY k");
+    const signature = replicated!.signatures[0]!;
+    assert.equal(signature.label, "ReplicatedReplacingMergeTree('zoo_path', 'replica_name'[, ver [, is_deleted]])");
+    assert.deepEqual(
+      signature.parameters.map((p) => p.label),
+      [
+        [30, 38],
+        [42, 54],
+        [58, 61],
+        [65, 75],
+      ],
+    );
+    assert.equal(replicated!.activeParameter, 2);
+    // After NOSIGN, S3 takes the format.
+    const s3 = (await help("CREATE TABLE t (x UInt8) ENGINE = S3('https://b/k.csv', NOSIGN, |)"))!;
+    const names = s3.signatures[0]!.parameters.map((p) => s3.signatures[0]!.label.slice(...(p.label as [number, number])));
+    assert.deepEqual(names, ["url", "NOSIGN", "access_key_id", "secret_access_key", "session_token", "format", "compression"]);
+    assert.equal(s3.activeParameter, 5);
+    assert.equal((await help("CREATE TABLE t (x UInt8) ENGINE = MergeTree(|) ORDER BY x"))?.signatures[0]?.label, "MergeTree()");
+    // A function in the brackets of an engine has its own.
+    const inner = await help("CREATE TABLE t (x UInt8) ENGINE = Distributed(c, db, t, cityHash64(x|))");
+    assert.equal(inner?.signatures[0]?.label.split("(")[0], "cityHash64");
+  });
+
   it("shows the documentation of functions and settings on hover", async () => {
     const { editor } = await open("SELECT toDate(x) FROM t SETTINGS max_threads = 1|");
     const hover = async (offset: number) => {
