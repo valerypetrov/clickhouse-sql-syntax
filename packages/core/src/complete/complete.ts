@@ -17,6 +17,7 @@ import {
   type CompletionCandidate,
   type CompletionSchema,
   type EngineArgument,
+  type FunctionArgument,
   isErrorKind,
   isSignificant,
   type Token,
@@ -34,8 +35,10 @@ import {
 } from "./catalog.js";
 import { engineCandidates } from "./arguments.js";
 import { engineCall } from "./engines.js";
+import { functionCall, functionCandidates } from "./functions.js";
 import {
-  createdTable, databases, isWord, keyNames, named, nameOf, resolve, schemaColumn, type SchemaTable, tableRefs,
+  createdTable, databases, type DeclaredColumn, isWord, keyNames, named, nameOf, resolve, schemaColumn, type SchemaTable,
+  tableRefs,
 } from "./schema.js";
 
 /** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
@@ -230,6 +233,13 @@ function addDatabases(out: Candidates, tier: number, schema: CompletionSchema): 
   for (const database of databases(schema)) out.add(tier, named({ label: database, kind: "database" }));
 }
 
+/** The columns of the table that a CREATE statement makes, or of the table it is made AS. */
+function createdColumns(sql: string, statement: Token[], schema: CompletionSchema): DeclaredColumn[] {
+  const created = createdTable(sql, statement);
+  const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
+  return [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+}
+
 /** Suggestions at `offset` of `sql`, best first, for the word that ends there. */
 export function complete(sql: string, offset: number, options: CompleteOptions = {}): CompletionCandidate[] {
   const at = Math.max(0, Math.min(offset, sql.length));
@@ -272,12 +282,22 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
 
   const call = engineCall(sql, statement, before);
   if (call) {
-    // The columns of the table being made, or of the table it is made AS.
-    const created = createdTable(sql, statement);
-    const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
-    const columns = [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+    const columns = createdColumns(sql, statement, schema);
     const keys = keyNames(sql, statement);
     for (const { tier, candidate } of engineCandidates({ sql, call, columns, keys, schema, lower: isLower(prefix) })) out.add(tier, candidate);
+  }
+
+  // In the brackets of a function, what the argument at the cursor takes, by the function's documentation.
+  const fn = call ? undefined : functionCall(sql, statement, before);
+  if (fn && (has("CAST operator") || fn.arguments.some((a) => a.afterKeyword))) {
+    const columns = [
+      ...createdColumns(sql, statement, schema).map((column) => ({ column })),
+      ...refs.flatMap((ref) => resolve(schema, ref)).flatMap((table) =>
+        table.columns.map((c) => ({ column: schemaColumn(c.name, c.type), documentation: `Column of \`${table.database}.${table.name}\`` })),
+      ),
+    ];
+    const context = { call: fn, columns, columnTier: schemaTier, lower: isLower(prefix) };
+    for (const { tier, candidate } of functionCandidates(context)) out.add(tier, candidate);
   }
 
   const accepts = keywordFilter(sql, before, word.start);
@@ -353,12 +373,26 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   return out.sorted();
 }
 
-/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
-export function engineArgument(sql: string, offset: number): EngineArgument | undefined {
+/** The significant tokens of the statement at `offset`, and those before it, or undefined in inline data. */
+function statementTokens(sql: string, offset: number): { statement: Token[]; before: Token[] } | undefined {
   const at = Math.max(0, Math.min(offset, sql.length));
   const unit = statementAt(split(sql), at);
   if (!unit || (unit.data.start >= 0 && at > unit.data.start)) return undefined;
   const statement = unit.tokens.filter((token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream);
-  const call = engineCall(sql, statement, statement.filter((token) => token.start < at));
+  return { statement, before: statement.filter((token) => token.start < at) };
+}
+
+/** The function whose brackets `offset` is in, and the documented arguments that the argument there may be. */
+export function functionArgument(sql: string, offset: number): FunctionArgument | undefined {
+  const tokens = statementTokens(sql, offset);
+  if (!tokens || engineCall(sql, tokens.statement, tokens.before)) return undefined;
+  const call = functionCall(sql, tokens.statement, tokens.before);
+  return call && { function: call.target.name, parameters: call.inParameters, arguments: call.arguments.map((a) => a.arg.name) };
+}
+
+/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
+export function engineArgument(sql: string, offset: number): EngineArgument | undefined {
+  const tokens = statementTokens(sql, offset);
+  const call = tokens && engineCall(sql, tokens.statement, tokens.before);
   return call && { engine: call.info.name, parameters: call.parameters.map((p) => p.name) };
 }

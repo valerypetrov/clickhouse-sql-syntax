@@ -275,6 +275,8 @@ export interface CompletionCandidate {
   documentation?: string;
   /** What to insert when it is not the label, such as a name in back quotes. */
   insertText?: string;
+  /** Where the cursor goes in what is inserted when not at its end, as 3 inside the quotes of `'$.'`. */
+  cursor?: number;
 }
 
 /** Databases, tables and their columns, for example as a live server lists them. */
@@ -301,10 +303,37 @@ export interface EngineArgument {
   parameters: string[];
 }
 
+/** The function whose brackets an offset is in, and the documented arguments that the argument there may be. */
+export interface FunctionArgument {
+  /** The function as ClickHouse spells it, the one an alias stands for. */
+  function: string;
+  /** Whether the brackets hold the parameters of a parametric aggregate function, as the first ones of quantile(0.5)(x). */
+  parameters: boolean;
+  /** Names of the arguments, or parameters, that describe() gives for the function, in its order; empty past the last one. */
+  arguments: string[];
+}
+
+/** What a documented argument of a function takes, as its documentation describes it. */
+export type ArgumentKind =
+  /** The name of a data type in a string, as the T of CAST(x, 'T'). */
+  | "data type"
+  /** A data type that JSONExtract() and the other functions that parse JSON can return. */
+  | "JSON data type"
+  /** One of the values its documentation lists, as the unit of dateDiff(). */
+  | "value"
+  | "time zone"
+  | "format"
+  /** A JSONPath, as the path of JSON_VALUE(). */
+  | "JSON path";
+
 /** A documented argument of a function. */
 export interface ArgumentInfo {
   name: string;
   description: string;
+  /** The types its documentation names, such as `String` or `(U)Int*`. */
+  types?: readonly string[];
+  /** What it takes, for an argument of a function whose documentation tells; none for an expression of any kind. */
+  kind?: ArgumentKind;
 }
 
 /** The documentation of a name, and for a function what signature help needs. */

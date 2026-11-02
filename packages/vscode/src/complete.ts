@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete } from "clickhouse-sql-syntax";
+import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete, describe, functionArgument } from "clickhouse-sql-syntax";
 import { tooLarge } from "./size.js";
 
 /** Where the databases, tables and columns to complete at `offset` come from, such as a live server; a failure means none. */
@@ -36,7 +36,8 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       if (tooLarge(document)) return undefined;
       const text = document.getText();
       const offset = document.offsetAt(position);
-      if (context.triggerCharacter === " " && !opensAfterSpace(text, offset)) return undefined;
+      if (context.triggerCharacter === " " && !opensAfterSpace(text, offset) && !takesKind(text, offset)) return undefined;
+      if (context.triggerCharacter === "," && !takesKind(text, offset)) return undefined;
       const names = await schemaWithin(schema, document, offset);
       const candidates = complete(text, offset, { schema: names === "late" ? undefined : names });
       const word = document.getWordRangeAtPosition(position);
@@ -45,7 +46,7 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       return new vscode.CompletionList(items, names === "late");
     },
   };
-  return vscode.languages.registerCompletionItemProvider(languageId, provider, ".", "(", " ");
+  return vscode.languages.registerCompletionItemProvider(languageId, provider, ".", "(", " ", ",");
 }
 
 /** The schema from the source, undefined when it fails, or "late" when it takes longer than SCHEMA_WAIT_MS. */
@@ -62,6 +63,15 @@ function opensAfterSpace(text: string, offset: number): boolean {
   return word !== null && OPENS_AFTER_SPACE.has(word[1]!.toLowerCase());
 }
 
+/** Whether the cursor is after the comma before an argument of a function whose documentation says what it takes. */
+function takesKind(text: string, offset: number): boolean {
+  if (!/,\s*$/.test(text.slice(Math.max(0, offset - 100), offset))) return false;
+  const argument = functionArgument(text, offset);
+  const description = argument && describe(argument.function, "function");
+  const list = argument?.parameters ? description?.parameters : description?.arguments;
+  return list?.some((a) => a.kind && argument!.arguments.includes(a.name)) ?? false;
+}
+
 function toItem(candidate: CompletionCandidate, index: number, bracketFollows: boolean): vscode.CompletionItem {
   const item = new vscode.CompletionItem(candidate.label, KINDS[candidate.kind]);
   item.detail = candidate.detail;
@@ -72,6 +82,12 @@ function toItem(candidate: CompletionCandidate, index: number, bracketFollows: b
   if (CALLED.has(candidate.kind) && !bracketFollows) {
     item.insertText = new vscode.SnippetString().appendText(insert).appendText("(").appendTabstop(0).appendText(")");
     item.command = { title: "Signature help", command: "editor.action.triggerParameterHints" };
+  } else if (candidate.cursor !== undefined) {
+    // The cursor goes inside, as between the quotes of '$.'.
+    item.insertText = new vscode.SnippetString()
+      .appendText(insert.slice(0, candidate.cursor))
+      .appendTabstop(0)
+      .appendText(insert.slice(candidate.cursor));
   } else if (candidate.insertText) {
     item.insertText = candidate.insertText;
   }
