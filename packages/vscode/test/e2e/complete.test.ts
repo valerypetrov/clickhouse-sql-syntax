@@ -62,6 +62,11 @@ describe("Completion, hover and signature help", () => {
 
   it("opens after a space only where a name has to follow", async () => {
     assert.equal((await items("SELECT 1 |", " ")).length, 0);
+    // After the comma before an argument that takes a time zone, but not before any expression.
+    assert.ok((await items("SELECT toTimeZone(now(), |)", " ")).some((item) => label(item) === "UTC"));
+    assert.ok((await items("SELECT toTimeZone(now(),|)", ",")).some((item) => label(item) === "UTC"));
+    assert.equal((await items("SELECT f(a, |)", " ")).length, 0);
+    assert.equal((await items("SELECT a,|", ",")).length, 0);
     assert.ok((await items("SELECT * FROM |", " ")).some((item) => label(item) === "numbers"));
     assert.ok((await items("CREATE TABLE t (a UInt8) ENGINE = |", " ")).some((item) => label(item) === "Memory"));
   });
@@ -173,6 +178,65 @@ describe("Completion, hover and signature help", () => {
     // A function in the brackets of an engine has its own.
     const inner = await help("CREATE TABLE t (x UInt8) ENGINE = Distributed(c, db, t, cityHash64(x|))");
     assert.equal(inner?.signatures[0]?.label.split("(")[0], "cityHash64");
+  });
+
+  it("offers what the argument of a function takes before the expressions that any argument takes", async () => {
+    const inserted = (item: vscode.CompletionItem) => (typeof item.insertText === "string" ? item.insertText : (item.insertText?.value ?? label(item)));
+    const types = await items("SELECT JSONExtract('{}', 'a', |)", "(");
+    assert.deepEqual([label(types[0]!), types[0]!.kind], ["Array(String)", vscode.CompletionItemKind.TypeParameter]);
+    assert.equal(inserted(types[0]!), "'Array(String)'");
+    assert.ok(types.some((item) => label(item) === "abs"));
+    const units = await items("SELECT dateDiff(|, a, b)", "(");
+    assert.deepEqual([label(units[0]!), inserted(units[0]!), units[0]!.kind], ["day", "'day'", vscode.CompletionItemKind.Value]);
+    const zone = (await items("SELECT toTimeZone(now(), |)")).find((item) => label(item) === "Europe/Berlin")!;
+    assert.equal(inserted(zone), "'Europe/Berlin'");
+    const formats = (await items("SELECT formatRow(|, 1)", "(")).map(label);
+    assert.ok(formats.includes("CSV") && !formats.includes("Parquet"));
+    assert.equal(label((await items("SELECT toStartOfInterval(t, INTERVAL 1 |)"))[0]!), "DAY");
+  });
+
+  it("inserts a JSONPath with the cursor inside its quotes", async () => {
+    const { editor } = await open("SELECT JSON_VALUE(j, |)");
+    await vscode.commands.executeCommand("editor.action.triggerSuggest");
+    await until(() => {
+      void vscode.commands.executeCommand("acceptSelectedSuggestion");
+      return editor.document.getText() !== "SELECT JSON_VALUE(j, )";
+    }, "the suggestion to be inserted");
+    assert.equal(editor.document.getText(), "SELECT JSON_VALUE(j, '$.')");
+    await until(() => editor.document.offsetAt(editor.selection.active) === "SELECT JSON_VALUE(j, '$.".length, "the cursor inside the quotes");
+  });
+
+  it("offers the parameters of the JSON type and the typed paths of a JSON column", async () => {
+    const parameters = (await items("CREATE TABLE t (j JSON(|)) ENGINE = Memory", "(")).map(label);
+    assert.deepEqual(parameters.slice(0, 4), ["max_dynamic_paths", "max_dynamic_types", "SKIP", "SKIP REGEXP"]);
+    const table = "CREATE TABLE t (j JSON(a.b UInt32, c String)) ENGINE = Memory;\n";
+    const paths = await items(`${table}SELECT j.| FROM t`, ".");
+    assert.deepEqual(
+      paths.map((item) => [label(item), item.detail]),
+      [
+        ["a.b", "UInt32"],
+        ["c", "String"],
+      ],
+    );
+  });
+
+  it("gives signature help for the argument of a function past optional and repeated parameters", async () => {
+    const help = async (text: string) => {
+      const { editor, position } = await open(text);
+      // VS Code 1.90 gives undefined where there is no signature help.
+      return vscode.commands.executeCommand<vscode.SignatureHelp | undefined>("vscode.executeSignatureHelpProvider", editor.document.uri, position);
+    };
+    const active = (help: vscode.SignatureHelp | undefined) => {
+      const signature = help?.signatures[0];
+      const parameter = signature?.parameters[help!.activeParameter];
+      return typeof parameter?.label === "string" ? parameter.label : parameter && signature!.label.slice(...parameter.label);
+    };
+    assert.equal(active(await help("SELECT JSONExtract(j, |)")), "return_type");
+    assert.equal(active(await help("SELECT JSONExtract(j, 'a', |, 'Int64')")), "indices_or_keys");
+    assert.equal(active(await help("SELECT JSONExtract(j, 'a', 'b', |)")), "return_type");
+    assert.equal(active(await help("SELECT toStartOfInterval(t, INTERVAL 1 DAY, |)")), "time_zone");
+    assert.equal(active(await help("SELECT quantile(|)(x)")), "level");
+    assert.equal(active(await help("SELECT quantile(0.5)(|)")), "expr");
   });
 
   it("shows the documentation of functions and settings on hover", async () => {
