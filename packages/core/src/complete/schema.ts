@@ -147,6 +147,17 @@ function declaredColumn(sql: string, toks: Token[], from: number, to: number): D
   return { name, type: sql.slice(toks[from + 1]!.start, toks[end]!.end), family: type[1], inner };
 }
 
+/** The `[database.]name` of the table that a CREATE TABLE statement makes. */
+export function createdTableName(sql: string, toks: Token[]): TableRef | undefined {
+  let i = toks.findIndex((token, j) => j < 6 && isWord(sql, token, "table")) + 1;
+  if (i === 0) return undefined;
+  if (isWord(sql, toks[i], "if")) i += isWord(sql, toks[i + 1], "not") ? 3 : 2;
+  const first = nameOf(sql, toks[i]);
+  const second = toks[i + 1]?.kind === T.Dot ? nameOf(sql, toks[i + 2]) : undefined;
+  if (first === undefined) return undefined;
+  return second === undefined ? { name: first } : { database: first, name: second };
+}
+
 /** The columns in the brackets after the name of the table that CREATE makes, and the table of its `AS [db.]table`. */
 export function createdTable(sql: string, toks: Token[]): { columns: DeclaredColumn[]; source?: TableRef } {
   const columns: DeclaredColumn[] = [];

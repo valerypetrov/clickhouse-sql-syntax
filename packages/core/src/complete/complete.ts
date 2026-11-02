@@ -17,6 +17,7 @@ import {
   type CompletionCandidate,
   type CompletionSchema,
   type EngineArgument,
+  type FunctionArgument,
   isErrorKind,
   isSignificant,
   type Token,
@@ -34,8 +35,11 @@ import {
 } from "./catalog.js";
 import { engineCandidates } from "./arguments.js";
 import { engineCall } from "./engines.js";
+import { functionCall, functionCandidates, typeNames } from "./functions.js";
+import { jsonTypeArguments, typedPaths } from "./json.js";
 import {
-  createdTable, databases, isWord, keyNames, named, nameOf, resolve, schemaColumn, type SchemaTable, tableRefs,
+  createdTable, createdTableName, databases, type DeclaredColumn, isWord, keyNames, named, nameOf, resolve, schemaColumn,
+  type SchemaTable, type TableRef, tableRefs,
 } from "./schema.js";
 
 /** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
@@ -230,6 +234,66 @@ function addDatabases(out: Candidates, tier: number, schema: CompletionSchema): 
   for (const database of databases(schema)) out.add(tier, named({ label: database, kind: "database" }));
 }
 
+/** The columns of the table that a CREATE statement makes, or of the table it is made AS. */
+function createdColumns(sql: string, statement: Token[], schema: CompletionSchema): DeclaredColumn[] {
+  const created = createdTable(sql, statement);
+  const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
+  return [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+}
+
+/** The tables that the CREATE TABLE statements of the document make, with the columns they declare. */
+function documentTables(sql: string, units: Unit[]): SchemaTable[] {
+  const tables: SchemaTable[] = [];
+  for (const unit of units) {
+    if (!unit.statement) continue;
+    const toks = unit.tokens.filter((token) => isSignificant(token.kind));
+    if (!isWord(sql, toks[0], "create") && !isWord(sql, toks[0], "attach")) continue;
+    const name = createdTableName(sql, toks);
+    if (!name) continue;
+    const columns = createdTable(sql, toks).columns.map((c) => ({ name: c.name, type: c.type }));
+    tables.push({ database: name.database ?? "", name: name.name, columns });
+  }
+  return tables;
+}
+
+/**
+ * The JSON column that the names before a dot start with, from the schema or a CREATE TABLE of the document, and the
+ * part of a path after it: `j.a` is the column j of a table of the statement, `t.j.a` the column j of the table t.
+ */
+function jsonColumn(sql: string, units: Unit[], schema: CompletionSchema, refs: TableRef[], names: string[]) {
+  let declared: SchemaTable[] | undefined;
+  const tablesOf = (ref: TableRef) => {
+    declared ??= documentTables(sql, units);
+    const own = declared.filter((t) => t.name === ref.name && (ref.database === undefined || t.database === ref.database));
+    return [...resolve(schema, ref), ...own];
+  };
+  const owner = names.length > 1 ? refs.filter((ref) => ref.alias === names[0] || (ref.alias === undefined && ref.name === names[0])) : [];
+  const from = owner.length ? 1 : 0;
+  const column = (owner.length ? owner : refs)
+    .flatMap(tablesOf)
+    .flatMap((t) => t.columns)
+    .find((c) => c.name === names[from] && /^json\b/i.test(c.type));
+  return column && { column, path: names.slice(from + 1) };
+}
+
+/** The typed paths of a JSON column after `column.` and the path written after it, as subcolumns to offer. */
+function addTypedPaths(out: Candidates, tier: number, column: { name: string; type: string }, path: string[], caret: boolean): void {
+  const documentation = `Typed path of \`${column.name}\``;
+  const add = (segments: string[], detail: string) => {
+    const label = segments.join(".");
+    const insertText = segments.map((segment) => named({ label: segment, kind: "column" }).insertText ?? segment).join(".");
+    out.add(tier, { label, kind: "column", detail, documentation, ...(insertText === label ? {} : { insertText }) });
+  };
+  for (const typed of typedPaths(column.type)) {
+    const segments = typed.path.split(".");
+    if (segments.length <= path.length || path.some((segment, i) => segments[i] !== segment)) continue;
+    const rest = segments.slice(path.length);
+    // `column.^prefix` reads the paths under a prefix as a JSON of their own.
+    if (caret) for (let i = 1; i < rest.length; i++) add(rest.slice(0, i), "JSON");
+    else add(rest, typed.type);
+  }
+}
+
 /** Suggestions at `offset` of `sql`, best first, for the word that ends there. */
 export function complete(sql: string, offset: number, options: CompleteOptions = {}): CompletionCandidate[] {
   const at = Math.max(0, Math.min(offset, sql.length));
@@ -257,7 +321,16 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   const nameTier = 2;
 
   const refs = tableRefs(sql, statement);
-  const names = qualifier(sql, before);
+  // In `column.^` a caret reads the paths under a prefix, and in `column.path.:` a colon reads a type.
+  const lastKind = before[before.length - 1]?.kind;
+  const subcolumn = lastKind === T.Caret || lastKind === T.Colon;
+  const names = qualifier(sql, subcolumn ? before.slice(0, -1) : before);
+  if (names.length && subcolumn) {
+    const json = jsonColumn(sql, units, schema, refs, names);
+    if (json && lastKind === T.Caret) addTypedPaths(out, schemaTier, json.column, json.path, true);
+    if (json && lastKind === T.Colon) for (const type of typeNames()) out.add(nameTier, named({ label: type, kind: "data type" }));
+    return out.sorted();
+  }
   if (names.length) {
     // After `x.`: the columns of the table or alias x, and the tables of the database x.
     const last = names[names.length - 1]!;
@@ -267,18 +340,33 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
       : resolve(schema, names.length > 1 ? { database: names[names.length - 2]!, name: last } : { name: last });
     addColumns(out, schemaTier, tables);
     if (names.length === 1) addTables(out, schemaTier, (schema.tables ?? []).filter((t) => t.database === last));
+    // After a JSON column, and the part of a path written after it, the typed paths that its type declares.
+    const json = jsonColumn(sql, units, schema, refs, names);
+    if (json) addTypedPaths(out, schemaTier, json.column, json.path, false);
     return out.sorted();
   }
 
   const call = engineCall(sql, statement, before);
   if (call) {
-    // The columns of the table being made, or of the table it is made AS.
-    const created = createdTable(sql, statement);
-    const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
-    const columns = [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+    const columns = createdColumns(sql, statement, schema);
     const keys = keyNames(sql, statement);
     for (const { tier, candidate } of engineCandidates({ sql, call, columns, keys, schema, lower: isLower(prefix) })) out.add(tier, candidate);
   }
+
+  // In the brackets of a function, what the argument at the cursor takes, by the function's documentation.
+  const fn = call ? undefined : functionCall(sql, statement, before);
+  if (fn && (has("CAST operator") || fn.arguments.some((a) => a.afterKeyword))) {
+    const columns = [
+      ...createdColumns(sql, statement, schema).map((column) => ({ column })),
+      ...refs.flatMap((ref) => resolve(schema, ref)).flatMap((table) =>
+        table.columns.map((c) => ({ column: schemaColumn(c.name, c.type), documentation: `Column of \`${table.database}.${table.name}\`` })),
+      ),
+    ];
+    const context = { call: fn, columns, columnTier: schemaTier, lower: isLower(prefix) };
+    for (const { tier, candidate } of functionCandidates(context)) out.add(tier, candidate);
+  }
+
+  if (has("JSON data type optional argument")) for (const candidate of jsonTypeArguments(isLower(prefix))) out.add(keywordTier, candidate);
 
   const accepts = keywordFilter(sql, before, word.start);
   for (const variant of variants)
@@ -353,12 +441,26 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
   return out.sorted();
 }
 
-/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
-export function engineArgument(sql: string, offset: number): EngineArgument | undefined {
+/** The significant tokens of the statement at `offset`, and those before it, or undefined in inline data. */
+function statementTokens(sql: string, offset: number): { statement: Token[]; before: Token[] } | undefined {
   const at = Math.max(0, Math.min(offset, sql.length));
   const unit = statementAt(split(sql), at);
   if (!unit || (unit.data.start >= 0 && at > unit.data.start)) return undefined;
   const statement = unit.tokens.filter((token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream);
-  const call = engineCall(sql, statement, statement.filter((token) => token.start < at));
+  return { statement, before: statement.filter((token) => token.start < at) };
+}
+
+/** The function whose brackets `offset` is in, and the documented arguments that the argument there may be. */
+export function functionArgument(sql: string, offset: number): FunctionArgument | undefined {
+  const tokens = statementTokens(sql, offset);
+  if (!tokens || engineCall(sql, tokens.statement, tokens.before)) return undefined;
+  const call = functionCall(sql, tokens.statement, tokens.before);
+  return call && { function: call.target.name, parameters: call.inParameters, arguments: call.arguments.map((a) => a.arg.name) };
+}
+
+/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
+export function engineArgument(sql: string, offset: number): EngineArgument | undefined {
+  const tokens = statementTokens(sql, offset);
+  const call = tokens && engineCall(sql, tokens.statement, tokens.before);
   return call && { engine: call.info.name, parameters: call.parameters.map((p) => p.name) };
 }

@@ -240,6 +240,7 @@ const LISTS: [string, string, RegExp][] = [
   ["table functions", "table-functions.ts", CATALOG],
   ["combinators", "combinators.ts", CATALOG],
   ["privileges", "privileges.ts", NAMED],
+  ["time zones", "time-zones.ts", CATALOG],
 ];
 
 export type Names = Record<string, string[]>;

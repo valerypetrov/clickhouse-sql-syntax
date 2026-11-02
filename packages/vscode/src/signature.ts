@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import {
-  type ArgumentInfo, type Description, describe, engineArgument, isSignificant, TokenKind as T, type Token, tokenize,
+  type ArgumentInfo, type Description, describe, engineArgument, functionArgument, isSignificant, TokenKind as T, type Token, tokenize,
 } from "clickhouse-sql-syntax";
 import { tooLarge } from "./size.js";
 
@@ -111,7 +111,14 @@ export function registerSignatureHelp(languageId: string): vscode.Disposable {
       if (!call || !description?.syntax) return undefined;
       const parameters = description.parameters ?? [];
       const inParameters = parameters.length > 0 && call.group === 0 && call.nextGroup;
-      const active = inParameters ? call.argument : parameters.length + call.argument;
+      let active = inParameters ? call.argument : parameters.length + call.argument;
+      // The documented argument that the one at the cursor is, past optional and repeated ones, by the function's syntax.
+      const argument = functionArgument(text, offset);
+      if (argument) {
+        const list = argument.parameters ? parameters : (description.arguments ?? []);
+        const at = list.findIndex((a) => a.name === argument.arguments[0]);
+        active = (argument.parameters ? 0 : parameters.length) + (at < 0 ? list.length : at);
+      }
       return signatureHelp(description, [[0, parameters], [parameters.length ? 1 : 0, description.arguments ?? []]], active);
     },
   };

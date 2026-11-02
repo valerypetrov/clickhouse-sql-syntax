@@ -7,6 +7,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Formatting**: queries laid out as `clickhouse format` does.
 - **Autocomplete**: keywords, functions, types, settings, engines and formats that fit where you type.
 - **Engine arguments**: in `ENGINE = Name(...)`, what the argument at the cursor takes, and the engine's parameters as you type.
+- **Function arguments**: what ClickHouse's documentation says the argument at the cursor takes, such as a unit, a data type, a time zone, a format or a JSONPath, and in `JSON(...)` its parameters.
 - **Outline**: each statement with its CTEs and columns, in the Outline view and breadcrumbs.
 - **Folding**: statements, subqueries and comments of several lines, and `-- #region` blocks.
 - **Expand Selection**: grows from a word to its expression, call, clause, subquery and statement.
@@ -27,7 +28,7 @@ To build it yourself instead (needs Node.js 22 or newer):
 git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
 cd clickhouse-sql-syntax
 npm install && npm run build && npm run package:vscode
-code --install-extension packages/vscode/clickhouse-sql-0.2.0.vsix
+code --install-extension packages/vscode/clickhouse-sql-0.3.0.vsix
 ```
 
 ## Use the library

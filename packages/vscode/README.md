@@ -9,6 +9,7 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Formatting.** Format Document and Format Selection lay out queries like `clickhouse format`, changing only whitespace and the case of keywords.
 - **Autocomplete** of the keywords that fit at the cursor and of ClickHouse's functions, types, settings, table engines and formats.
 - **Engine arguments.** In `ENGINE = Name(...)`, autocomplete offers what the argument at the cursor takes, such as a ZooKeeper path, a column of the table of a type that fits, a format or a cluster, and signature help shows the engine's parameters.
+- **Function arguments.** In a function's brackets, autocomplete offers what its documentation says the argument takes, such as `'day'` in `dateDiff`, a type in `JSONExtract` or `CAST(x, 'T')`, a time zone, a format or `'$.'`, with the columns of a fitting type first; in `JSON(...)` it offers the type's parameters, and after a JSON column its typed paths.
 - **Outline and breadcrumbs** list each statement, such as `CREATE TABLE db.t` or `SELECT … FROM db.t`, with its CTEs and the columns it defines.
 - **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Expand Selection** grows from the word at the cursor to its expression, call, clause, subquery and statement, and Shrink Selection goes back.

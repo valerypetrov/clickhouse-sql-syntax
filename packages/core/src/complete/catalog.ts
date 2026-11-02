@@ -7,8 +7,9 @@ import { type Argument, FUNCTIONS, type FunctionInfo } from "../generated/functi
 import { SETTINGS, type SettingInfo } from "../generated/settings.js";
 import { TABLE_ENGINES, type TableEngineInfo } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS, type TableFunctionInfo } from "../generated/table-functions.js";
-import type { CompletionKind, Description } from "../types.js";
+import type { ArgumentInfo, CompletionKind, Description } from "../types.js";
 import { engineSignature, parameterDescription } from "./engines.js";
+import { argumentKind } from "./kinds.js";
 
 const functionsByName = new Map(FUNCTIONS.map((f) => [f.name, f]));
 const functionsByLowerName = new Map(FUNCTIONS.filter((f) => f.caseInsensitive).map((f) => [f.name.toLowerCase(), f]));
@@ -80,6 +81,14 @@ export function combinatorDocumentation(info: CombinatorInfo): string {
   return paragraphs(info.syntax && fenced(info.syntax), info.description);
 }
 
+/** The documented arguments of a function, each with the kind that its documentation tells. */
+function withKinds(info: FunctionInfo, list: readonly Argument[] | undefined): ArgumentInfo[] | undefined {
+  return list?.map((arg) => {
+    const kind = argumentKind(info, arg);
+    return kind ? { ...arg, kind } : arg;
+  });
+}
+
 const DESCRIBED: CompletionKind[] = ["function", "setting", "table function", "table engine", "format", "combinator"];
 
 /** What the documentation of ClickHouse says about a name: as a `kind` of name, or as the first kind that has it. */
@@ -103,8 +112,8 @@ function describeAs(name: string, kind: CompletionKind): Description | undefined
         kind,
         documentation: functionDocumentation(info),
         syntax: target.syntax,
-        arguments: target.arguments,
-        parameters: target.parameters,
+        arguments: withKinds(target, target.arguments),
+        parameters: withKinds(target, target.parameters),
       };
     }
     case "setting": {

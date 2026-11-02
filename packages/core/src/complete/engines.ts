@@ -7,24 +7,10 @@ import { TABLE_ENGINES, type TableEngineInfo } from "../generated/table-engines.
 import { stringLiteralValue } from "../parser/index.js";
 import { type Token, TokenKind as T } from "../types.js";
 import { isWord, nameOf } from "./schema.js";
+import { type ArgumentList, closingBracket, type Parameter, parameterAt, readArguments } from "./syntax.js";
 
 /** A parameter as the syntax of an engine names it, such as `'zoo_path'`, `ver` or `NOSIGN`. */
-export interface EngineParameter {
-  /** The name without its quotes. */
-  name: string;
-  /** Written in quotes, so the argument is a string. */
-  quoted: boolean;
-  /** A word in capitals, such as NOSIGN, that the argument is. */
-  keyword: boolean;
-  /** `key = value`: an argument given by name. */
-  named: boolean;
-}
-
-/** One list of arguments that an engine takes; with `repeats`, its last parameter may follow any number of times. */
-interface ArgumentList {
-  parameters: EngineParameter[];
-  repeats: boolean;
-}
+export type EngineParameter = Parameter;
 
 /** What the brackets of an engine hold, read from its syntax. */
 export interface EngineSignature {
@@ -33,115 +19,6 @@ export interface EngineSignature {
   /** Each parameter once, in the order of the label. */
   parameters: EngineParameter[];
   lists: ArgumentList[];
-}
-
-/** A piece of the syntax: a parameter, `a | b` at the top level, or `[...]` with alternatives split by `|`. */
-type Item =
-  | { type: "param"; param: EngineParameter; repeats: boolean }
-  | { type: "choice"; items: Item[] }
-  | { type: "optional"; lists: Item[][] };
-
-type SyntaxToken = { punct: string; name?: undefined; quoted?: undefined } | { punct?: undefined; name: string; quoted: boolean };
-
-/** More lists than any engine has; a syntax that gives more is not read. */
-const MAX_LISTS = 1000;
-
-/** The tokens of the syntax inside the brackets, or undefined at a character it does not use. */
-function syntaxTokens(text: string): SyntaxToken[] | undefined {
-  const pattern = /\s*(?:(\.\.\.|[[\]|,=])|'([^']*)'|([A-Za-z_]\w*))/y;
-  const tokens: SyntaxToken[] = [];
-  while (pattern.lastIndex < text.length) {
-    if (/^\s*$/.test(text.slice(pattern.lastIndex))) break;
-    const match = pattern.exec(text);
-    if (!match) return undefined;
-    if (match[1]) tokens.push({ punct: match[1] });
-    else tokens.push({ name: match[2] ?? match[3]!, quoted: match[2] !== undefined });
-  }
-  return tokens;
-}
-
-/** The items up to `]`, or to the end at the top level, as alternatives split by `|` inside brackets. */
-function parseItems(tokens: SyntaxToken[], pos: { i: number }, inBrackets: boolean): Item[][] | undefined {
-  const lists: Item[][] = [[]];
-  for (;;) {
-    const list = lists[lists.length - 1]!;
-    const token = tokens[pos.i];
-    if (!token) return inBrackets ? undefined : lists;
-    if (token.punct === "]") {
-      pos.i++;
-      return inBrackets ? lists : undefined;
-    }
-    if (token.punct === "," || token.punct === "|" || token.punct === "...") {
-      pos.i++;
-      if (token.punct === "|" && inBrackets) lists.push([]);
-      else if (token.punct === "|") {
-        // At the top level, `a | b` is one argument that is either.
-        const left = list.pop();
-        const right = parseAtom(tokens, pos);
-        if (!left || !right) return undefined;
-        list.push({ type: "choice", items: [...(left.type === "choice" ? left.items : [left]), right] });
-      } else if (token.punct === "...") {
-        const last = list[list.length - 1];
-        if (last?.type !== "param") return undefined;
-        last.repeats = true;
-      }
-      continue;
-    }
-    const atom = parseAtom(tokens, pos);
-    if (!atom) return undefined;
-    list.push(atom);
-  }
-}
-
-function parseAtom(tokens: SyntaxToken[], pos: { i: number }): Item | undefined {
-  const token = tokens[pos.i++];
-  if (token?.punct === "[") {
-    const lists = parseItems(tokens, pos, true);
-    return lists && { type: "optional", lists };
-  }
-  if (token?.name === undefined) return undefined;
-  const param = { name: token.name, quoted: token.quoted, keyword: !token.quoted && /^[A-Z][A-Z0-9_]+$/.test(token.name), named: false };
-  if (tokens[pos.i]?.punct === "=") {
-    if (tokens[pos.i + 1]?.name === undefined) return undefined;
-    pos.i += 2;
-    param.named = true;
-  }
-  return { type: "param", param, repeats: false };
-}
-
-/** Every list of parameters that the items allow. */
-function expand(items: readonly Item[]): ArgumentList[] {
-  let lists: (ArgumentList & { closed: boolean })[] = [{ parameters: [], repeats: false, closed: false }];
-  for (const item of items) {
-    const next: typeof lists = [];
-    for (const list of lists) {
-      const add = (tails: ArgumentList[]) => {
-        for (const tail of tails) next.push({ parameters: [...list.parameters, ...tail.parameters], repeats: tail.repeats, closed: list.closed });
-      };
-      if (list.repeats) next.push(list);
-      else if (item.type === "param") add([{ parameters: [item.param], repeats: item.repeats }]);
-      else if (item.type === "choice") add(item.items.flatMap((choice) => expand([choice])));
-      else {
-        // ClickHouse reads the next value as an optional format or keyword left out, so no optional one follows.
-        const typed = item.lists.every((l) => l[0]?.type === "param" && isTyped(l[0].param));
-        next.push({ ...list, closed: list.closed || typed });
-        if (!list.closed) add(item.lists.flatMap((l) => expand(l)));
-      }
-    }
-    if (next.length > MAX_LISTS) return [];
-    lists = next;
-  }
-  return lists.map(({ parameters, repeats }) => ({ parameters, repeats }));
-}
-
-function parametersOf(items: readonly Item[], into: EngineParameter[]): EngineParameter[] {
-  for (const item of items) {
-    if (item.type === "param") {
-      if (!into.some((p) => p.name === item.param.name)) into.push(item.param);
-    } else if (item.type === "choice") parametersOf(item.items, into);
-    else for (const list of item.lists) parametersOf(list, into);
-  }
-  return into;
 }
 
 /** Reads `ENGINE = Name(...)` of the engine's syntax, or `ENGINE = Name` for none; undefined for any other form. */
@@ -153,18 +30,10 @@ export function readSignature(info: TableEngineInfo): EngineSignature | undefine
     if (/\w/.test(syntax[head.length] ?? "")) return undefined;
     return { label: info.name, parameters: [], lists: [{ parameters: [], repeats: false }] };
   }
-  let depth = 0;
-  let close = -1;
-  for (let i = head.length; i < syntax.length && close < 0; i++) {
-    if (syntax[i] === "(") depth++;
-    else if (syntax[i] === ")" && --depth === 0) close = i;
-  }
-  const tokens = close < 0 ? undefined : syntaxTokens(syntax.slice(head.length + 1, close));
-  const items = tokens && parseItems(tokens, { i: 0 }, false)?.[0];
-  if (!items) return undefined;
-  const lists = expand(items);
-  if (!lists.length) return undefined;
-  return { label: syntax.slice("ENGINE = ".length, close + 1), parameters: parametersOf(items, []), lists };
+  const close = closingBracket(syntax, head.length);
+  // ClickHouse reads the next value as an optional format or keyword left out, so no optional one follows.
+  const read = close < 0 ? undefined : readArguments(syntax.slice(head.length + 1, close), isTyped);
+  return read && { label: syntax.slice("ENGINE = ".length, close + 1), ...read };
 }
 
 const signatures = new Map<TableEngineInfo, EngineSignature | null>();
@@ -285,11 +154,6 @@ function written(sql: string, tokens: Token[]): Written {
 function accepts(param: EngineParameter, arg: Written): boolean {
   if (param.named || arg.named !== undefined) return param.named && arg.named !== undefined;
   return arg.value === undefined ? !isTyped(param) : takes(param, arg.value) !== false;
-}
-
-export function parameterAt(list: ArgumentList, index: number): EngineParameter | undefined {
-  const { parameters } = list;
-  return index < parameters.length ? parameters[index] : list.repeats ? parameters[parameters.length - 1] : undefined;
 }
 
 /** The engine call whose brackets the cursor is in, at the top level of them. */

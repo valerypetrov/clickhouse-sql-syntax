@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Autocomplete for the arguments of functions, by what ClickHouse's documentation of each one says: units and other
+  listed values, data types, time zones, formats and JSONPaths, with the columns of a fitting type first, opening by
+  itself after the comma before such an argument; the parameters of the JSON type and the typed paths of a JSON
+  column; and signature help past optional and repeated arguments.
+
 ## 0.2.0
 
 - Autocomplete and signature help for the arguments of table engines, read from their syntax in ClickHouse:

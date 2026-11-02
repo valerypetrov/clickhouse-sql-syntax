@@ -4,7 +4,8 @@
 import { FORMATS } from "../generated/formats.js";
 import { type CompletionCandidate, type CompletionSchema, TokenKind as T } from "../types.js";
 import { findFunction, formatDetail, formatDocumentation, functionDocumentation } from "./catalog.js";
-import { COMPRESSION, type EngineCall, JOIN_KINDS, kindOf, type ParameterKind, parameterAt, STRICTNESS } from "./engines.js";
+import { COMPRESSION, type EngineCall, JOIN_KINDS, kindOf, type ParameterKind, STRICTNESS } from "./engines.js";
+import { parameterAt } from "./syntax.js";
 import { type DeclaredColumn, databases, named } from "./schema.js";
 
 /** A suggestion and its tier: the lower, the earlier. */

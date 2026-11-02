@@ -1,5 +1,5 @@
 import { check } from "./parser/index.js";
-import { complete, describe, engineArgument } from "./complete/index.js";
+import { complete, describe, engineArgument, functionArgument } from "./complete/index.js";
 import { format, split } from "./format/index.js";
 import { highlight } from "./highlight/index.js";
 import { tokenize } from "./lexer/index.js";
@@ -14,8 +14,8 @@ export { SYSTEM_COMMANDS } from "./highlight/index.js";
 export { checkWithRoles, ParseCache, roles, type Role, type RoleSpan } from "./parser/index.js";
 export type { Unit } from "./format/index.js";
 export {
-  check, complete, definition, describe, engineArgument, foldingRanges, format, highlight, outline, prepareRename, references, rename,
-  selectionRanges, split, tokenize,
+  check, complete, definition, describe, engineArgument, foldingRanges, format, functionArgument, highlight, outline, prepareRename,
+  references, rename, selectionRanges, split, tokenize,
 };
 
 // Typed against the interface, so an implementation that drifts from the API fails to compile.
