@@ -18,9 +18,8 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 
 ## Install
 
-The extension is not on the Marketplace yet: build `clickhouse-sql-0.1.0.vsix` as the
-[repository](https://github.com/valerypetrov/clickhouse-sql-syntax#use-it-in-vs-code) shows, then run
-**Extensions: Install from VSIX...** in VS Code 1.90 or newer.
+Search for **ClickHouse SQL** in the Extensions view and select **Install**, or run
+`code --install-extension valerypetrov.clickhouse-sql`. It needs VS Code 1.90 or newer.
 
 Files ending in `.chsql` or `.clickhouse.sql` open as ClickHouse SQL. For other files, add a
 `files.associations` entry such as `"*.sql": "clickhouse-sql"`, or pick **ClickHouse SQL** with **Change Language Mode**.
