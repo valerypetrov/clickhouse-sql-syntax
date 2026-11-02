@@ -83,3 +83,19 @@ quotes), and runs the original and the renamed query in a fresh `clickhouse loca
 when it runs alone, without the tables of its test, and gives the same result twice. A mismatch is a renamed query that
 fails or gives another result, or edits that are not exactly the words `references()` finds, each one the old name
 becoming the new one. `out/rename-report.json` lists the counts, why `prepareRename()` refused names, and every mismatch.
+
+## Arguments of functions
+
+```sh
+npm run build -w packages/core
+npm run oracle:arguments -- --clickhouse /path/to/clickhouse --corpus /path/to/ClickHouse/tests/queries/0_stateless
+```
+
+This checks what completion offers for the arguments of functions. It counts the documented arguments that get a kind,
+such as a time zone or a data type, and lists the arguments with none of the functions the tests call most. For each
+argument that a test writes where a function takes a kind, it checks the value against what completion offers there,
+and counts apart the statements that the test expects to fail. With `--clickhouse`, it puts each suggestion into a call
+built from the function's syntax and runs it with `clickhouse local`; a call that no suggestion runs in is listed as one
+it could not build. It times completion at the start of each argument of the function calls of the tests, and with
+`--before <dir>` also with another build of the library, such as the `dist` of an earlier commit. `out/arguments-report.json`
+lists the counts, every mismatch and every failure.

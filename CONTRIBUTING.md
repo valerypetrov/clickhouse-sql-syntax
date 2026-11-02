@@ -34,12 +34,14 @@ npm run oracle                    # check() against the labelled sample in oracl
 npm run oracle -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:format -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:rename -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
+npm run oracle:arguments -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 ```
 
 The second command labels every statement of the tests with that binary and compares `check()` with it. The third
 checks that ClickHouse reads each statement that `format()` changed as the same query, and formats every test file
 whole, as LF and as CRLF text. The fourth renames the names of each SELECT that runs in an empty `clickhouse local`
-and checks that the renamed query gives the same result. `npm test` fails when the sample's rates fall below
+and checks that the renamed query gives the same result. The fifth checks what completion offers in the arguments of
+functions against the arguments that the tests write, and runs each suggestion in a call. `npm test` fails when the sample's rates fall below
 `oracle/thresholds.json`; raise them when `check()` gets better. [oracle/README.md](oracle/README.md) describes the
 sample and how to rebuild it.
 
