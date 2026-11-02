@@ -16,19 +16,20 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 
 ## Use it in VS Code
 
-1. Build the extension (needs Node.js 22 or newer):
-
-   ```sh
-   git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
-   cd clickhouse-sql-syntax
-   npm install && npm run build && npm run package:vscode
-   ```
-
-2. Install it in VS Code 1.90 or newer: `code --install-extension packages/vscode/clickhouse-sql-0.1.0.vsix`,
-   or **Install from VSIX...** in the Extensions view.
-3. Open a `.chsql` or `.clickhouse.sql` file. For `.sql` files, add `"files.associations": { "*.sql": "clickhouse-sql" }` to your settings.
-4. Optional: to check against a server, set `clickhouseSql.server.enabled` to `true` and `clickhouseSql.server.url` to its
+1. Install **ClickHouse SQL** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=valerypetrov.clickhouse-sql):
+   search for it in the Extensions view, or run `code --install-extension valerypetrov.clickhouse-sql`. It needs VS Code 1.90 or newer.
+2. Open a `.chsql` or `.clickhouse.sql` file. For `.sql` files, add `"files.associations": { "*.sql": "clickhouse-sql" }` to your settings.
+3. Optional: to check against a server, set `clickhouseSql.server.enabled` to `true` and `clickhouseSql.server.url` to its
    HTTP address, then run **ClickHouse SQL: Set Server Password**. The [extension's page](packages/vscode/README.md) lists every setting.
+
+To build it yourself instead (needs Node.js 22 or newer):
+
+```sh
+git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
+cd clickhouse-sql-syntax
+npm install && npm run build && npm run package:vscode
+code --install-extension packages/vscode/clickhouse-sql-0.2.0.vsix
+```
 
 ## Use the library
 
