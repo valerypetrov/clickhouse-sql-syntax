@@ -21,13 +21,17 @@ const KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
   table: vscode.CompletionItemKind.Struct,
   column: vscode.CompletionItemKind.Field,
   value: vscode.CompletionItemKind.Value,
+  codec: vscode.CompletionItemKind.EnumMember,
+  "index type": vscode.CompletionItemKind.EnumMember,
+  "statistics type": vscode.CompletionItemKind.EnumMember,
+  "database engine": vscode.CompletionItemKind.Class,
 };
 
 /** Kinds that are called, so they are inserted with brackets and the cursor between them. */
 const CALLED = new Set<CompletionKind>(["function", "combinator", "table function"]);
 
 /** After a space, completion opens by itself only after these words, where a name has to follow. */
-const OPENS_AFTER_SPACE = new Set(["from", "join", "into", "table", "format", "settings", "engine", "use", "database"]);
+const OPENS_AFTER_SPACE = new Set(["from", "join", "into", "table", "format", "settings", "setting", "engine", "use", "database", "type", "compression"]);
 
 /** Suggestions for ClickHouse SQL, from complete() of the library. */
 export function registerCompletion(languageId: string, schema?: SchemaSource): vscode.Disposable {

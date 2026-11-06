@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
+import { checkOptions, checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
 import { registerFolding } from "./folding.js";
 import { registerFormatter } from "./format.js";
@@ -41,7 +41,10 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
       diagnostics.delete(document.uri);
       return;
     }
-    const errors = checkWithRoles(document.getText(), cacheOf(document)).diagnostics;
+    const text = document.getText();
+    const cache = cacheOf(document);
+    // Syntax errors, then what ClickHouse refuses in the options of the statements that parse.
+    const errors = [...checkWithRoles(text, cache).diagnostics, ...checkOptions(text, cache)];
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
   };
 
