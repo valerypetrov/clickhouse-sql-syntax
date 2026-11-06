@@ -187,6 +187,8 @@ export interface ClickHouseSqlSyntax {
   highlight(sql: string): HighlightSpan[];
   /** Syntax errors of every ';'-separated statement; an empty array when the input is valid. */
   check(sql: string): Diagnostic[];
+  /** What ClickHouse refuses in the settings, codecs, index types, formats and other options of the statements that parse. */
+  checkOptions(sql: string, cache?: ParseCache): Diagnostic[];
   /** The input with ClickHouse-style layout and keyword case; meaning, names and comments are kept. */
   format(sql: string, options?: FormatOptions): string;
   /** Suggestions at an offset: the keywords valid there, and the functions, types, settings or names that fit. */
@@ -263,7 +265,14 @@ export type CompletionKind =
   | "table"
   | "column"
   /** A value to write, such as a ZooKeeper path in the arguments of an engine. */
-  | "value";
+  | "value"
+  /** A compression codec of CODEC(...). */
+  | "codec"
+  /** The type of a skipping index, after INDEX name expr TYPE. */
+  | "index type"
+  /** A kind of column statistics, as in STATISTICS(tdigest). */
+  | "statistics type"
+  | "database engine";
 
 /** One suggestion of complete(). */
 export interface CompletionCandidate {

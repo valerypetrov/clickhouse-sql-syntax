@@ -117,7 +117,7 @@ export type Node = Union | Query | With | Table | Join | ArrayJoin | Alias | Lam
 /** The order of marks with the same range, outermost first. */
 const PRIORITY: Record<NameMarkKind, number> = {
   union: 0, query: 1, with: 2, join: 3, table: 4, arrayjoin: 5, interpolate: 6, opaque: 7, matcher: 8, alias: 9,
-  lambda: 10, call: 11, ref: 12,
+  lambda: 10, call: 11, ref: 12, settings: 13,
 };
 
 /** A query parameter {name:Type}: the offsets of its name. */
@@ -261,7 +261,7 @@ class Builder {
     // The alias of a table expression is a table alias, which the table mark carries.
     const tableAliases = new Set(marks.flatMap((mark) => (mark.kind === "table" && mark.alias ? [mark.alias[0]] : [])));
     const sorted = marks
-      .filter((mark) => !(mark.kind === "alias" && tableAliases.has(mark.name![0])))
+      .filter((mark) => mark.kind !== "settings" && !(mark.kind === "alias" && tableAliases.has(mark.name![0])))
       .sort((a, b) => a.start - b.start || b.end - a.end || PRIORITY[a.kind] - PRIORITY[b.kind]);
     const stack: Node[] = [];
     for (const mark of sorted) {
@@ -333,6 +333,7 @@ class Builder {
       case "interpolate":
         return { ...base, kind: "interpolate" };
       case "opaque":
+      case "settings":
         return { ...base, kind: "opaque" };
     }
   }

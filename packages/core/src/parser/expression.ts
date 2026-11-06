@@ -1468,7 +1468,7 @@ function tryParseOperand(layers: Layer[], p: P): Action {
     if (top.isCurrentElementEmpty()) {
       const begin = p.i;
       if (kw(p, "SETTINGS")) {
-        const settings = parseSetQuery(p, true);
+        const settings = parseSetQuery(p, true, true, "table function");
         if (settings) {
           top.operands.push(settings);
           return Action.Operand;

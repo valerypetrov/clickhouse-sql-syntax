@@ -6,7 +6,7 @@ import { parseCluster, parseDatabaseAndTableName, parsePartition } from "./commo
 import { parseCompoundIdentifier, parseIdentifier, parseIdentifierWithOptionalParameters } from "./elements.js";
 import { parseArray, parseFunction } from "./expression.js";
 import { parseExceptDatabases, parseExceptTables } from "./misc.js";
-import { parseNameValuePair, parseSetting } from "./set.js";
+import { markSettings, parseNameValuePair, parseSetting } from "./set.js";
 import { attempt, base, kw, listUtil, lookahead, P, peekKw, T, tok } from "./state.js";
 
 type TableName = { database: string; table: string };
@@ -180,7 +180,9 @@ function parseSettingsList(p: P, defaultAware: boolean): SettingsList {
     if (kind === "parameter" || kind === "substitution") parameters = true;
     return kind !== null;
   };
+  const begin = p.i;
   const ok = listUtil(p, setting, undefined, false);
+  if (ok) markSettings(p, begin, "backup");
   return { ok, parameters, baseBackup: resetBaseBackup ? null : baseBackup };
 }
 

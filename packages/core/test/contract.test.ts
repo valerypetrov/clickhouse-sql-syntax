@@ -5,7 +5,7 @@ import api, { DATA_TYPES, KEYWORDS, LEXER_ERROR_MESSAGES, TokenKind, isErrorKind
 
 test("the default export carries the whole API", () => {
   assert.deepEqual(Object.keys(api).sort(), [
-    "check", "complete", "definition", "describe", "foldingRanges", "format", "highlight", "outline", "prepareRename",
+    "check", "checkOptions", "complete", "definition", "describe", "foldingRanges", "format", "highlight", "outline", "prepareRename",
     "references", "rename", "selectionRanges", "tokenize",
   ]);
 });

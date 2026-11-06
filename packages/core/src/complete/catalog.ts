@@ -2,9 +2,11 @@
  * The names ClickHouse knows, from the generated catalog, with their documentation as Markdown.
  */
 import { COMBINATORS, type CombinatorInfo } from "../generated/combinators.js";
+import { CODECS, DATABASE_ENGINES, INDEX_TYPES, STATISTICS_TYPES } from "../generated/options.js";
 import { FORMATS, type FormatInfo } from "../generated/formats.js";
 import { type Argument, FUNCTIONS, type FunctionInfo } from "../generated/functions.js";
-import { SETTINGS, type SettingInfo } from "../generated/settings.js";
+import { SETTINGS } from "../generated/settings.js";
+import { optionDocumentation, type OptionKind, settingDocumentation } from "../options/index.js";
 import { TABLE_ENGINES, type TableEngineInfo } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS, type TableFunctionInfo } from "../generated/table-functions.js";
 import type { ArgumentInfo, CompletionKind, Description } from "../types.js";
@@ -128,10 +130,7 @@ export function functionDocumentation(info: FunctionInfo): string {
   return docs;
 }
 
-export function settingDocumentation(info: SettingInfo): string {
-  const value = info.default === undefined ? `\`${info.type}\`` : `\`${info.type}\`, default \`${info.default}\``;
-  return paragraphs(value, info.aliasTo && `Alias of \`${info.aliasTo}\`.`, info.description);
-}
+export { settingDocumentation };
 
 export function engineDocumentation(info: TableEngineInfo): string {
   return paragraphs(info.syntax && fenced(info.syntax), info.description);
@@ -162,7 +161,9 @@ function withKinds(info: FunctionInfo, list: readonly Argument[] | undefined): A
   });
 }
 
-const DESCRIBED: CompletionKind[] = ["function", "setting", "table function", "table engine", "format", "combinator"];
+const DESCRIBED: CompletionKind[] = [
+  "function", "setting", "table function", "table engine", "format", "combinator", "codec", "index type", "statistics type", "database engine",
+];
 
 /** What the documentation of ClickHouse says about a name: as a `kind` of name, or as the first kind that has it. */
 export function describe(name: string, kind?: CompletionKind): Description | undefined {
@@ -210,6 +211,13 @@ function describeAs(name: string, kind: CompletionKind): Description | undefined
       const info = FORMATS.find((f) => f.name === name);
       return info && { name: info.name, kind, documentation: formatDocumentation(info) };
     }
+    case "codec":
+    case "index type":
+    case "statistics type":
+    case "database engine": {
+      const documentation = optionDocumentation(kind as OptionKind, name);
+      return documentation === undefined ? undefined : { name: canonicalOption(kind as OptionKind, name), kind, documentation };
+    }
     case "combinator": {
       const info = COMBINATORS.find((c) => c.name === name);
       return info && { name: info.name, kind, documentation: combinatorDocumentation(info), syntax: info.syntax };
@@ -217,4 +225,11 @@ function describeAs(name: string, kind: CompletionKind): Description | undefined
     default:
       return undefined;
   }
+}
+
+/** The name of a codec, index type, statistics type or database engine as ClickHouse spells it. */
+function canonicalOption(kind: OptionKind, name: string): string {
+  const lower = name.toLowerCase();
+  const list = kind === "codec" ? CODECS : kind === "index type" ? INDEX_TYPES : kind === "statistics type" ? STATISTICS_TYPES : DATABASE_ENGINES;
+  return list.find((x) => x.name.toLowerCase() === lower)?.name ?? name;
 }

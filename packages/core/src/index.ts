@@ -1,4 +1,5 @@
 import { check } from "./parser/index.js";
+import { checkOptions } from "./options/index.js";
 import { complete, describe, engineArgument, functionArgument } from "./complete/index.js";
 import { format, split } from "./format/index.js";
 import { highlight } from "./highlight/index.js";
@@ -14,13 +15,13 @@ export { SYSTEM_COMMANDS } from "./highlight/index.js";
 export { checkWithRoles, ParseCache, roles, type Role, type RoleSpan } from "./parser/index.js";
 export type { Unit } from "./format/index.js";
 export {
-  check, complete, definition, describe, engineArgument, foldingRanges, format, functionArgument, highlight, outline, prepareRename,
+  check, checkOptions, complete, definition, describe, engineArgument, foldingRanges, format, functionArgument, highlight, outline, prepareRename,
   references, rename, selectionRanges, split, tokenize,
 };
 
 // Typed against the interface, so an implementation that drifts from the API fails to compile.
 const api: ClickHouseSqlSyntax = {
-  tokenize, highlight, check, format, complete, describe, foldingRanges, outline, selectionRanges, definition, references,
+  tokenize, highlight, check, checkOptions, format, complete, describe, foldingRanges, outline, selectionRanges, definition, references,
   prepareRename, rename,
 };
 export default api;

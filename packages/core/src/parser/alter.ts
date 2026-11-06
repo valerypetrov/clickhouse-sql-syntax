@@ -30,7 +30,7 @@ import {
 } from "./elements.js";
 import { parseExpressionList, parseExpressionWithOptionalAlias, parseTTLExpressionList } from "./expression.js";
 import { parseSelectWithUnionQuery } from "./select.js";
-import { parseSetQuery } from "./set.js";
+import { markSettings, parseSetQuery } from "./set.js";
 import { base, kw, P, peekKw, T, tok } from "./state.js";
 
 /** ParserStringAndSubstitution: a part name as a string or a {name:String} parameter. */
@@ -97,11 +97,11 @@ function parseModifyColumn(p: P, isModify: boolean, command: Ast): boolean {
   }
   if (kw(p, "MODIFY SETTING")) {
     checkNoType("MODIFY SETTING");
-    return parseSetQuery(p, true) !== null;
+    return parseSetQuery(p, true, true, "column") !== null;
   }
   if (kw(p, "RESET SETTING")) {
     checkNoType("RESET SETTING");
-    return parseList(p, () => parseIdentifier(p), undefined, false) !== null;
+    return parseResetList(p, "column reset");
   }
   if (kw(p, "ADD ENUM VALUES")) {
     checkNoType("ADD ENUM VALUES");
@@ -220,8 +220,8 @@ function tableCommands(p: P, command: Ast): Command[] {
     ["REMOVE TTL", () => true],
     ["MATERIALIZE TTL", inPartition],
     ["REWRITE PARTS", inPartition],
-    ["MODIFY SETTING", () => parseSetQuery(p, true) !== null],
-    ["RESET SETTING", () => parseList(p, () => parseIdentifier(p), undefined, false) !== null],
+    ["MODIFY SETTING", () => parseSetQuery(p, true, true, "alter") !== null],
+    ["RESET SETTING", () => parseResetList(p, "reset")],
     ["MODIFY QUERY", () => keep(command, "select", parseSelectWithUnionQuery(p))],
   ];
 }
@@ -245,13 +245,21 @@ function parseLaterTableCommand(p: P, command: Ast): boolean | null {
   return null;
 }
 
+/** The names of RESET SETTING. */
+function parseResetList(p: P, context: string): boolean {
+  const begin = p.i;
+  if (parseList(p, () => parseIdentifier(p), undefined, false) === null) return false;
+  markSettings(p, begin, context);
+  return true;
+}
+
 function parseTableCommand(p: P, command: Ast): boolean {
   for (const [keyword, body] of tableCommands(p, command)) if (kw(p, keyword)) return body();
   return parseLaterTableCommand(p, command) ?? false;
 }
 
 function parseDatabaseCommand(p: P): boolean {
-  if (kw(p, "MODIFY SETTING")) return parseSetQuery(p, true) !== null;
+  if (kw(p, "MODIFY SETTING")) return parseSetQuery(p, true, true, "alter database") !== null;
   if (kw(p, "MODIFY COMMENT")) return parseStringLiteral(p) !== null;
   return false;
 }
