@@ -13,7 +13,8 @@ export type Value =
   | { t: "String"; v: string; text: string }
   | { t: "Bool"; v: boolean; text: string }
   | { t: "Null"; text: string }
-  | { t: "Map" | "Array" | "Tuple"; text: string };
+  | { t: "Map"; text: string; /** Whether it holds string pairs only, so that text is as ClickHouse writes it. */ pairs?: boolean }
+  | { t: "Array" | "Tuple"; text: string };
 
 const UINT64_MAX = 2n ** 64n - 1n;
 const INT64_MIN = -(2n ** 63n);
@@ -38,10 +39,28 @@ export function readValue(sql: string, tokens: readonly Token[]): Value | undefi
     return undefined;
   }
   const last = tokens[tokens.length - 1]!.kind;
-  if (first.kind === T.OpeningCurlyBrace && last === T.ClosingCurlyBrace) return { t: "Map", text };
+  if (first.kind === T.OpeningCurlyBrace && last === T.ClosingCurlyBrace) return mapValue(sql, tokens, text);
   if (first.kind === T.OpeningSquareBracket && last === T.ClosingSquareBracket) return { t: "Array", text };
   return undefined;
 }
+
+/** A map of string pairs, with the text that ClickHouse writes for it in messages, as [('a', 'b')]. */
+function mapValue(sql: string, tokens: readonly Token[], source: string): Value {
+  const pairs: string[] = [];
+  for (let i = 1; i < tokens.length - 1; i += 4) {
+    const [key, colon, value, comma] = [tokens[i], tokens[i + 1], tokens[i + 2], tokens[i + 3]];
+    const k = key?.kind === T.StringLiteral ? stringLiteralValue(sql.slice(key.start, key.end)) : undefined;
+    const v = value?.kind === T.StringLiteral ? stringLiteralValue(sql.slice(value.start, value.end)) : undefined;
+    if (k === undefined || v === undefined || colon?.kind !== T.Colon || (comma !== tokens[tokens.length - 1] && comma?.kind !== T.Comma))
+      return { t: "Map", text: source };
+    pairs.push(`(${quoted(k)}, ${quoted(v)})`);
+  }
+  return { t: "Map", text: `[${pairs.join(", ")}]`, pairs: true };
+}
+
+const ESCAPES: Record<string, string> = { "\\": "\\\\", "'": "\\'", "\n": "\\n", "\t": "\\t", "\r": "\\r", "\0": "\\0", "\b": "\\b", "\f": "\\f" };
+/** A string in quotes as ClickHouse writes a Field of one. */
+const quoted = (v: string) => `'${v.replace(/[\\'\n\t\r\0\b\f]/g, (c) => ESCAPES[c]!)}'`;
 
 /** A number as ClickHouse's parser reads it: an integer that fits 64 bits, or a Float64. */
 function number(raw: string, negative: boolean, text: string): Value | undefined {
@@ -92,12 +111,15 @@ function integerOf(type: string): { base: string; suffix: boolean; nonZero?: boo
 /** A number in a string as parseWithSizeSuffix() reads it: digits, then optional k, M, G, T, P, E with an optional i. */
 const INTEGER_STRING = /^[+-]?\d+([kKMGTPE]i?)?$/;
 const PLAIN_INTEGER_STRING = /^[+-]?\d+$/;
-const FLOAT_STRING = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?([kKMGTPE]i?)?$|^[+-]?(inf|nan)$/i;
+const FLOAT_PREFIX = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/;
 
 const fieldName = (value: Value) => (value.t === "Map" || value.t === "Array" || value.t === "Tuple" ? value.t : value.t);
 
 /** ClickHouse's message for a value that a setting does not take, or undefined when it takes it or the check is not known. */
 export function valueError(setting: SettingInfo, value: Value): string | undefined {
+  // Settings.cpp reads the compatibility setting as a version, and Context.cpp words the error otherwise.
+  if (setting.name === "compatibility" && value.t === "String" && !isVersion(value.v))
+    return `Cannot parse ClickHouse version here: ${value.v}: in attempt to set the value of setting 'compatibility' to ${quoted(value.v)}.`;
   const problem = valueProblem(setting, value);
   return problem && `${problem}: while setting '${setting.name}' to value ${value.text}.`;
 }
@@ -112,16 +134,14 @@ function valueProblem(setting: SettingInfo, value: Value): string | undefined {
       return boolProblem(value);
     case "BoolAuto":
       return value.t === "String" && value.v.toLowerCase() === "auto" ? undefined : boolProblem(value);
+    case "BoolForce":
+      return value.t === "String" && value.v.toLowerCase() === "force" ? undefined : boolProblem(value);
     case "Float":
     case "Double":
     case "Seconds":
     case "FloatAuto":
     case "DoubleAuto":
-      if (value.t === "String") {
-        if (type.endsWith("Auto") && value.v.toLowerCase() === "auto") return undefined;
-        return FLOAT_STRING.test(value.v) || value.v === "" ? undefined : `Cannot read floating point value here: ${value.v}`;
-      }
-      return value.t === "Null" ? `Invalid value NULL of the setting, which needs ${type === "Float" ? "float" : "double"}` : undefined;
+      return floatProblem(type, value);
     case "String":
       return value.t === "String" ? undefined : badGet(value, "String");
     case "Char":
@@ -132,6 +152,10 @@ function valueProblem(setting: SettingInfo, value: Value): string | undefined {
       if (value.t === "Map") return undefined;
       if (value.t !== "String") return badGet(value, "Map");
       return value.v === "" || value.v.trimStart().startsWith("{") ? undefined : `Cannot parse input: expected '{' before: '${value.v}'`;
+    case "URI":
+      if (value.t !== "String") return badGet(value, "String");
+      // Poco::URI refuses spaces, control characters and bytes past ASCII before anything else.
+      return /[\0- \x7f-\uffff]/.test(value.v) ? "Cannot parse URI: Bad URI syntax: URI contains invalid characters" : undefined;
     case "Timezone":
       if (value.t !== "String") return badGet(value, "String");
       // Fixed offsets such as Fixed/UTC+03:00:00 and +03:00 are time zones too.
@@ -141,6 +165,9 @@ function valueProblem(setting: SettingInfo, value: Value): string | undefined {
       return undefined;
   }
 }
+
+/** A version as ClickHouseVersion reads it: unsigned integers between dots, or nothing. */
+const isVersion = (v: string) => v === "" || v.split(".").every((part) => /^\+?\d+$/.test(part) && BigInt(part) <= UINT64_MAX);
 
 const TIME_ZONE_NAMES = new Set(TIME_ZONES.map((z) => z.name.toLowerCase()));
 
@@ -159,6 +186,45 @@ function enumProblem(setting: SettingInfo, value: Value): string | undefined {
   return `Unexpected value of ${setting.type}: '${wrong}'. Must be one of [${values.map((v) => `'${v}'`).join(", ")}]`;
 }
 
+/** A float setting: a number in a string without size suffixes, finite, and an integer that the float type holds exactly. */
+function floatProblem(type: string, value: Value): string | undefined {
+  const cpp = type.startsWith("Float") ? "float" : "double";
+  let v: number | undefined;
+  switch (value.t) {
+    case "String": {
+      if (type.endsWith("Auto") && value.v.toLowerCase() === "auto") return undefined;
+      const infinite = /^([+-]?)(inf|infinity)$/i.exec(value.v);
+      if (infinite) return `Float setting value must be finite, got ${infinite[1] === "-" ? "-" : ""}inf`;
+      if (/^\+?nan$/i.test(value.v)) return "Float setting value must be finite, got nan";
+      if (/^[+-]?(inf|nan)/i.test(value.v)) return undefined;
+      const prefix = FLOAT_PREFIX.exec(value.v)?.[0];
+      if (!prefix) return `Cannot read floating point value here: ${value.v}`;
+      if (prefix.length < value.v.length) return `Cannot parse input: expected 'eof' before: '${value.v.slice(prefix.length)}'`;
+      v = Number(prefix);
+      break;
+    }
+    case "UInt64":
+    case "Int64": {
+      const n = Number(value.big!);
+      if (BigInt(n) !== value.big || (cpp === "float" && Math.fround(n) !== n)) return `Field value ${value.text} is out of range of ${cpp} type`;
+      v = n;
+      break;
+    }
+    case "Float64":
+      v = value.v;
+      break;
+    case "Null":
+      return `Invalid value NULL of the setting, which needs ${cpp}`;
+    case "Map":
+      return value.pairs ? `Invalid value ${value.text} of the setting, which needs ${cpp}` : undefined;
+    default:
+      return undefined;
+  }
+  // Seconds are kept as microseconds in an Int64.
+  if (type === "Seconds" && Math.abs(v) * 1e6 > 2 ** 63) return `Cannot convert seconds to microseconds: the setting's value in seconds is too big: ${Math.abs(v) >= 1e16 ? v.toExponential() : String(v)}`;
+  return undefined;
+}
+
 function boolProblem(value: Value): string | undefined {
   switch (value.t) {
     case "Bool":
@@ -174,6 +240,8 @@ function boolProblem(value: Value): string | undefined {
     }
     case "Null":
       return "Invalid value NULL of the setting, which needs bool";
+    case "Map":
+      return value.pairs ? `Invalid value ${value.text} of the setting, which needs bool` : undefined;
     default:
       return undefined;
   }
@@ -200,6 +268,7 @@ function integerProblem(integer: NonNullable<ReturnType<typeof integerOf>>, valu
       if (integer.maxThreads && /^'?auto/.test(value.v)) return undefined;
       if (integer.auto && value.v.toLowerCase() === "auto") return undefined;
       if (value.v === "") return "Attempt to read after eof";
+      if (range.min === 0n && value.v.startsWith("-")) return "Unsigned type must not contain '-' symbol";
       if (!(integer.suffix ? INTEGER_STRING : PLAIN_INTEGER_STRING).test(value.v)) {
         const at = /^[+-]?\d*/.exec(value.v)![0].length;
         return /^[+-]?\d/.test(value.v) || at === 0 ? `Cannot parse input: expected 'eof' before: '${value.v.slice(at)}'` : undefined;
@@ -208,7 +277,9 @@ function integerProblem(integer: NonNullable<ReturnType<typeof integerOf>>, valu
       break;
     }
     case "Null":
-      return `Invalid value NULL of the setting, which needs ${range.cpp}`;
+    case "Map":
+      if (value.t === "Map" && !value.pairs) return undefined;
+      return `Invalid value ${value.text} of the setting, which needs ${range.cpp}`;
     default:
       return undefined;
   }

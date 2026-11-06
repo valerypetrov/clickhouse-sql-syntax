@@ -55,6 +55,54 @@ describe("checkOptions", () => {
     assert.deepEqual(problems("ALTER TABLE t MODIFY SETTING index_granularity = 8192, s3queue_processing_threads_num = 2"), []);
   });
 
+  test("checks maps given to scalar settings, URIs and the compatibility version", () => {
+    assert.deepEqual(problems("SET max_threads = {'a':'b', 'it''s':'x'}"), [
+      "error: Invalid value [('a', 'b'), ('it\\'s', 'x')] of the setting, which needs unsigned long long: while setting 'max_threads' to value [('a', 'b'), ('it\\'s', 'x')].",
+    ]);
+    assert.deepEqual(problems("SET use_uncompressed_cache = {}"), ["error: Invalid value [] of the setting, which needs bool: while setting 'use_uncompressed_cache' to value []."]);
+    assert.deepEqual(problems("SELECT 1 SETTINGS max_execution_time = {'a':'b'}"), [
+      "error: Invalid value [('a', 'b')] of the setting, which needs double: while setting 'max_execution_time' to value [('a', 'b')].",
+    ]);
+    assert.deepEqual(problems("SET opentelemetry_start_keeper_trace_probability = NULL"), [
+      "error: Invalid value NULL of the setting, which needs float: while setting 'opentelemetry_start_keeper_trace_probability' to value NULL.",
+    ]);
+    assert.deepEqual(problems("SET log_comment = {'a':'b'}"), ["error: Bad get: has Map, requested String: while setting 'log_comment' to value [('a', 'b')]."]);
+    assert.deepEqual(problems("CREATE TABLE t (x UInt64) ENGINE = MergeTree ORDER BY x SETTINGS index_granularity = {'a':'b'}"), [
+      "error: Invalid value [('a', 'b')] of the setting, which needs unsigned long long: while setting 'index_granularity' to value [('a', 'b')].",
+    ]);
+    assert.deepEqual(problems("SET format_avro_schema_registry_url = 1"), [
+      "error: Bad get: has UInt64, requested String: while setting 'format_avro_schema_registry_url' to value 1.",
+    ]);
+    assert.deepEqual(problems("SET format_avro_schema_registry_url = 'a b'"), [
+      "error: Cannot parse URI: Bad URI syntax: URI contains invalid characters: while setting 'format_avro_schema_registry_url' to value 'a b'.",
+    ]);
+    assert.deepEqual(problems("SET compatibility = 'abc'"), [
+      "error: Cannot parse ClickHouse version here: abc: in attempt to set the value of setting 'compatibility' to 'abc'.",
+    ]);
+    assert.deepEqual(problems("SET totals_auto_threshold = '10K'"), [
+      "error: Cannot parse input: expected 'eof' before: 'K': while setting 'totals_auto_threshold' to value '10K'.",
+    ]);
+    assert.deepEqual(problems("SET max_block_size = '-1'"), ["error: Unsigned type must not contain '-' symbol: while setting 'max_block_size' to value '-1'."]);
+    assert.deepEqual(problems("SET max_threads = '-1'"), ["error: Unsigned type must not contain '-' symbol: while setting 'max_threads' to value '-1'."]);
+    assert.deepEqual(problems("SET connect_timeout = ''"), ["error: Cannot read floating point value here: : while setting 'connect_timeout' to value ''."]);
+    assert.deepEqual(problems("SET limit = '-inf'"), ["error: Float setting value must be finite, got -inf: while setting 'limit' to value '-inf'."]);
+    assert.deepEqual(problems("SET totals_auto_threshold = 16777217"), [
+      "error: Field value 16777217 is out of range of float type: while setting 'totals_auto_threshold' to value 16777217.",
+    ]);
+    assert.deepEqual(problems("SET connect_timeout = 9223372036855"), [
+      "error: Cannot convert seconds to microseconds: the setting's value in seconds is too big: 9223372036855: while setting 'connect_timeout' to value 9223372036855.",
+    ]);
+    assert.deepEqual(problems("SET query_plan_read_in_order_through_join = 2"), [
+      "error: Field value 2 is out of range of bool type: while setting 'query_plan_read_in_order_through_join' to value 2.",
+    ]);
+    for (const ok of ["SET limit = 16777217", "SET connect_timeout = '1e3'", "SET connect_timeout = 9223372036854", "SET query_plan_read_in_order_through_join = 'force'",
+      "SET promql_evaluation_time = 'auto'", "SET os_thread_priority = '-1'", "SET max_block_size = '+5'", "SET totals_auto_threshold = '.5'"])
+      assert.deepEqual(problems(ok), [], ok);
+    for (const ok of ["SET compatibility = '24.8'", "SET compatibility = ''", "SET compatibility = '+1.2.3.4.5'", "SET format_avro_schema_registry_url = 'http://a:8081'",
+      "SET format_avro_schema_registry_url = ''", "SET additional_table_filters = {}"])
+      assert.deepEqual(problems(ok), [], ok);
+  });
+
   test("checks EXPLAIN, BACKUP and RESTORE settings", () => {
     assert.match(problems("EXPLAIN PLAN zz = 1 SELECT 1")[0]!, /^error: Unknown setting "zz" for EXPLAIN PLAN query\. Supported settings: actions, /);
     assert.deepEqual(problems("EXPLAIN PLAN actions = 2 SELECT 1"), ['error: Invalid value 2 for setting "actions". Expected boolean type.']);
@@ -78,6 +126,56 @@ describe("checkOptions", () => {
     assert.deepEqual(problems(table("ZSTD, Delta")).map((p) => p.slice(0, 58)), ["warning: The combination of compression codecs ZSTD, Delta"]);
     assert.deepEqual(problems(`SET allow_suspicious_codecs = 1; ${table("ZSTD, Delta")}`), []);
     assert.deepEqual(problems(`ATTACH TABLE t (x UInt64 CODEC(Zzz)) ENGINE = MergeTree ORDER BY x`), []);
+  });
+
+  test("checks that each codec takes the types the column holds", () => {
+    const errors = (sql: string) => problems(sql).filter((p) => p.startsWith("error"));
+    const table = (column: string) => `CREATE TABLE t (${column}) ENGINE = MergeTree ORDER BY tuple()`;
+    assert.deepEqual(errors(table("x String CODEC(Delta, LZ4)")), ["error: Codec Delta is not applicable for String because the data type is not of fixed size."]);
+    assert.deepEqual(errors(table("x LowCardinality(String) CODEC(T64, LZ4)")), ["error: T64 codec is not supported for specified type String."]);
+    assert.deepEqual(errors(table("x Map(String, UInt64) CODEC(DoubleDelta)")), ["error: Codec DoubleDelta is not applicable for String because the data type is not numeric."]);
+    assert.deepEqual(errors(table("x Tuple(a UInt64, b Float64) CODEC(T64, LZ4)")), ["error: T64 codec is not supported for specified type Float64."]);
+    assert.deepEqual(errors(table("x UInt64 CODEC(FPC)")), ["error: Codec 'FPC' is not applicable for UInt64 because the data type is not Float*."]);
+    assert.deepEqual(errors(table("x DOUBLE CODEC(T64, LZ4)")), ["error: T64 codec is not supported for specified type Float64."]);
+    assert.deepEqual(errors("ALTER TABLE t MODIFY COLUMN x String CODEC(Gorilla, LZ4)"), ["error: Codec Gorilla is not applicable for String because the data type is not of fixed size."]);
+    // A codec given its width does not look at the type, and a column without a written type is left alone.
+    for (const ok of ["x String CODEC(Delta(8), LZ4)", "x Nullable(UInt64) CODEC(T64, LZ4)", "x Array(Float32) CODEC(FPC, LZ4)", "x DEFAULT 'a' CODEC(Delta, LZ4)",
+      "x INT UNSIGNED CODEC(Delta, LZ4)", "x UInt64 DEFAULT y::String CODEC(Delta, LZ4)", "x DateTime64(3) CODEC(Delta, LZ4)", "x String CODEC(ZSTD)"])
+      assert.deepEqual(errors(table(ok)), [], ok);
+    assert.deepEqual(errors("ALTER TABLE t MODIFY COLUMN x CODEC(Delta, LZ4)"), []);
+  });
+
+  test("checks the parameters of Quantized and SZ3", () => {
+    const errors = (codec: string) => problems(`CREATE TABLE t (x Array(Float32) CODEC(${codec})) ENGINE = MergeTree ORDER BY tuple()`).filter((p) => p.startsWith("error"));
+    assert.deepEqual(errors("Quantized(1)"), ["error: Codec Quantized requires 2 to 4 parameters: Quantized(method, dimensions[, bits[, m]]) ."]);
+    assert.deepEqual(errors("Quantized(1, 2)"), ["error: First argument of codec Quantized (method) must be a string literal."]);
+    assert.deepEqual(errors("Quantized('int8', 1.5)"), ["error: Second argument of codec Quantized (dimensions) must be an unsigned integer."]);
+    for (const ok of ["Quantized('product', 64, 8, 8)", "Quantized('rabitq', 64)", "Quantized('int8', 8, 4)"]) assert.deepEqual(errors(ok), [], ok);
+    const sz3 = (codec: string) => problems(`CREATE TABLE t (x Float64 CODEC(${codec})) ENGINE = MergeTree ORDER BY tuple()`).filter((p) => p.startsWith("error"));
+    assert.deepEqual(sz3("SZ3(1)"), ["error: Codec SZ3 must have 0 or 3 arguments but 1 arguments are given."]);
+    for (const ok of ["SZ3", "SZ3('ALGO_INTERP', 'NORM', 0.1)"]) assert.deepEqual(sz3(ok), [], ok);
+  });
+
+  test("checks the arguments of the text and vector_similarity indexes", () => {
+    const text = (args: string) => problems(`CREATE TABLE t (x String, INDEX i x TYPE text${args} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`);
+    assert.deepEqual(text(""), ["error: Text index argument 'tokenizer' is required."]);
+    assert.deepEqual(text("(1)"), ["error: Cannot mix key-value pair and single argument as text index arguments."]);
+    assert.deepEqual(text("(tokenizer = zz)"), ["error: Unknown tokenizer: 'zz'."]);
+    assert.deepEqual(text("(tokenizer = array, zz = 1, aa = 2)"), ["error: Unexpected text index arguments: aa, zz."]);
+    assert.deepEqual(text("(tokenizer = array, tokenizer = ngrams)"), ["error: Text index 'tokenizer' argument is specified more than once."]);
+    assert.deepEqual(text("(tokenizer = array, posting_list_block_size = 0)"), ["error: Text index argument 'posting_list_block_size' must be greater than 0, but got 0."]);
+    for (const ok of ["(tokenizer = ngrams(3))", "(tokenizer = 'splitByNonAlpha', preprocessor = lower(x))", "(tokenizer = array, dictionary_block_size = 512)"])
+      assert.deepEqual(text(ok), [], ok);
+    const vector = (args: string) => problems(`CREATE TABLE t (x Array(Float32), INDEX i x TYPE vector_similarity${args} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`);
+    assert.deepEqual(vector("('hnsw', 'L2Distance', 3, 'bf16')"), ["error: Vector similarity index must have three or six arguments."]);
+    for (const ok of ["('hnsw', 'L2Distance', 3)", "('hnsw', 'cosineDistance', 3, 'i8', 16, 100)"]) assert.deepEqual(vector(ok), [], ok);
+  });
+
+  test("checks the compression level of INTO OUTFILE", () => {
+    assert.deepEqual(problems("SELECT 1 INTO OUTFILE 'f' COMPRESSION 'zstd' LEVEL 23"), ["error: Invalid compression level, must be positive integer in range 1-22."]);
+    assert.deepEqual(problems("SELECT 1 INTO OUTFILE 'f' COMPRESSION 'xz' LEVEL 0"), ["error: Invalid compression level, must be positive integer in range 1-9."]);
+    for (const ok of ["SELECT 1 INTO OUTFILE 'f' COMPRESSION 'gzip' LEVEL 12", "SELECT 1 INTO OUTFILE 'f' COMPRESSION 'lz4' LEVEL 0x05", "SELECT 1 INTO OUTFILE 'f.gz' LEVEL 3"])
+      assert.deepEqual(problems(ok), [], ok);
   });
 
   test("checks skipping index and statistics types", () => {

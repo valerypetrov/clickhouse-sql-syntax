@@ -42,6 +42,17 @@ describe("test hints", () => {
     for (const [text, at, message] of cases) assert.deepEqual(problems(text), [[at, "error", message]], text);
   });
 
+  test("fixes an unknown error name with the closest names", () => {
+    const fixes = (text: string) => checkHints(text).flatMap((p) => (p.fixes ?? []).map((f) => `${f.preferred ? "*" : ""}${text.slice(0, f.edits[0]!.start)}${f.edits[0]!.newText}${text.slice(f.edits[0]!.end)}`));
+    assert.deepEqual(fixes("SELECT 1; -- { serverError UNKNOWN_TABL }"), [
+      "*SELECT 1; -- { serverError UNKNOWN_TABLE }",
+      "SELECT 1; -- { serverError UNKNOWN_TYPE }",
+      "SELECT 1; -- { serverError UNKNOWN_USER }",
+    ]);
+    assert.deepEqual(fixes("SELECT 1; -- { serverError 60, SYNTAX_EROR }"), ["*SELECT 1; -- { serverError 60, SYNTAX_ERROR }", "SELECT 1; -- { serverError 60, SYSTEM_ERROR }"]);
+    assert.deepEqual(fixes("SELECT 1; -- { serverError NO_SUCH_THING_AT_ALL }"), []);
+  });
+
   test("warns when serverError expects the error of a statement that the client rejects", () => {
     const [problem] = problems("SELECT (; -- { serverError SYNTAX_ERROR }\nSELECT 1;");
     assert.deepEqual(problem!.slice(0, 2), ["{ serverError SYNTAX_ERROR }", "warning"]);

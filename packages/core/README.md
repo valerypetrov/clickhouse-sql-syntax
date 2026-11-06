@@ -143,6 +143,22 @@ the database may have a column of that name, there are no results, and `rename()
 the new name where ClickHouse would, and refuses one that would change what the query means. With `{ cache }`, the
 statements come from the `ParseCache` of `checkWithRoles()`.
 
+### objects(sql), objectReferences(sql, options?) and objectDefinitions(reference, file, files)
+
+For tables, views and dictionaries across files: what the CREATE statements of a file make, where statements name a
+table or a database, and which objects a name may mean.
+
+```ts
+objects("USE db; CREATE TABLE t (x UInt8) ENGINE = Memory"); // [{ kind: "table", name: "t", database: "db", temporary: false, ... }]
+objectReferences("SELECT * FROM db.t"); // [{ kind: "database", name: "db", ... }, { kind: "table", name: "t", database: "db", qualified: true, ... }]
+```
+
+`objects()` reads only the tokens, so it is fast enough for every file of a folder. `objectReferences()` takes the
+names from the parse, as in `FROM db.t`, `INSERT INTO t` or `ALTER TABLE t`, leaves out a name that a CTE of the
+statement takes, and gives a name without a database the one that an earlier `USE` sets. `objectDefinitions()` runs
+each file as a session of its own: a temporary table first, then in the same file the last CREATE before the name,
+and where the database is not known, every object of that name.
+
 ### highlight(sql) and tokenize(sql)
 
 ```ts

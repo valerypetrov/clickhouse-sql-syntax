@@ -7,7 +7,8 @@
 // the binary by running statements in clickhouse local.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -404,6 +405,8 @@ interface CallRule {
   /** The message for too many, with {} for the count. */
   tooMany?: string;
   tooFew?: string;
+  /** Counts between min and max that ClickHouse refuses, with its message. */
+  gaps?: [number, string][];
   parameters: ParameterRule[];
 }
 
@@ -413,50 +416,79 @@ function template(message: string, value: string): string {
   return message.replace(new RegExp(`(given |: |')${escaped}(?=('|\\.?$|\\)|,))`), "$1{}");
 }
 
+const clean = (o: Outcome | undefined) => o?.message?.replace(/: When validating secondary index `\w+`/, "");
+
+/** What ClickHouse takes at one position of a call, from the probes there and the values its messages list. */
+function parameterRule(at: (value: string) => string, given: string | undefined, setup: string[]): { rule: ParameterRule; taken: string } | undefined {
+  const kindOf = (text: string): Probe["kind"] => (/^'/.test(text) ? "string" : /^[A-Za-z]/.test(text) ? "word" : text.includes(".") ? "float" : "int");
+  const tried = given === undefined || probes.some((p) => p.text === given) ? probes : [...probes, { kind: kindOf(given), text: given }];
+  // A value that a setting would allow is taken, as the setting may be on where the statement runs.
+  const outcomes = probe(clickhouse, tried.map((p) => at(p.text)), { setup }).map((o) => (/\bEnable it with\b/.test(o.message ?? "") ? { ok: true } : o));
+  if (!outcomes.some((o) => o.ok)) return undefined;
+  const rule: ParameterRule = { ints: [], floats: [], messages: {} };
+  tried.forEach((p, i) => {
+    const ok = outcomes[i]!.ok;
+    if (p.kind === "int") rule.ints.push([Number(p.text), ok]);
+    else if (p.kind === "float") rule.floats.push([Number(p.text), ok]);
+    else if (ok && !p.text.includes("zz_probe")) (rule[p.kind === "string" ? "strings" : "words"] ??= []).push(p.text.replace(/'/g, "").toLowerCase());
+    if (!ok && outcomes[i]!.message) {
+      const key = p.kind === "int" ? (Number(p.text) < 0 ? "negative" : "int") : p.kind;
+      const value = p.kind === "string" ? p.text.slice(1, -1) : p.text;
+      rule.messages[key] ??= template(clean(outcomes[i])!, value);
+    }
+  });
+  rule.ints.sort((a, b) => a[0] - b[0]);
+  rule.floats.sort((a, b) => a[0] - b[0]);
+  // An unknown string or word is refused when the refusal is about its kind, or when the probes took one of
+  // their own values and the base call has no value they lack.
+  for (const kind of ["string", "word"] as const) {
+    const unknown = tried.findIndex((p) => p.kind === kind && p.text.includes("zz_probe"));
+    if (outcomes[unknown]!.ok) continue;
+    const message = clean(outcomes[unknown]) ?? "";
+    const covered = !(given !== undefined && tried.length > probes.length && kindOf(given) === kind);
+    const ofKind = outcomes.some((o, i) => !o.ok && (tried[i]!.kind === "int" || tried[i]!.kind === "float") && clean(o) === message);
+    const takes = (k: Probe["kind"]) => tried.some((p, i) => p.kind === k && outcomes[i]!.ok);
+    // A bare word refused as the unknown string is, where strings are taken, is read as a string.
+    const asString = kind === "word" && takes("string") && message === clean(outcomes[tried.findIndex((p) => p.kind === "string" && p.text.includes("zz_probe"))]);
+    const noneOfKind = !message.includes("zz_probe") && !takes(kind) && !asString;
+    const refused = ofKind || noneOfKind || (covered && (rule[kind === "string" ? "strings" : "words"]?.length ?? 0) > 0);
+    if (refused) rule[kind === "string" ? "stringsRefused" : "wordsRefused"] = true;
+  }
+  const taken = tried.find((p, i) => outcomes[i]!.ok && p.kind === "int" && Number(p.text) > 0) ?? tried.find((_, i) => outcomes[i]!.ok)!;
+  return { rule, taken: taken.text };
+}
+
 /** The parameters `call(params)` takes, asked of ClickHouse at each position with the others at a value it takes. */
 function callRule(call: (params: string[] | undefined) => string, base: string[], setup: string[], limit = 4): CallRule | undefined {
-  const verdict = (params: string[] | undefined) => probe(clickhouse, [call(params)], { setup })[0]!;
   const parameters: ParameterRule[] = [];
   const valid = [...base];
   for (let position = 0; position < limit; position++) {
-    const statements = probes.map((p) => call([...valid.slice(0, position), p.text, ...valid.slice(position + 1)]));
-    const outcomes = probe(clickhouse, statements, { setup });
-    if (!outcomes.some((o) => o.ok)) break;
-    const rule: ParameterRule = { ints: [], floats: [], messages: {} };
-    probes.forEach((p, i) => {
-      const ok = outcomes[i]!.ok;
-      if (p.kind === "int") rule.ints.push([Number(p.text), ok]);
-      else if (p.kind === "float") rule.floats.push([Number(p.text), ok]);
-      else if (p.text.includes("zz_probe")) rule[p.kind === "string" ? "stringsRefused" : "wordsRefused"] = !ok;
-      else if (ok) (rule[p.kind === "string" ? "strings" : "words"] ??= []).push(p.text.replace(/'/g, "").toLowerCase());
-      if (!ok && outcomes[i]!.message) {
-        const key = p.kind === "int" ? (Number(p.text) < 0 ? "negative" : "int") : p.kind;
-        const message = outcomes[i]!.message!.replace(/: When validating secondary index `\w+`/, "");
-        const value = p.kind === "string" ? p.text.slice(1, -1) : p.text;
-        rule.messages[key] ??= template(message, value);
-      }
-    });
-    parameters.push(rule);
-    if (valid.length <= position) {
-      const ok = probes.find((p, i) => outcomes[i]!.ok && p.kind === "int" && Number(p.text) > 0) ?? probes.find((_, i) => outcomes[i]!.ok)!;
-      valid.push(ok.text);
-    }
+    const found = parameterRule((value) => call([...valid.slice(0, position), value, ...valid.slice(position + 1)]), valid[position], setup);
+    if (!found) break;
+    parameters.push(found.rule);
+    if (valid.length <= position) valid.push(found.taken);
   }
-  const counts = [0, 1, 2, 3, 4, 5, 6].map((n) => (n <= valid.length ? valid.slice(0, n) : [...valid, ...Array(n - valid.length).fill(valid[valid.length - 1] ?? "1")]));
+  const counts = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => (n <= valid.length ? valid.slice(0, n) : [...valid, ...Array(n - valid.length).fill(valid[valid.length - 1] ?? "1")]));
   const countOutcomes = probe(clickhouse, [call(undefined), ...counts.slice(1).map((c) => call(c))], { setup });
   const okCounts = countOutcomes.map((o, n) => (o.ok ? n : -1)).filter((n) => n >= 0);
   if (!okCounts.length) return undefined;
   const min = Math.min(...okCounts);
-  const max = Math.max(...okCounts);
-  const clean = (o: Outcome | undefined) => o?.message?.replace(/: When validating secondary index `\w+`/, "");
+  let max = Math.max(...okCounts);
+  // A message such as "requires 2 to 4 parameters" tells the most it takes when the probes could not reach it.
+  const stated = countOutcomes.map((o) => /\b\d+ to (\d+) param/.exec(clean(o) ?? "")).find(Boolean);
+  if (stated && Number(stated[1]) > max) max = Number(stated[1]);
   // A codec that took no probe value may still take values the probes do not have, unless ClickHouse says it takes none.
   const tooManyMessage = clean(countOutcomes[max + 1]);
   if (max === 0 && !/\b(0 param|no param|not have param|cannot have arguments)/i.test(tooManyMessage ?? "")) return { min, max: 99, parameters: [] };
+  // Counts between the least and the most that ClickHouse refuses with the message of a wrong count.
+  const countMessage = (n: number) => clean(countOutcomes[n])?.replace(new RegExp(`\\b${n}\\b`), "{}");
+  const gaps = okCounts.length ? [...Array(max - min).keys()].map((k) => k + min).filter((n) => !countOutcomes[n]?.ok && n < countOutcomes.length - 1 && countMessage(n) === countMessage(max + 1)) : [];
   return {
     min,
     max,
-    tooMany: max + 1 < countOutcomes.length ? (clean(countOutcomes[max + 1]) && template(clean(countOutcomes[max + 1])!, String(max + 1))) : undefined,
+    tooMany: max + 1 < countOutcomes.length ? (tooManyMessage && template(tooManyMessage, String(max + 1))) : undefined,
     tooFew: min > 0 ? clean(countOutcomes[min - 1]) : undefined,
+    gaps: gaps.length ? gaps.map((n) => [n, clean(countOutcomes[n])!] as [number, string]) : undefined,
     parameters: parameters.slice(0, max),
   };
 }
@@ -479,13 +511,48 @@ codecRows.forEach((c, i) => {
   const gate = /You can enable it with the '(\w+)' setting/.exec(codecGates[i]!.message ?? "");
   if (gate) codecSetup.push(`SET ${gate[1]} = 1`);
 });
+// A call that each codec with required parameters takes, to probe one parameter at a time.
+const CODEC_BASE: Record<string, { column: string; params: string[] }> = {
+  Quantized: { column: "Array(Float32)", params: ["'int8'", "8"] },
+  SZ3: { column: "Float64", params: ["'ALGO_LORENZO_REG'", "'REL'", "0.01"] },
+};
+// The data types that a column can have as they are, to ask each codec about.
+const columnTypes = rows<{ name: string }>("SELECT name FROM system.data_type_families WHERE alias_to = '' ORDER BY name").map((r) => r.name);
+const typeOutcomes = probe(clickhouse, columnTypes.map((c) => `CREATE TABLE p_${id()} (x ${c}) ENGINE = Memory`));
+const usableTypes = columnTypes.filter((_, i) => typeOutcomes[i]!.ok);
+
+/** The types a codec refuses as `call`, grouped by ClickHouse's message with {} for the type; none when it refuses all of them. */
+function refusedTypes(call: string): { message: string; types: string[] }[] | undefined {
+  const outcomes = probe(clickhouse, usableTypes.map((t) => `CREATE TABLE p_${id()} (x ${t} CODEC(${call})) ENGINE = Memory`), { setup: codecSetup });
+  if (!outcomes.some((o) => o.ok)) return undefined;
+  const groups = new Map<string, string[]>();
+  usableTypes.forEach((t, i) => {
+    const message = outcomes[i]!.message;
+    // Only a refusal that names the type is about it.
+    if (outcomes[i]!.ok || !message || !new RegExp(`\\b${t}\\b`).test(message)) return;
+    const key = message.replace(new RegExp(`\\b${t}\\b`), "{}");
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  });
+  return [...groups].map(([message, types]) => ({ message, types }));
+}
+
 const codecs = codecRows.map((c, i) => {
   const gate = /You can enable it with the '(\w+)' setting/.exec(codecGates[i]!.message ?? "")?.[1];
   // The first column type that the codec takes without parameters, or with its first probe value.
   const type = ["UInt64", "Float64", "String", "Array(Float32)"].find((t) => probe(clickhouse, [`CREATE TABLE p_${id()} (x ${t} CODEC(${c.name})) ENGINE = Memory`], { setup: codecSetup })[0]!.ok);
-  const rule = c.name === "Multiple" ? undefined : callRule((params) => `CREATE TABLE p_${id()} (x ${type ?? "UInt64"} CODEC(${c.name}${params ? `(${params.join(", ")})` : ""})) ENGINE = Memory`, [], codecSetup, 3);
+  const base = CODEC_BASE[c.name];
+  const rule = c.name === "Multiple" ? undefined : callRule((params) => `CREATE TABLE p_${id()} (x ${base?.column ?? type ?? "UInt64"} CODEC(${c.name}${params ? `(${params.join(", ")})` : ""})) ENGINE = Memory`, base?.params ?? [], codecSetup, 3);
   const refused = c.name === "Multiple" ? probe(clickhouse, [`CREATE TABLE p_${id()} (x UInt64 CODEC(Multiple)) ENGINE = Memory`])[0]!.message : undefined;
-  console.log(`codec ${c.name}: ${type ?? "no type"}, ${rule ? `${rule.min}..${rule.max} parameters` : "parameters not known"}`);
+  // The types it refuses written bare and with parameters, which some codecs use instead of the type.
+  const p0 = rule?.parameters[0];
+  const first = p0?.ints.find(([v, ok]) => ok && v > 0)?.[0] ?? (p0?.strings?.[0] !== undefined ? `'${p0.strings[0]}'` : p0?.words?.[0]);
+  const params = base ? base.params : first !== undefined && rule!.min <= 1 && rule!.max >= 1 ? [String(first)] : undefined;
+  const types = c.name === "Multiple" ? undefined : refusedTypes(c.name);
+  const withParameters = params ? refusedTypes(`${c.name}(${params.join(", ")})`) : undefined;
+  // When the parameters change nothing, the refusals hold for any of them.
+  const same = JSON.stringify(withParameters) === JSON.stringify(types);
+  const typesWithParameters = withParameters?.map((r) => (same ? r : { ...r, parameters: params!.length }));
+  console.log(`codec ${c.name}: ${type ?? "no type"}, ${rule ? `${rule.min}..${rule.max} parameters` : "parameters not known"}, refuses ${types?.flatMap((g) => g.types).length ?? "?"} types bare, ${typesWithParameters?.flatMap((g) => g.types).length ?? "?"} with parameters`);
   return {
     name: c.name,
     description: c.description,
@@ -498,6 +565,8 @@ const codecs = codecRows.map((c, i) => {
     type,
     refused,
     rule,
+    types,
+    typesWithParameters,
   };
 });
 
@@ -515,9 +584,37 @@ const INDEX_BASE: Record<string, { column: string; params?: string[] }> = {
   ngrambf_v1: { column: "String", params: ["3", "256", "2", "0"] },
   tokenbf_v1: { column: "String", params: ["256", "2", "0"] },
   sparse_grams: { column: "String", params: ["3", "100", "256", "2", "0"] },
+  vector_similarity: { column: "Array(Float32)", params: ["'hnsw'", "'L2Distance'", "3", "'bf16'", "16", "100"] },
 };
 const indexRows = rows<IndexRow>("SELECT name, description, syntax FROM system.data_skipping_index_types ORDER BY name");
 const unknownIndex = probe(clickhouse, [`CREATE TABLE p_${id()} (x UInt64, INDEX i x TYPE zz_probe GRANULARITY 1) ENGINE = MergeTree ORDER BY x`])[0]!;
+// The named arguments of the text index: the names come from its source, and what each takes from ClickHouse.
+function textArguments(): object | undefined {
+  const file = join(args.src!, "src/Storages/MergeTree/MergeTreeIndexText.cpp");
+  if (!existsSync(file)) return undefined;
+  const statement = (list: string) => `CREATE TABLE p_${id()} (x String, INDEX i x TYPE text${list} GRANULARITY 1) ENGINE = MergeTree ORDER BY x`;
+  const [none, positional, unknown, duplicate, tokenizer] = probe(clickhouse, [
+    statement(""), statement("(1)"), statement("(tokenizer = splitByNonAlpha, zz_probe = 1)"),
+    statement("(tokenizer = splitByNonAlpha, tokenizer = splitByNonAlpha)"), statement("(tokenizer = zz_probe)"),
+  ]).map(clean);
+  const required = [...(none ?? "").matchAll(/argument '(\w+)' is required/g)].map((m) => m[1]!);
+  const names = [...readFileSync(file, "utf8").matchAll(/static const String ARGUMENT_\w+ = "(\w+)";/g)].map((m) => m[1]!);
+  const base = "tokenizer = splitByNonAlpha";
+  const taken = probe(clickhouse, names.map((m) => statement(`(${base}, ${m} = 1)`)));
+  const known = names.filter((n, i) => n === "tokenizer" || !/^Unexpected/.test(clean(taken[i]) ?? ""));
+  const values = Object.fromEntries(known.filter((n) => n !== "tokenizer").map((n) => [n, parameterRule((v) => statement(`(${base}, ${n} = ${v})`), undefined, [])?.rule ?? null]));
+  return {
+    required,
+    missing: none?.replace(/'(\w+)'/, "'{}'"),
+    positional,
+    unknown: unknown?.replace("zz_probe", "{}"),
+    duplicate: duplicate?.replace("'tokenizer'", "'{}'"),
+    arguments: values,
+    tokenizers: rows<{ name: string }>("SELECT name FROM system.tokenizers ORDER BY name").map((r) => r.name),
+    unknownTokenizer: tokenizer?.replace("zz_probe", "{}"),
+  };
+}
+
 const indexTypes = indexRows.map((r) => {
   const base = INDEX_BASE[r.name];
   const rule = base &&
@@ -529,6 +626,7 @@ const indexTypes = indexRows.map((r) => {
     syntax: r.syntax.trim(),
     description: summary(r.description, 300),
     rule,
+    named: r.name === "text" ? textArguments() : undefined,
     // Only for a type that no table can use any more, as hypothesis.
     refused: refused && /no longer supported/.test(refused) ? refused.replace(/: When validating secondary index `\w+`/, "") : undefined,
   };
@@ -593,6 +691,24 @@ const explain = EXPLAIN_KINDS.flatMap((kind, i) => {
   }];
 });
 
+// ---------------------------------------------------------------- Compression levels of INTO OUTFILE
+
+const outDirectory = mkdtempSync(join(tmpdir(), "options-"));
+const outfile = (method: string, level: string) => `SELECT 1 INTO OUTFILE '${join(outDirectory, "f")}' TRUNCATE COMPRESSION '${method}' LEVEL ${level}`;
+const unknownMethod = probe(clickhouse, [outfile("zz_probe", "1")])[0]!.message ?? "";
+const methods = [...(/Only (.*) are supported/.exec(unknownMethod)?.[1] ?? "").matchAll(/'(\w+)'/g)].map((m) => m[1]!).filter((m) => m !== "auto");
+const levels = [...Array(30).keys()];
+const levelOutcomes = probe(clickhouse, methods.flatMap((m) => levels.map((l) => outfile(m, String(l)))));
+rmSync(outDirectory, { recursive: true, force: true });
+let levelMessage = "";
+const compressionLevels = Object.fromEntries(methods.flatMap((m, i) => {
+  const taken = levels.filter((_, j) => levelOutcomes[i * levels.length + j]!.ok);
+  const refused = levelOutcomes.slice(i * levels.length, (i + 1) * levels.length).find((o) => !o.ok)?.message;
+  if (!taken.length || taken.some((l, j) => j > 0 && l !== taken[j - 1]! + 1)) return [];
+  levelMessage ||= refused?.replace(/\d+-\d+/, "{min}-{max}") ?? "";
+  return [[m, [taken[0]!, taken[taken.length - 1]!]]];
+}));
+
 write("options.ts", "system.codecs, system.data_skipping_index_types, system.database_engines and clickhouse local", [
   "export interface ParameterRule {",
   "  /** Numbers ClickHouse was asked about, with whether it took them; a value between two that agree gets their verdict. */",
@@ -614,6 +730,8 @@ write("options.ts", "system.codecs, system.data_skipping_index_types, system.dat
   "  /** ClickHouse's message for too many parameters, with {} for their count. */",
   "  tooMany?: string;",
   "  tooFew?: string;",
+  "  /** Counts between min and max that ClickHouse refuses, with its message. */",
+  "  gaps?: readonly (readonly [number, string])[];",
   "  parameters: readonly ParameterRule[];",
   "}",
   "",
@@ -634,6 +752,30 @@ write("options.ts", "system.codecs, system.data_skipping_index_types, system.dat
   "  /** ClickHouse's message when it cannot be written in CODEC at all. */",
   "  refused?: string;",
   "  rule?: CallRule;",
+  "  /** The column types it refuses, by ClickHouse's message with {} for the type, written without parameters and with them. */",
+  "  types?: readonly TypeRefusal[];",
+  "  typesWithParameters?: readonly TypeRefusal[];",
+  "}",
+  "",
+  "export interface TypeRefusal {",
+  "  message: string;",
+  "  types: readonly string[];",
+  "  /** The number of parameters it was written with; none when any parameters give the same refusals. */",
+  "  parameters?: number;",
+  "}",
+  "",
+  "/** The arguments of an index type written as name = value, as those of text. */",
+  "export interface NamedArguments {",
+  "  required: readonly string[];",
+  "  /** ClickHouse's messages, with {} for the name or names. */",
+  "  missing?: string;",
+  "  positional?: string;",
+  "  unknown?: string;",
+  "  duplicate?: string;",
+  "  /** The names it takes, with what each value may be; null when its values are not known. */",
+  "  arguments: Readonly<Record<string, ParameterRule | null>>;",
+  "  tokenizers: readonly string[];",
+  "  unknownTokenizer?: string;",
   "}",
   "",
   "export interface IndexTypeInfo {",
@@ -641,6 +783,7 @@ write("options.ts", "system.codecs, system.data_skipping_index_types, system.dat
   "  syntax?: string;",
   "  description?: string;",
   "  rule?: CallRule;",
+  "  named?: NamedArguments;",
   "  /** ClickHouse's message for a type that no table can use any more. */",
   "  refused?: string;",
   "}",
@@ -668,6 +811,9 @@ write("options.ts", "system.codecs, system.data_skipping_index_types, system.dat
   `/** The settings that a column can have in SETTINGS (...), and ClickHouse's message for others, with {} for the name. */`,
   `export const COLUMN_SETTINGS: readonly string[] = ${JSON.stringify(columnSettings)};`,
   `export const COLUMN_SETTING_MESSAGE = ${JSON.stringify(columnUnknown)};`,
+  "/** The levels that INTO OUTFILE takes after COMPRESSION, by method, and ClickHouse's message for others. */",
+  `export const COMPRESSION_LEVELS: Readonly<Record<string, readonly [number, number]>> = ${JSON.stringify(compressionLevels)};`,
+  `export const COMPRESSION_LEVEL_MESSAGE = ${JSON.stringify(levelMessage)};`,
   "",
   "export const CODECS: readonly CodecInfo[] = [",
   ...codecs.map((c) => `  ${compact(c)},`),

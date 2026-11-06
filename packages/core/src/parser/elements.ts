@@ -127,6 +127,7 @@ const UUID_TEXT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 /** ParserCompoundIdentifier: a.b.c, json.a.:Type, or db.table UUID '...'. */
 export function parseCompoundIdentifier(p: P, tableWithUuid = false, allowParam = false): Ast | null {
   return base(p, "compound identifier", () => {
+    const first = p.i;
     const parts: string[] = [];
     let hasParam = false;
     let special = "";
@@ -163,6 +164,7 @@ export function parseCompoundIdentifier(p: P, tableWithUuid = false, allowParam 
 
     if (tableWithUuid) {
       if (parts.length > 2) return null;
+      p.names?.add("object", first, p.i - 1);
       let uuid: Ast | null = null;
       if (kw(p, "UUID")) {
         uuid = parseStringLiteral(p);

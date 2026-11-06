@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0
+
+- More values that ClickHouse refuses are marked: maps given to numbers and booleans, size suffixes and `inf` in float
+  settings, URIs, `compatibility` versions, codecs on column types they do not take, the parameters of `Quantized`
+  and `SZ3`, the arguments of the `text` and `vector_similarity` indexes, and the `LEVEL` of `INTO OUTFILE`.
+- Quick fixes for errors that know the answer: the closest setting, codec, index or statistics type, format,
+  compression method, enum value, keyword or test hint error name; the names in "Maybe you meant" of the server check;
+  a number in quotes for a setting of one character; and `ENGINE = MergeTree` after
+  `SET default_table_engine = 'None'`, which is now marked as ClickHouse refuses it.
+- Inlay hints, off by default (`clickhouseSql.inlayHints.enabled`): the parameter names of the arguments of function,
+  table function and engine calls, and the type of a query parameter after the `param_name` that sets it.
+- Hover over SYSTEM commands and over the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and
+  `SETTINGS PROFILE` shows ClickHouse's documentation of them.
+- Go to Symbol in Workspace finds the tables, views, materialized views, dictionaries, functions and databases that
+  the CREATE statements of the workspace's ClickHouse SQL files make. Go to definition and Find All References of a
+  table in a query reach the CREATE statement and the uses in every file, with the database that `USE` sets.
+
 ## 0.4.0
 
 - Suggestions and signature help for the arguments of every documented function.

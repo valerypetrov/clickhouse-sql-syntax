@@ -25,3 +25,13 @@ export function userSetting<T>(key: string): { value: T; problem?: string } {
   const problem = invalidValue(key, value);
   return problem ? { value: fallback, problem } : { value };
 }
+
+/** The value of a setting of VS Code itself for `scope`, such as `editor.inlayHints.enabled`. */
+export function editorSetting<T>(key: string, scope?: vscode.ConfigurationScope): T | undefined {
+  return vscode.workspace.getConfiguration(undefined, scope).get<T>(key);
+}
+
+/** The files.associations of VS Code, which say what language a file opens as. */
+export function fileAssociations(): Record<string, string> {
+  return vscode.workspace.getConfiguration("files").get<Record<string, string>>("associations") ?? {};
+}
