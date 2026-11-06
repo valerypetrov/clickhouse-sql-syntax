@@ -53,6 +53,10 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 - `npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse>`: the functions, settings, table engines, formats,
   table functions, combinators and time zones that completion offers. Signatures missing from the server metadata
   are maintained in `scripts/catalog-signatures.ts`.
+- `npx tsx scripts/generate-errors.ts --clickhouse <clickhouse>` in `packages/vscode`: the error codes of test hints
+  in `packages/vscode/src/generated/errors.ts`.
+- `npx tsx scripts/generate-readme.ts` in `packages/vscode`: the settings and commands of its README, from its
+  `package.json`; a test fails when the README differs.
 - `npm run generate -w packages/vscode`: the TextMate grammar in `packages/vscode/syntaxes/`. Edit
   `packages/vscode/scripts/grammar.ts` instead of the JSON, and run it after the keyword or data type lists change.
 
