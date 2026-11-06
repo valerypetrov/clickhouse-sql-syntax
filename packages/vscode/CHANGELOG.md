@@ -13,6 +13,9 @@
   table function and engine calls, and the type of a query parameter after the `param_name` that sets it.
 - Hover over SYSTEM commands and over the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and
   `SETTINGS PROFILE` shows ClickHouse's documentation of them.
+- Go to Symbol in Workspace finds the tables, views, materialized views, dictionaries, functions and databases that
+  the CREATE statements of the workspace's ClickHouse SQL files make. Go to definition and Find All References of a
+  table in a query reach the CREATE statement and the uses in every file, with the database that `USE` sets.
 
 ## 0.4.0
 

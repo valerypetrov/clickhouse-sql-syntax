@@ -18,7 +18,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `format/`: `format()`.
 - `complete/`: `complete()`, `describe()`, `engineArgument()`, `functionArgument()`, `parameterHints()` and `keywordDocumentation()`.
 - `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
-- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
+- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`, and `objects()`, `objectReferences()` and `objectDefinitions()` across files.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions, combinators and time zones that completion offers.

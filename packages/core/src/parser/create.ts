@@ -695,8 +695,10 @@ export function parseCreateTableQuery(p: P): Ast | null {
         select = parseSelectWithUnionQuery(p);
         if (!select && !storage) asTableFunction = parseFunction(p, true, true);
         if (!select && !asTableFunction) {
+          const begin = p.i;
           if (!parseIdentifier(p)) return null;
           if (tok(p, T.Dot) && !parseIdentifier(p)) return null;
+          p.names?.add("object", begin, p.i - 1);
           asTable = true;
           if (!storage) parseStorageAndTargets();
         }

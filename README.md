@@ -16,6 +16,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Hover**: ClickHouse's documentation of functions, settings, engines, formats, SYSTEM commands and the clauses of the statements that make and change users, roles, quotas, row policies and settings profiles.
 - **Inlay hints** (optional): the names of the parameters before the arguments of calls, such as `dateDiff(unit: 'day', ...)`.
 - **Go to definition and rename**: aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them.
+- **Workspace symbols**: the tables, views, dictionaries, functions and databases that the CREATE statements of the folder make, and go to definition and references of a table from the queries of any file.
 - **Server check** (optional): your own ClickHouse server checks the names, functions and types in your queries.
 
 ## Use it in VS Code

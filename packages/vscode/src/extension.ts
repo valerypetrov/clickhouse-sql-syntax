@@ -14,6 +14,7 @@ import { registerNames } from "./names.js";
 import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
+import { registerWorkspaceSymbols, WorkspaceObjects } from "./symbols.js";
 import { tooLarge } from "./size.js";
 import { checkTags } from "./tags.js";
 
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   // The test hints and tags that clickhouse-client and clickhouse-test read from comments.
   const testDiagnostics = vscode.languages.createDiagnosticCollection(`${LANGUAGE_ID}-test`);
   const server = registerServer(context, LANGUAGE_ID);
+  const objects = new WorkspaceObjects(LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
   // The statements of each document parsed once, for its diagnostics, semantic tokens, hover, outline, selections and names.
   const caches = new Map<string, ParseCache>();
@@ -79,8 +81,10 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerSignatureHelp(LANGUAGE_ID),
     registerInlayHints(LANGUAGE_ID, cacheOf),
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
-    registerNames(LANGUAGE_ID, cacheOf),
+    registerNames(LANGUAGE_ID, cacheOf, objects),
     registerQuickFixes(LANGUAGE_ID, (document) => fixable.get(document.uri.toString()) ?? []),
+    registerWorkspaceSymbols(objects),
+    objects,
     diagnostics,
     testDiagnostics,
     vscode.workspace.onDidOpenTextDocument(schedule),

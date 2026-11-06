@@ -1,0 +1,6 @@
+SELECT count() FROM analytics.events;
+INSERT INTO staging.events SELECT id FROM analytics.events;
+SELECT * FROM events;
+USE analytics;
+SELECT * FROM events JOIN kinds USING (kind);
+WITH events AS (SELECT 1 AS id) SELECT id FROM events;

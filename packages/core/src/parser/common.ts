@@ -44,19 +44,24 @@ export function parseOnCluster(p: P): boolean {
 
 /** parseDatabaseAndTableName: [db.]table with plain identifiers. It does not move back on failure. */
 export function parseDatabaseAndTableName(p: P): { database: string; table: string } | null {
+  const begin = p.i;
   const first = parseIdentifier(p);
   if (!first) return null;
   if (tokQuiet(p, T.Dot)) {
     const second = parseIdentifier(p);
+    if (second) p.names?.add("object", begin, p.i - 1);
     return second ? { database: first.name, table: second.name } : null;
   }
+  p.names?.add("object", begin, p.i - 1);
   return { database: "", table: first.name };
 }
 
 /** parseDatabaseAndTableAsAST: [db.]table where both may be {name:Identifier} parameters. */
 export function parseDatabaseAndTableAsAST(p: P): boolean {
+  const begin = p.i;
   if (!parseIdentifier(p, true)) return false;
-  if (tokQuiet(p, T.Dot)) return parseIdentifier(p, true) !== null;
+  if (tokQuiet(p, T.Dot) && !parseIdentifier(p, true)) return false;
+  p.names?.add("object", begin, p.i - 1);
   return true;
 }
 

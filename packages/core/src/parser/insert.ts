@@ -63,8 +63,10 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
       if (!keep(node, "table_function", parseFunction(p, false, true))) return null;
       if (kw(p, "PARTITION BY") && !keep(node, "partition_by", parseExpressionWithOptionalAlias(p, false))) return null;
     } else {
+      const begin = p.i;
       if (!parseIdentifier(p, true)) return null;
       if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
+      p.names?.add("object", begin, p.i - 1);
     }
 
     const beforeBracket = p.i;
