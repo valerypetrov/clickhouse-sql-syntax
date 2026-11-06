@@ -436,6 +436,24 @@ describe("ClickHouse server check", function () {
     }
   });
 
+  it("sends the values of SET param_x with the queries after it", async () => {
+    const before = sent.length;
+    const editor = await open("SET param_n = 3;\nSELECT {n:UInt8} + 1;\nSET param_n = 'abc';\nSELECT {n:UInt8} + 2;\nSELECT {m:UInt8} + 3;");
+    const request = await until("the first query", () => sent.slice(before).find((r) => r.sql === "EXPLAIN QUERY TREE SELECT {n:UInt8} + 1"));
+    assert.equal(request.params.get("param_n"), "3");
+    assert.equal(request.status, 200);
+    const found = await until("the diagnostic of the value", () => {
+      const diagnostics = serverDiagnostics(editor.document);
+      return diagnostics.length ? diagnostics : undefined;
+    });
+    // The parameter without a value is left unchecked, as before.
+    assert.deepEqual(
+      found.map((d) => [editor.document.getText(d.range), d.code]),
+      [["SELECT {n:UInt8} + 2", "BAD_QUERY_PARAMETER"]],
+    );
+    assert.match(found[0]!.message, /^Value abc cannot be parsed as UInt8 for query parameter 'n'/);
+  });
+
   it("notes a wrong password once and shows no diagnostics for it", async () => {
     const editor = await open(QUERY);
     const notes = api.connection.notes;

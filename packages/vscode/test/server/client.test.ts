@@ -84,10 +84,10 @@ describe("query", () => {
     const port = (closed.address() as AddressInfo).port;
     await new Promise((resolve) => closed.close(resolve));
     await wrong({ url: `http://127.0.0.1:${port}` }, /^Cannot connect to http:\/\/127\.0\.0\.1:\d+, which clickhouseSql\.server\.url names: /, "clickhouseSql.server.url");
-    // The native port of ClickHouse answers HTTP with HTTP 400 and this text.
+    // The native port of ClickHouse answers HTTP with HTTP 400 and this text, as TCPHandler.cpp writes it.
     const native = createServer((_, response) => {
       response.writeHead(400);
-      response.end("Port 9000 is for clickhouse-client program\nYou must use port 8123 for HTTP.\n");
+      response.end("Port 9000 is for clickhouse-client program\r\nYou must use port 8123 for HTTP.\r\n");
     });
     await new Promise<void>((resolve) => native.listen(0, "127.0.0.1", resolve));
     await wrong(

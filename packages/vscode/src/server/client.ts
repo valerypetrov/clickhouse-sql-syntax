@@ -101,7 +101,7 @@ export async function query(
   const code = Number(response.headers.get("X-ClickHouse-Exception-Code") ?? /^Code: (\d+)\./.exec(body)?.[1]);
   if (!code) {
     // The native port says so in its answer, as "Port 9000 is for clickhouse-client program".
-    const said = body.trim().split("\n")[0]!.slice(0, 200);
+    const said = body.trim().split(/\r?\n/)[0]!.slice(0, 200);
     const status = `${url.origin} answered HTTP ${response.status} ${response.statusText}`.trimEnd();
     throw new ConnectionError(`${status}${said ? `: ${said}` : ""}. Is clickhouseSql.server.url the HTTP interface of ClickHouse?`, URL_SETTING);
   }
