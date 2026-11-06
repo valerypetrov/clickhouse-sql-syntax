@@ -137,6 +137,16 @@ export interface Diagnostic {
   line: number;
   col: number;
   severity: Severity;
+  /** Edits that fix the problem, for a quick fix. */
+  fixes?: Fix[];
+}
+
+/** A change of the input that fixes a diagnostic. */
+export interface Fix {
+  title: string;
+  edits: TextEdit[];
+  /** The fix to apply first, when it is the one closest to what was written. */
+  preferred?: boolean;
 }
 
 /**

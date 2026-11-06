@@ -5,6 +5,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Highlighting**: keywords, functions, types and names get their colours from how the parser reads them.
 - **Error checking**: the syntax errors that ClickHouse would report, shown as you type.
 - **Options**: settings, engine and database settings, codecs, index and statistics types, formats and the settings of EXPLAIN and BACKUP completed and documented, and their names and values checked as ClickHouse checks them.
+- **Quick fixes**: the name or keyword that a typo is closest to, the server's "Maybe you meant" hints, and a missing `ENGINE` where ClickHouse requires one.
 - **Formatting**: queries laid out as `clickhouse format` does.
 - **Autocomplete**: keywords, functions, types, settings, engines and formats that fit where you type.
 - **Engine arguments**: in `ENGINE = Name(...)`, what the argument at the cursor takes, and the engine's parameters as you type.

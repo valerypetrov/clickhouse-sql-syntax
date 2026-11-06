@@ -6,8 +6,10 @@ import { FORMATS } from "../generated/formats.js";
 import { CODECS, type CallRule, INDEX_TYPES, type ParameterRule, STATISTICS_MESSAGE, STATISTICS_TYPES, UNKNOWN_INDEX_TYPE } from "../generated/options.js";
 import { tokenize } from "../lexer/index.js";
 import { Lines, type ParseCache, parsedStatements, quotedName, type Role, stringLiteralValue } from "../parser/index.js";
-import { type Diagnostic, isSignificant, type Severity, type Token, TokenKind as T } from "../types.js";
+import { type Diagnostic, type Fix, isSignificant, type Severity, type Token, TokenKind as T } from "../types.js";
 import { explainSettings, querySetting, type SettingsContext, settingsScope } from "./catalog.js";
+import { ENGINE_REQUIRED, missingEngine, setsNoEngine } from "./engine.js";
+import { nameHints, replaceFixes, valueFixes } from "./fixes.js";
 import { readValue, valueError } from "./values.js";
 import { COMPRESSION_METHODS, EXPLAIN_KINDS } from "./words.js";
 
@@ -27,9 +29,15 @@ const nameOf = (s: Statement, token: Token): string | undefined =>
   token.kind === T.BareWord ? textOf(s, token) : token.kind === T.QuotedIdentifier ? quotedName(textOf(s, token)) : undefined;
 const isKeyword = (s: Statement, token: Token | undefined, keyword: string) => word(s, token) === keyword && s.roles.get(token!.start) === "keyword";
 
-function report(s: Statement, from: Token, to: Token, message: string, severity: Severity = "error"): void {
+function report(s: Statement, from: Token, to: Token, message: string, severity: Severity = "error", fixes?: Fix[]): void {
   const { line, col } = s.lines.at(from.start);
-  s.out.push({ message, start: from.start, end: to.end, line, col, severity });
+  s.out.push({ message, start: from.start, end: to.end, line, col, severity, ...(fixes?.length && { fixes }) });
+}
+
+/** Fixes that write one of `names` in place of the tokens from `from` to `to`; with `closest`, only the closest ones. */
+function nameFixes(from: Token, to: Token, name: string, names: Iterable<string>, closest = false): Fix[] {
+  const hints = nameHints(name, names);
+  return replaceFixes(from.start, to.end, closest ? hints.filter((h) => h.distance === hints[0]!.distance) : hints);
 }
 
 /** Errors of options in the statements of `sql` that parse, with the same cache as checkWithRoles(). */
@@ -40,6 +48,7 @@ export function checkOptions(sql: string, cache?: ParseCache): Diagnostic[] {
   const all = tokenize(sql).filter((t) => isSignificant(t.kind) && t.kind !== T.EndOfStream);
   const lines = new Lines(sql);
   let at = 0;
+  let noEngine = false;
   for (const parsed of statements) {
     while (at < all.length && all[at]!.start < parsed.begin) at++;
     let end = at;
@@ -51,6 +60,9 @@ export function checkOptions(sql: string, cache?: ParseCache): Diagnostic[] {
       at = end;
       continue;
     }
+    noEngine = setsNoEngine(sql, tokens) ?? noEngine;
+    const missing = noEngine ? missingEngine(sql, tokens, (t) => s.roles.get(t.start) === "keyword") : undefined;
+    if (missing) report(s, missing.name, missing.name, ENGINE_REQUIRED, "error", [missing.fix]);
     for (const mark of parsed.names)
       if (mark.kind === "settings") checkSettingsList(s, parsed.begin + mark.start, parsed.begin + mark.end, mark.flag as SettingsContext, mark.name && sql.slice(parsed.begin + mark.name[0], parsed.begin + mark.name[1]));
     checkCalls(s);
@@ -145,7 +157,12 @@ function checkSettingsList(s: Statement, start: number, end: number, context: Se
     }
     const setting = scope.find(name) ?? (queue && name.startsWith("s3queue_") ? scope.find(name.slice(8)) : undefined);
     if (!setting) {
-      if (scope.unknown && (context !== "explain" || explainSettings(kind!))) report(s, piece[0]!, nameEnd, scope.unknown.replace("{}", name));
+      if (scope.unknown && (context !== "explain" || explainSettings(kind!))) {
+        // Only the closest settings that take the value written, as the checks of values are not complete.
+        const value = valueTokens && !isParameter && context !== "explain" ? readValue(s.sql, valueTokens) : undefined;
+        const names = scope.offered.filter((o) => !value || !valueError(o.info, value)).map((o) => o.info.name);
+        report(s, piece[0]!, nameEnd, scope.unknown.replace("{}", name), "error", nameFixes(piece[0]!, nameEnd, name, names, true));
+      }
       continue;
     }
     if (!valueTokens || isParameter) continue;
@@ -155,7 +172,7 @@ function checkSettingsList(s: Statement, start: number, end: number, context: Se
     }
     const value = readValue(s.sql, valueTokens);
     const problem = value && valueError(setting, value);
-    if (problem) report(s, valueTokens[0]!, valueTokens[valueTokens.length - 1]!, problem);
+    if (problem) report(s, valueTokens[0]!, valueTokens[valueTokens.length - 1]!, problem, "error", valueFixes(s.sql, valueTokens, setting, value!));
     if (context === "profile") checkConstraints(s, piece, setting);
   }
 }
@@ -261,15 +278,18 @@ function checkCalls(s: Statement): void {
       case "format": {
         const next = tokens[i + 1];
         const name = next && nameOf(s, next);
-        if (name !== undefined && s.roles.get(next!.start) !== "keyword" && !formatNames.has(name.toLowerCase()) && /^\w+$/.test(name))
-          report(s, next!, next!, `Unknown format ${name}.`);
+        if (name !== undefined && s.roles.get(next!.start) !== "keyword" && !formatNames.has(name.toLowerCase()) && /^\w+$/.test(name)) {
+          const input = word(s, tokens[0]) === "insert";
+          report(s, next!, next!, `Unknown format ${name}.`, "error", nameFixes(next!, next!, name, FORMATS.filter((f) => (input ? f.input : f.output)).map((f) => f.name)));
+        }
         break;
       }
       case "compression": {
         const next = tokens[i + 1];
         const method = next?.kind === T.StringLiteral ? stringLiteralValue(textOf(s, next)) : undefined;
         if (method !== undefined && !COMPRESSION_METHODS.has(method.toLowerCase()))
-          report(s, next!, next!, `Unknown compression method '${method}'. Only 'auto', 'none', 'gzip', 'deflate', 'br', 'xz', 'zstd', 'lz4', 'bz2', 'snappy' are supported as compression methods.`, "warning");
+          report(s, next!, next!, `Unknown compression method '${method}'. Only 'auto', 'none', 'gzip', 'deflate', 'br', 'xz', 'zstd', 'lz4', 'bz2', 'snappy' are supported as compression methods.`, "warning",
+            replaceFixes(next!.start, next!.end, nameHints(method, [...COMPRESSION_METHODS].filter(Boolean)), (m) => `'${m}'`));
         break;
       }
     }
@@ -278,7 +298,8 @@ function checkCalls(s: Statement): void {
 
 function checkStatistics(s: Statement, name: Token): void {
   const text = nameOf(s, name);
-  if (text !== undefined && !statisticsNames.has(text.toLowerCase())) report(s, name, name, STATISTICS_MESSAGE.replace("{}", text));
+  if (text !== undefined && !statisticsNames.has(text.toLowerCase()))
+    report(s, name, name, STATISTICS_MESSAGE.replace("{}", text), "error", nameFixes(name, name, text, STATISTICS_TYPES.map((t) => t.name)));
 }
 
 /** TYPE after INDEX name expr, or after STATISTICS columns. */
@@ -316,7 +337,8 @@ function checkType(s: Statement, at: number): void {
   if (!name || text === undefined) return;
   const info = indexTypesByName.get(text.toLowerCase());
   if (!info) {
-    report(s, name, name, UNKNOWN_INDEX_TYPE.replace("{}", text));
+    const count = tokens[at + 2]?.kind === T.OpeningRoundBracket ? splitList(tokens.slice(at + 3, matching(tokens, at + 2))).length : 0;
+    report(s, name, name, UNKNOWN_INDEX_TYPE.replace("{}", text), "error", nameFixes(name, name, text, INDEX_TYPES.filter((t) => !t.refused && takes(t.rule, count)).map((t) => t.name)));
     return;
   }
   if (info.refused) report(s, name, name, info.refused);
@@ -349,7 +371,8 @@ function checkCodecs(s: Statement, open: number): void {
     if (text.toLowerCase() === "default") return;
     const info = codecsByName.get(text.toLowerCase());
     if (!info) {
-      report(s, call.name, call.name, `Unknown codec family: ${text}.`);
+      const names = CODECS.filter((c) => !c.refused && !c.setting && !c.encryption && takes(c.rule, call.args?.length ?? 0)).map((c) => c.name);
+      report(s, call.name, call.name, `Unknown codec family: ${text}.`, "error", nameFixes(call.name, call.name, text, names));
       return;
     }
     if (info.refused) {
@@ -362,6 +385,9 @@ function checkCodecs(s: Statement, open: number): void {
   }
   codecWarnings(s, known, calls[0]!.name, calls[calls.length - 1]!.close ?? calls[calls.length - 1]!.name);
 }
+
+/** Whether a codec or index type takes `count` parameters. */
+const takes = (rule: CallRule | undefined, count: number) => rule !== undefined && count >= rule.min && count <= rule.max;
 
 const SUSPICIOUS_NOTE = "(Note: you can enable setting 'allow_suspicious_codecs' to skip this check).";
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Quick fixes for errors that know the answer: the closest setting, codec, index or statistics type, format,
+  compression method, enum value, keyword or test hint error name; the names in "Maybe you meant" of the server check;
+  a number in quotes for a setting of one character; and `ENGINE = MergeTree` after
+  `SET default_table_engine = 'None'`, which is now marked as ClickHouse refuses it.
+
 ## 0.4.0
 
 - Suggestions and signature help for the arguments of every documented function.
