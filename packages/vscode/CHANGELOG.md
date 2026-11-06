@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Options: autocomplete, hover and checks of the settings of queries, engines, databases, columns, EXPLAIN, BACKUP and RESTORE and of their values, of codecs and their parameters, index and statistics types, database engines, formats and compression methods, with ClickHouse's own messages; what only ClickHouse's settings could allow, such as a suspicious codec, is a warning.
+
 ## 0.3.0
 
 - Autocomplete for the arguments of functions, by what ClickHouse's documentation of each one says: units and other
