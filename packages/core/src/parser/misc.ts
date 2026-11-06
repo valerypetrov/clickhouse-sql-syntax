@@ -128,8 +128,10 @@ export function parseUndropQuery(p: P): Ast | null {
   return base(p, "UNDROP query", () => {
     if (!kw(p, "UNDROP")) return null;
     if (!kw(p, "TABLE")) return null;
+    const begin = p.i;
     if (!parseIdentifier(p, true)) return null;
     if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
+    p.names?.add("object", begin, p.i - 1);
     if (!parseUuidClause(p)) return null;
     if (!parseOnCluster(p)) return null;
     return new Ast("UndropQuery");
@@ -186,8 +188,10 @@ function parseOptimizeColumns(p: P): Ast | null {
 export function parseOptimizeQuery(p: P): Ast | null {
   return base(p, "OPTIMIZE query", () => {
     if (!kw(p, "OPTIMIZE TABLE")) return null;
+    const begin = p.i;
     if (!parseIdentifier(p, true)) return null;
     if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
+    p.names?.add("object", begin, p.i - 1);
     if (kw(p, "ON") && !parseCluster(p)) return null;
     const node = new Ast("OptimizeQuery");
     if (kw(p, "PARTITION") && !keep(node, "partition", parsePartition(p))) return null;

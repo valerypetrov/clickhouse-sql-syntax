@@ -31,6 +31,10 @@
     "Linters"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.chsql",
+    "workspaceContains:**/*.clickhouse.sql"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true
@@ -122,7 +126,7 @@
           "default": 5000000,
           "minimum": 0,
           "scope": "application",
-          "markdownDescription": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.\n\nFor example, `20000000` lets files of up to 20 million characters in."
+          "markdownDescription": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename, workspace symbols or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.\n\nFor example, `20000000` lets files of up to 20 million characters in."
         },
         "clickhouseSql.server.enabled": {
           "type": "boolean",
@@ -177,7 +181,7 @@
   "scripts": {
     "generate": "tsx scripts/generate-grammar.ts",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
-    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts test/e2e/folding.test.ts test/e2e/outline.test.ts test/e2e/selection.test.ts test/e2e/names.test.ts test/e2e/options.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@vscode/test-electron --log-override:require-resolve-not-external=silent --outdir=out/e2e",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts test/e2e/folding.test.ts test/e2e/outline.test.ts test/e2e/selection.test.ts test/e2e/names.test.ts test/e2e/options.test.ts test/e2e/symbols.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@vscode/test-electron --log-override:require-resolve-not-external=silent --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\" \"test/complete/*.test.ts\" \"test/manifest/*.test.ts\" \"test/options/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",

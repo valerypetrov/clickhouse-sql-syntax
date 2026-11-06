@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Go to Symbol in Workspace finds the tables, views, materialized views, dictionaries, functions and databases that
+  the CREATE statements of the workspace's ClickHouse SQL files make. Go to definition and Find All References of a
+  table in a query reach the CREATE statement and the uses in every file, with the database that `USE` sets.
+
 ## 0.4.0
 
 - Suggestions and signature help for the arguments of every documented function.

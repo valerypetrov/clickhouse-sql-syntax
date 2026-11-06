@@ -1,0 +1,6 @@
+CREATE DATABASE analytics;
+USE analytics;
+CREATE TABLE events (id UInt64, kind String, title String) ENGINE = MergeTree ORDER BY id;
+CREATE MATERIALIZED VIEW events_by_kind ENGINE = SummingMergeTree ORDER BY kind AS SELECT kind, count() AS n FROM events GROUP BY kind;
+CREATE DICTIONARY kinds (kind String, title String) PRIMARY KEY kind SOURCE(CLICKHOUSE(TABLE 'events')) LAYOUT(HASHED()) LIFETIME(300);
+CREATE FUNCTION kind_title AS (k) -> dictGet('analytics.kinds', 'title', k);

@@ -209,6 +209,12 @@ export interface ClickHouseSqlSyntax {
   prepareRename(sql: string, offset: number, options?: NameOptions): PrepareRenameResult;
   /** The edits that give the name at an offset a new name, quoted where needed. */
   rename(sql: string, offset: number, newName: string, options?: NameOptions): RenameResult;
+  /** The tables, views, dictionaries, functions and databases that the CREATE statements make, without parsing them. */
+  objects(sql: string): SqlObject[];
+  /** The names of tables and databases in the statements that parse, with the database that each one means. */
+  objectReferences(sql: string, options?: NameOptions): ObjectReference[];
+  /** The objects of `files` that a reference in `file` may name, as ClickHouse runs each file in a session of its own. */
+  objectDefinitions<F>(reference: ObjectReference, file: F, files: ReadonlyMap<F, readonly SqlObject[]>): { file: F; object: SqlObject }[];
 }
 
 /** Options of definition(), references(), prepareRename() and rename(). */
@@ -222,6 +228,39 @@ export interface NameLocation {
   start: number;
   end: number;
   definition: boolean;
+}
+
+/** What a CREATE statement makes. */
+export type ObjectKind = "table" | "view" | "materialized view" | "dictionary" | "function" | "database";
+
+/** An object that a CREATE statement of the input makes, as objects() finds it. */
+export interface SqlObject {
+  kind: ObjectKind;
+  name: string;
+  /**
+   * The database written before the name, or set by an earlier USE; none for the session's database, a function, a
+   * temporary table and a database. A query parameter such as `{db:Identifier}` is kept as written.
+   */
+  database?: string;
+  temporary: boolean;
+  /** The statement. */
+  start: number;
+  end: number;
+  /** The name with its database, as written. */
+  nameStart: number;
+  nameEnd: number;
+}
+
+/** A name of a table, view or dictionary, or of a database, in a statement that parses. */
+export interface ObjectReference {
+  kind: "table" | "database";
+  name: string;
+  /** For a table, the database written before it or set by an earlier USE, as in SqlObject. */
+  database?: string;
+  /** Whether the database is written before the name. */
+  qualified: boolean;
+  start: number;
+  end: number;
 }
 
 /** Text from `start` to `end` to replace with `newText`. */

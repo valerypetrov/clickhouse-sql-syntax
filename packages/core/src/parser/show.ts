@@ -147,8 +147,10 @@ export function parseTablePropertiesQuery(p: P): Ast | null {
       if (!temporary) kw(p, "TEMPORARY");
       if (!kw(p, "TABLE")) kw(p, "DICTIONARY");
     }
+    const begin = p.i;
     if (!parseIdentifier(p, true)) return null;
     if (tok(p, T.Dot) && !parseIdentifier(p, true)) return null;
+    p.names?.add("object", begin, p.i - 1);
     return new Ast("ShowQuery");
   });
 }

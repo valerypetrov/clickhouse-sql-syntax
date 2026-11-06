@@ -9,6 +9,8 @@ import { needsQuotes, quote, written } from "./quote.js";
 import { type Def, isDef, type Resolution, resolveStatement } from "./resolve.js";
 import { buildStatement, type Statement } from "./tree.js";
 
+export { objectDefinitions, objectReferences, objects } from "./objects.js";
+
 /** Settings that change how ClickHouse resolves names, other than prefer_column_name_to_alias. */
 const SCOPING_SETTINGS = new Set([
   "enable_global_with_statement", "enable_scopes_for_with_statement", "analyzer_compatibility_join_using_top_level_identifier",

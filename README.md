@@ -13,6 +13,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Folding**: statements, subqueries and comments of several lines, and `-- #region` blocks.
 - **Expand Selection**: grows from a word to its expression, call, clause, subquery and statement.
 - **Go to definition and rename**: aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them.
+- **Workspace symbols**: the tables, views, dictionaries, functions and databases that the CREATE statements of the folder make, and go to definition and references of a table from the queries of any file.
 - **Server check** (optional): your own ClickHouse server checks the names, functions and types in your queries.
 
 ## Use it in VS Code
