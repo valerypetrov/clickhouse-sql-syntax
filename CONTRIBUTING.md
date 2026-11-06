@@ -36,6 +36,7 @@ npm run oracle:format -- --clickhouse <clickhouse> --corpus <ClickHouse checkout
 npm run oracle:rename -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:arguments -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:options -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
+npm run oracle:fixes -- --clickhouse <clickhouse>
 ```
 
 The second command labels every statement of the tests with that binary and compares `check()` with it. The third
@@ -44,7 +45,9 @@ whole, as LF and as CRLF text. The fourth renames the names of each SELECT that 
 and checks that the renamed query gives the same result. The fifth checks what completion offers in the arguments of
 functions against the arguments that the tests write, and runs each suggestion in a call. The sixth runs each statement of the tests that `checkOptions()` flags in
 `clickhouse local`, compares its checks of settings, codecs and index types with ClickHouse on generated values, and
-runs every option that completion offers. `npm test` fails when the sample's rates fall below
+runs every option that completion offers. The seventh applies every quick fix to statements with typos of the
+names of the catalogs, wrong values, CREATE TABLE without ENGINE, test hints with unknown error names and the
+invalid statements of the sample, and counts the fixed statements that ClickHouse takes. `npm test` fails when the sample's rates fall below
 `oracle/thresholds.json`; raise them when `check()` gets better. [oracle/README.md](oracle/README.md) describes the
 sample and how to rebuild it.
 
@@ -56,6 +59,8 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 - `npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse>`: the functions, settings, table engines, formats,
   table functions, combinators and time zones that completion offers. Signatures missing from the server metadata
   are maintained in `scripts/catalog-signatures.ts`.
+- `npx tsx scripts/generate-statements.ts --docs <ClickHouse checkout>/docs/reference`: the documentation of SYSTEM commands
+  and of the clauses of the access statements that hover shows, in `packages/core/src/generated/statements.ts`.
 - `npx tsx scripts/generate-errors.ts --clickhouse <clickhouse>` in `packages/vscode`: the error codes of test hints
   in `packages/vscode/src/generated/errors.ts`.
 - `npx tsx scripts/generate-readme.ts` in `packages/vscode`: the settings and commands of its README, from its

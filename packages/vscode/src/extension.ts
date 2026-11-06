@@ -3,15 +3,18 @@ import { checkOptions, checkWithRoles, type Diagnostic as SyntaxError, ParseCach
 import { registerCompletion } from "./complete.js";
 import { otherDialectSpans } from "./dialect.js";
 import { registerFolding } from "./folding.js";
+import { type Fixable, registerQuickFixes } from "./fixes.js";
 import { registerFormatter } from "./format.js";
 import { checkHints, type Problem } from "./hints.js";
 import { registerHover } from "./hover.js";
+import { registerInlayHints } from "./inlay.js";
 import { registerOutline } from "./outline.js";
 import { registerSelectionRanges } from "./selection.js";
 import { registerNames } from "./names.js";
 import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
+import { registerWorkspaceSymbols, WorkspaceObjects } from "./symbols.js";
 import { tooLarge } from "./size.js";
 import { checkTags } from "./tags.js";
 
@@ -24,9 +27,12 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   // The test hints and tags that clickhouse-client and clickhouse-test read from comments.
   const testDiagnostics = vscode.languages.createDiagnosticCollection(`${LANGUAGE_ID}-test`);
   const server = registerServer(context, LANGUAGE_ID);
+  const objects = new WorkspaceObjects(LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
   // The statements of each document parsed once, for its diagnostics, semantic tokens, hover, outline, selections and names.
   const caches = new Map<string, ParseCache>();
+  // The problems with fixes of each document's last check, for its quick fixes.
+  const fixable = new Map<string, Fixable[]>();
   const cacheOf = (document: vscode.TextDocument): ParseCache => {
     const key = document.uri.toString();
     let cache = caches.get(key);
@@ -45,6 +51,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     if (tooLarge(document)) {
       diagnostics.delete(document.uri);
       testDiagnostics.delete(document.uri);
+      fixable.delete(document.uri.toString());
       return;
     }
     const text = document.getText();
@@ -55,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
     const problems = [...checkTags(text), ...checkHints(text, errors.map((e) => e.start))].sort((a, b) => a.start - b.start);
     testDiagnostics.set(document.uri, problems.map((problem) => toTestDiagnostic(document, problem)));
+    fixable.set(document.uri.toString(), [...errors, ...problems].filter((p) => p.fixes));
   };
 
   const schedule = (document: vscode.TextDocument): void => {
@@ -71,8 +79,12 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerOutline(LANGUAGE_ID, cacheOf),
     registerSelectionRanges(LANGUAGE_ID, cacheOf),
     registerSignatureHelp(LANGUAGE_ID),
+    registerInlayHints(LANGUAGE_ID, cacheOf),
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
-    registerNames(LANGUAGE_ID, cacheOf),
+    registerNames(LANGUAGE_ID, cacheOf, objects),
+    registerQuickFixes(LANGUAGE_ID, (document) => fixable.get(document.uri.toString()) ?? []),
+    registerWorkspaceSymbols(objects),
+    objects,
     diagnostics,
     testDiagnostics,
     vscode.workspace.onDidOpenTextDocument(schedule),
@@ -82,6 +94,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
       diagnostics.delete(document.uri);
       testDiagnostics.delete(document.uri);
       caches.delete(document.uri.toString());
+      fixable.delete(document.uri.toString());
     }),
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );

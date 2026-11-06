@@ -2,7 +2,7 @@
   "name": "clickhouse-sql",
   "displayName": "ClickHouse SQL",
   "description": "Syntax highlighting and syntax checking for ClickHouse SQL",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "valerypetrov",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -31,6 +31,10 @@
     "Linters"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.chsql",
+    "workspaceContains:**/*.clickhouse.sql"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true
@@ -117,12 +121,18 @@
           "scope": "language-overridable",
           "markdownDescription": "The case of keywords when **Format Document** and **Format Selection** lay out ClickHouse SQL. Only words that the parser reads as keywords change; names, strings and comments stay as written.\n\nFor example, `\"lower\"` formats `SELECT a FROM t` as `select a from t`. It can differ per language, as in `\"[clickhouse-sql]\": { \"clickhouseSql.format.keywordCase\": \"lower\" }`."
         },
+        "clickhouseSql.inlayHints.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "language-overridable",
+          "markdownDescription": "Show the name of the parameter before each argument of a function, table function or engine call with two arguments or more, as in `dateDiff(unit: 'day', startdate: a, enddate: b)`, and the type after each `param_name` that a `{name:Type}` of the file uses. An argument that is already a name equal to the parameter gets no name. VS Code shows them as `editor.inlayHints.enabled` says."
+        },
         "clickhouseSql.maxFileSize": {
           "type": "integer",
           "default": 5000000,
           "minimum": 0,
           "scope": "application",
-          "markdownDescription": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.\n\nFor example, `20000000` lets files of up to 20 million characters in."
+          "markdownDescription": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename, workspace symbols or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.\n\nFor example, `20000000` lets files of up to 20 million characters in."
         },
         "clickhouseSql.server.enabled": {
           "type": "boolean",
@@ -177,7 +187,7 @@
   "scripts": {
     "generate": "tsx scripts/generate-grammar.ts",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js",
-    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts test/e2e/folding.test.ts test/e2e/outline.test.ts test/e2e/selection.test.ts test/e2e/names.test.ts test/e2e/options.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@vscode/test-electron --log-override:require-resolve-not-external=silent --outdir=out/e2e",
+    "build:e2e": "esbuild test/e2e/run.ts test/e2e/index.ts test/e2e/extension.test.ts test/e2e/format.test.ts test/e2e/complete.test.ts test/e2e/server.test.ts test/e2e/semantic.test.ts test/e2e/folding.test.ts test/e2e/outline.test.ts test/e2e/selection.test.ts test/e2e/names.test.ts test/e2e/options.test.ts test/e2e/fixes.test.ts test/e2e/inlay.test.ts test/e2e/symbols.test.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@vscode/test-electron --log-override:require-resolve-not-external=silent --outdir=out/e2e",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/grammar/*.test.ts\" \"test/server/*.test.ts\" \"test/complete/*.test.ts\" \"test/manifest/*.test.ts\" \"test/options/*.test.ts\"",
     "test:e2e": "npm run build && npm run build:e2e && node out/e2e/run.js",
@@ -193,7 +203,7 @@
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.1.0",
-    "clickhouse-sql-syntax": "0.4.0",
+    "clickhouse-sql-syntax": "0.5.0",
     "esbuild": "^0.28.2",
     "mocha": "^12.0.3",
     "vscode-oniguruma": "^2.0.1",

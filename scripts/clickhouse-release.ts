@@ -16,7 +16,10 @@ const ROOT = resolve(import.meta.dirname, "..");
 const VERSION_FILE = join(ROOT, "data", "clickhouse-version.json");
 const GENERATED = join(ROOT, "packages", "core", "src", "generated");
 const REPOSITORY = "ClickHouse/ClickHouse";
-const SPARSE_PATHS = ["/tests/queries/0_stateless/", "/src/Parsers/", "/src/Access/Common/AccessType.h"];
+const SPARSE_PATHS = [
+  "/tests/queries/0_stateless/", "/src/Parsers/", "/src/Access/Common/AccessType.h", "/src/Storages/", "/src/Databases/", "/src/Backups/",
+  "/docs/reference/statements/",
+];
 
 const USAGE = `Usage: npx tsx scripts/clickhouse-release.ts <command> [options]
 
@@ -268,6 +271,9 @@ export function listChanges(before: Names, after: Names): ListChange[] {
 function regenerate(clickhouse: string, src: string): void {
   run("npm", ["run", "generate", "--", "--src", src, "--clickhouse", clickhouse]);
   run("npx", ["tsx", "scripts/generate-catalog.ts", "--clickhouse", clickhouse]);
+  const docs = join(src, "docs", "reference");
+  run("npx", ["tsx", "scripts/generate-options.ts", "--clickhouse", clickhouse, "--src", src, "--docs", docs]);
+  run("npx", ["tsx", "scripts/generate-statements.ts", "--docs", docs]);
   // The grammar generator reads the lists from the built library.
   run("npm", ["run", "build", "-w", "packages/core"]);
   run("npm", ["run", "generate", "-w", "packages/vscode"]);

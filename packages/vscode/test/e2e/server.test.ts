@@ -213,6 +213,19 @@ describe("ClickHouse server check", function () {
     await until("the diagnostic to go", () => serverDiagnostics(editor.document).length === 0 || undefined);
   });
 
+  it("offers the names that the server's error hints at as quick fixes", async () => {
+    const editor = await open("SELECT lenght('abc')");
+    const [diagnostic] = await until("a server diagnostic", () => {
+      const diagnostics = serverDiagnostics(editor.document);
+      return diagnostics.length ? diagnostics : undefined;
+    });
+    const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>("vscode.executeCodeActionProvider", editor.document.uri, diagnostic!.range, vscode.CodeActionKind.QuickFix.value);
+    assert.deepEqual(actions.map((a) => `${a.isPreferred ? "*" : ""}${a.title}`), ["*Change to length"]);
+    assert.ok(await vscode.workspace.applyEdit(actions[0]!.edit!));
+    assert.equal(editor.document.getText(), "SELECT length('abc')");
+    await until("the diagnostic to go", () => serverDiagnostics(editor.document).length === 0 || undefined);
+  });
+
   // EXPLAIN would write its own output in the format, which GeoJSON and Template cannot do.
   it("explains a SELECT without its FORMAT, and readonly=1 still refuses its SETTINGS", async () => {
     const before = sent.length;

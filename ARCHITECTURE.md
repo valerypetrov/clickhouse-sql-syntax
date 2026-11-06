@@ -16,9 +16,9 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `parser/`: `check()`, `roles()`, and the Expected set at a position, which completion uses.
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
-- `complete/`: `complete()`, `describe()`, `engineArgument()` and `functionArgument()`.
+- `complete/`: `complete()`, `describe()`, `engineArgument()`, `functionArgument()`, `parameterHints()` and `keywordDocumentation()`.
 - `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
-- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
+- `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`, and `objects()`, `objectReferences()` and `objectDefinitions()` across files.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
   formats, table functions, combinators and time zones that completion offers.
@@ -77,21 +77,43 @@ A layer apart from `check()`, which it never changes: it looks only at the state
    `backup`, ...); names analysis skips these marks. `options/catalog.ts` gives the settings each place takes, and
    ClickHouse's message for a name it does not take.
 2. Each `name = value` is checked by name, and its literal by the conversions of `src/Core/SettingsFields.cpp`
-   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps
-   and time zones. DEFAULT, query parameters, `param_` and `custom_` names are left alone.
+   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps,
+   time zones, URIs and the version of `compatibility`; a map given to another type gets ClickHouse's message for it.
+   DEFAULT, query parameters, `param_` and `custom_` names are left alone.
 3. The roles find `CODEC(...)`, `INDEX ... TYPE`, `STATISTICS`, `FORMAT` and `COMPRESSION`. A parameter of a codec or
    index type is checked against the values that ClickHouse was asked about: a number between two probes with the same
-   verdict gets that verdict, any other is left alone.
-4. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
+   verdict gets that verdict, any other is left alone. The `name = value` arguments of the `text` index are checked by
+   name. A codec is checked against the types that the column's type holds, through Nullable, LowCardinality, Array,
+   Map and Tuple, when each is a type that ClickHouse was asked about with that codec; a column without a type written
+   is left alone. The `LEVEL` of `INTO OUTFILE` is checked against the range of its compression method.
+4. After `SET default_table_engine = 'None'`, a `CREATE TABLE` without `ENGINE` that does not take one from `AS`
+   another table is an error, as ClickHouse refuses it with ENGINE_REQUIRED.
+5. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
    session can allow (`allow_suspicious_codecs`, the settings of experimental codecs) and what fails only as the
    statement runs (a compression method) is a warning. `ATTACH` is not checked, as ClickHouse does not check it again.
+
+## Quick fixes
+
+A diagnostic that knows the answer carries `fixes`, each a title and the edits that apply it (`options/fixes.ts`):
+
+- The names within a few typos of an unknown setting, codec, index or statistics type, format, compression method,
+  enum value or test hint error name, found as ClickHouse's `NamePrompter` finds them, closest first. A codec or index
+  type must take the parameters written, and a setting the value written; for settings only the closest are kept.
+- The keyword of check()'s "Maybe you meant", in the case of the word, kept only when the statement then passes check().
+- A number in quotes for a setting of one character, and `ENGINE = MergeTree`, with `ORDER BY tuple()` when the
+  table has no ORDER BY or PRIMARY KEY, for ENGINE_REQUIRED.
+- `messageFixes()` reads the names of "Maybe you meant" in an error of the server for the extension's server check.
+
+The fix that is closer than all the others is the preferred one. `npm run oracle:fixes` applies every fix to
+generated statements and to the sample of the oracle and runs the results in `clickhouse local`.
 
 The catalog comes from ClickHouse: `scripts/generate-catalog.ts` asks `system.settings` and the enum values of each
 setting (from ClickHouse's "Must be one of" for a value no enum has), and `scripts/generate-options.ts` reads
 `system.merge_tree_settings`, `system.codecs`, `system.data_skipping_index_types`, `system.database_engines`, the
-lists of settings that the sources declare for the other engines, BACKUP and RESTORE, and the docs of EXPLAIN. It
-asks a binary, in `clickhouse local`, which names each engine takes, which values each enum, codec parameter and index
-parameter takes, and the messages for the others, so a new release updates all of it.
+lists of settings that the sources declare for the other engines, BACKUP and RESTORE, the argument names of the text
+index, and the docs of EXPLAIN. It asks a binary, in `clickhouse local`, which names each engine takes, which values
+each enum, codec parameter and index parameter takes, which data types each codec refuses, which levels each
+compression method takes, and the messages for the others, so a new release updates all of it.
 
 ## roles() and highlight()
 
@@ -162,6 +184,18 @@ In the brackets of a function, the suggestions for the argument at the cursor co
    the statement makes and of the tables it reads in the schema follow, those whose type fits the documented types
    of the argument first.
 
+`parameterHints()` names the argument of each call with two arguments or more, in the statements that parse and where
+the parser reads the name as a function or an engine, by the same reading as `functionArgument()` and
+`engineArgument()` at the start of the argument. An argument that is a name equal to the parameter, one that the
+syntax leaves open and the arguments of a repeated parameter get no name.
+
+`keywordDocumentation()` gives the section of ClickHouse's documentation of the SYSTEM command at an offset, by the
+longest command that the words after SYSTEM start with, and in `CREATE` and `ALTER` of a user, role, quota, row policy
+or settings profile, of the clause whose keywords are there, or the statement's syntax for another keyword.
+`scripts/generate-statements.ts` reads them from `docs/reference/statements`: the commands from the headings of
+`system.mdx` and the forms its syntax adds, the clauses from the sections named after them and the paragraphs that
+start with them.
+
 In a list of settings, `options/complete.ts` reads from the words before it which place it is (a query, `SET`, the
 engine of `ENGINE = Name ... SETTINGS`, a database, a column, `MODIFY SETTING`, `EXPLAIN kind`, `BACKUP`, ...) and
 offers that place's settings, its own before those of queries, and after `name =` the values of an enum or a boolean.
@@ -229,6 +263,8 @@ In `packages/vscode/src`:
 - `selection.ts`: Expand and Shrink Selection from `selectionRanges()`, with the `ParseCache` of the document.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
+- `inlay.ts`: inlay hints, off by default, from `parameterHints()` for the statements on the screen, and the type of
+  each `param_name` on it from the `{name:Type}` of the document.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()`, `describe()`
   and, in the brackets of an engine or a function, `engineArgument()` or `functionArgument()`;
   hover takes the role of the word from the parser where completion does not tell what it is.

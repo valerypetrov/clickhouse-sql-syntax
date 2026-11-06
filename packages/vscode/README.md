@@ -6,7 +6,8 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 
 - **Highlighting.** Words are coloured by how the parser reads them, so a column called `timestamp` or `key` looks like a name, not a keyword.
 - **Syntax errors as you type**, in ClickHouse's words, such as `Expected one of: BY, end of query`.
-- **Options.** Settings of queries, MergeTree, Kafka and the other engines, databases, columns, EXPLAIN and BACKUP, with their values; codecs and their parameters, index and statistics types, database engines, formats and compression methods: autocomplete, hover, and an error where ClickHouse would refuse one, such as `max_threads = 'abc'` or `CODEC(ZSTD(23))`.
+- **Options.** Settings of queries, MergeTree, Kafka and the other engines, databases, columns, EXPLAIN and BACKUP, with their values; codecs and their parameters, index and statistics types, database engines, formats and compression methods: autocomplete, hover, and an error where ClickHouse would refuse one, such as `max_threads = 'abc'`, `CODEC(ZSTD(23))`, a codec on a type it does not take, as `String CODEC(Delta)`, the arguments of the `text` and `vector_similarity` indexes, or `COMPRESSION 'zstd' LEVEL 23`.
+- **Quick fixes** for errors that know the answer: the setting, codec, index or statistics type, format, compression method, enum value or keyword that a typo is closest to, the function, type, table or database that the server's "Maybe you meant" names, the error name of a test hint, a number in quotes for a setting of one character, and `ENGINE = MergeTree` after `SET default_table_engine = 'None'`.
 - **Formatting.** Format Document and Format Selection lay out queries like `clickhouse format`, changing only whitespace and the case of keywords.
 - **Autocomplete** of the keywords that fit at the cursor and of ClickHouse's functions, types, settings, table engines and formats.
 - **Engine arguments.** In `ENGINE = Name(...)`, autocomplete offers what the argument at the cursor takes, such as a ZooKeeper path, a column of the table of a type that fits, a format or a cluster, and signature help shows the engine's parameters.
@@ -15,8 +16,10 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Expand Selection** grows from the word at the cursor to its expression, call, clause, subquery and statement, and Shrink Selection goes back.
 - **Table function arguments.** Calls such as `file`, `s3` and `cluster` show their arguments and suggest formats, compression methods and names from the server. Aggregate combinators such as `sumIf` and window functions also have signature help.
-- **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, and the arguments of the function you are typing.
+- **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, of SYSTEM commands such as `SYSTEM FLUSH LOGS`, and of the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and `SETTINGS PROFILE`, and the arguments of the function you are typing.
+- **Inlay hints** (off by default). The names of the parameters before the arguments of calls, as in `dateDiff(unit: 'day', startdate: a, enddate: b)`, and the type of a query parameter after the `param_name` that sets it.
 - **Go to definition, references and rename** of aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them; a name that ClickHouse could read otherwise is left alone.
+- **Workspace symbols and tables across files.** Go to Symbol in Workspace (Ctrl+T) finds the tables, views, materialized views, dictionaries, functions and databases that the CREATE statements of the folder's ClickHouse SQL files make. From a table in `FROM db.t`, `JOIN t`, `INSERT INTO t`, `ALTER TABLE t` and the other places that name one, go to definition and Find All References reach its CREATE statement and its uses in any of those files. A name without a database means the one that an earlier `USE db` sets, as in ClickHouse; where that is not known, every table of that name is offered.
 - **Query parameters.** Autocomplete offers the types after `{name:`, only `Identifier` where a name goes, as in `FROM {table:Identifier}`, the parameters of the file after `{`, and `param_name` in `SET` and `SETTINGS`. Hover over `{name:Type}` or `param_name` says how ClickHouse reads the value and where it can come from: `SET param_name = 'value'`, `SETTINGS param_name = 'value'`, `--param_name='value'` of `clickhouse-client` and `clickhouse local`, or `param_name=value` in the URL of the HTTP interface.
 - **Test hints and tags** of ClickHouse's own tests. In `-- { serverError UNKNOWN_TABLE }` and the other hints of `clickhouse-client` (`clientError`, `error`, `echo`, `echoOn`, `echoOff`, `retry N until|while`), autocomplete offers the commands and error names, hover gives the code of each error, and a hint that would make `clickhouse-client` stop, such as an unknown error name, is marked in its words. A `serverError` hint on a statement that the client rejects is marked too. In `-- Tags:` lines, autocomplete and hover know the tags that `clickhouse-test` reads, and mark `no-stress`, which it refuses, and tags it ignores; `-- Random settings limits:` lines are checked as it reads them.
 - **Other dialects.** After `SET dialect = 'kusto'`, `'prql'` or another dialect, statements get no syntax errors until `SET dialect = 'clickhouse'`, as `clickhouse-client` parses them in that dialect.
@@ -55,11 +58,17 @@ For example, `"lower"` formats `SELECT a FROM t` as `select a from t`. It can di
 - `"lower"`: `select`, `from`, `where`
 - `"preserve"`: Keywords keep the case they are written in
 
+### `clickhouseSql.inlayHints.enabled`
+
+Default `false`; boolean; user or workspace settings, also per language.
+
+Show the name of the parameter before each argument of a function, table function or engine call with two arguments or more, as in `dateDiff(unit: 'day', startdate: a, enddate: b)`, and the type after each `param_name` that a `{name:Type}` of the file uses. An argument that is already a name equal to the parameter gets no name. VS Code shows them as `editor.inlayHints.enabled` says.
+
 ### `clickhouseSql.maxFileSize`
 
 Default `5000000`; integer, at least 0; user settings only.
 
-Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.
+Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename, workspace symbols or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.
 
 For example, `20000000` lets files of up to 20 million characters in.
 

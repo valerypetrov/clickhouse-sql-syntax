@@ -5,6 +5,7 @@
 import { tokenize } from "../lexer/index.js";
 import {
   type Diagnostic,
+  type Fix,
   isErrorKind,
   isSignificant,
   LEXER_ERROR_MESSAGES,
@@ -59,7 +60,8 @@ function utf8Length(text: string): number {
   return length;
 }
 
-function levenshtein(a: string, b: string): number {
+/** The edit distance of two words, ignoring case, as levenshteinDistanceCaseInsensitive. */
+export function levenshtein(a: string, b: string): number {
   const x = a.toLowerCase();
   const y = b.toLowerCase();
   let previous = Array.from({ length: y.length + 1 }, (_, j) => j);
@@ -90,17 +92,43 @@ function keywordTypoHint(word: string, variants: string[]): string {
   return hint;
 }
 
-/** The "Expected ..." part of a syntax error. */
-function expectedMessage(token: Token, sql: string, expected: Expected): string {
+/** The "Expected ..." part of a syntax error, and the keyword it hints at as a fix. */
+function expectedMessage(token: Token, sql: string, expected: Expected): { message: string; fixes?: Fix[] } {
   const variants = expected.variants;
-  if (!variants.length) return "Syntax error";
+  if (!variants.length) return { message: "Syntax error" };
   let message = "";
+  let fixes: Fix[] | undefined;
   if (token.kind === T.BareWord) {
-    const hint = keywordTypoHint(sql.slice(token.start, token.end), variants);
-    if (hint) message = `Maybe you meant: ${hint}. `;
+    const word = sql.slice(token.start, token.end);
+    const hint = keywordTypoHint(word, variants);
+    if (hint) {
+      message = `Maybe you meant: ${hint}. `;
+      // In the case the word was written in.
+      const newText = /^[a-z_]+$/.test(word) ? hint.toLowerCase() : hint;
+      fixes = [{ title: `Change to ${newText}`, edits: [{ start: token.start, end: token.end, newText }], preferred: true }];
+    }
   }
   message += variants.length === 1 ? `Expected ${variants[0]}` : `Expected one of: ${variants.join(", ")}`;
-  return message;
+  return { message, fixes };
+}
+
+let verifying = false;
+
+/** Whether the statement from `begin` to `end` passes check() with the fix, which keeps only fixes that ClickHouse parses. */
+function parsesWith(fix: Fix, sql: string, begin: number, end: number): boolean {
+  if (verifying) return false;
+  const edit = fix.edits[0]!;
+  verifying = true;
+  try {
+    return check(sql.slice(begin, edit.start) + edit.newText + sql.slice(edit.end, end)).length === 0;
+  } finally {
+    verifying = false;
+  }
+}
+
+/** The fixes with their edits moved by `delta`. */
+function shiftFixes(fixes: Fix[] | undefined, delta: number): Fix[] | undefined {
+  return fixes?.map((fix) => ({ ...fix, edits: fix.edits.map((e) => ({ ...e, start: e.start + delta, end: e.end + delta })) }));
 }
 
 /** What checking one statement gave, with offsets from where it begins; or that it needs more than `over` backtracks. */
@@ -161,13 +189,13 @@ class Checker {
     this.lines = new Lines(sql);
   }
 
-  private report(start: number, end: number, message: string, severity: Severity = "error"): void {
+  private report(start: number, end: number, message: string, severity: Severity = "error", fixes?: Fix[]): void {
     const { line, col } = this.lines.at(start);
-    this.diagnostics.push({ message, start, end, line, col, severity });
+    this.diagnostics.push({ message, start, end, line, col, severity, ...(fixes && { fixes }) });
   }
 
-  reportToken(token: Token, message: string, severity?: Severity): void {
-    this.report(token.start, token.kind === T.EndOfStream ? token.start : token.end, message, severity);
+  reportToken(token: Token, message: string, severity?: Severity, fixes?: Fix[]): void {
+    this.report(token.start, token.kind === T.EndOfStream ? token.start : token.end, message, severity, fixes);
   }
 
   /** Byte position from the query begin, with line and column if the statement has several lines. */
@@ -253,7 +281,7 @@ class Checker {
     if (hit && hit.over === undefined) {
       this.budget.backtracks -= hit.backtracks;
       if (this.budget.backtracks < 0) throw new OutOfBudget();
-      for (const d of hit.diagnostics) this.report(begin + d.start, begin + d.end, d.message, d.severity);
+      for (const d of hit.diagnostics) this.report(begin + d.start, begin + d.end, d.message, d.severity, shiftFixes(d.fixes, begin));
       this.spans = hit.spans.map((span) => ({ ...span, start: begin + span.start, end: begin + span.end }));
       this.names = hit.names;
       return begin + hit.next;
@@ -270,7 +298,7 @@ class Checker {
     const p = this.parsed;
     if (this.keep && next <= keyEnd && Math.max(this.lookedAt, p?.maxIndex ?? 0) <= endIndex) {
       cache.set(key, {
-        diagnostics: this.diagnostics.slice(reported).map((d) => ({ message: d.message, start: d.start - begin, end: d.end - begin, severity: d.severity })),
+        diagnostics: this.diagnostics.slice(reported).map((d) => ({ message: d.message, start: d.start - begin, end: d.end - begin, severity: d.severity, fixes: shiftFixes(d.fixes, -begin) })),
         spans: this.spans.map((span) => ({ ...span, start: span.start - begin, end: span.end - begin })),
         names: this.names,
         next: next - begin,
@@ -359,13 +387,15 @@ class Checker {
     }
 
     if (!node) {
-      this.reportToken(this.clamp(toks, lastIndex, endIndex), expectedMessage(last, sql, p.e));
+      const { message, fixes } = expectedMessage(last, sql, p.e);
+      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement) ? fixes : undefined);
       return afterStatement;
     }
     const stop = toks[Math.min(p.i, toks.length - 1)]!;
     if (stop.kind !== T.EndOfStream && stop.kind !== T.Semicolon) {
       p.e.add(lastIndex, "end of query");
-      this.reportToken(this.clamp(toks, lastIndex, endIndex), expectedMessage(last, sql, p.e));
+      const { message, fixes } = expectedMessage(last, sql, p.e);
+      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement) ? fixes : undefined);
       return afterStatement;
     }
     // A query may run past a ';', like COPY to an unsupported target; the next one starts after it.

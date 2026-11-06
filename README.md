@@ -5,6 +5,7 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Highlighting**: keywords, functions, types and names get their colours from how the parser reads them.
 - **Error checking**: the syntax errors that ClickHouse would report, shown as you type.
 - **Options**: settings, engine and database settings, codecs, index and statistics types, formats and the settings of EXPLAIN and BACKUP completed and documented, and their names and values checked as ClickHouse checks them.
+- **Quick fixes**: the name or keyword that a typo is closest to, the server's "Maybe you meant" hints, and a missing `ENGINE` where ClickHouse requires one.
 - **Formatting**: queries laid out as `clickhouse format` does.
 - **Autocomplete**: keywords, functions, types, settings, engines and formats that fit where you type.
 - **Engine arguments**: in `ENGINE = Name(...)`, what the argument at the cursor takes, and the engine's parameters as you type.
@@ -12,7 +13,10 @@ A VS Code extension and a TypeScript library that read [ClickHouse](https://gith
 - **Outline**: each statement with its CTEs and columns, in the Outline view and breadcrumbs.
 - **Folding**: statements, subqueries and comments of several lines, and `-- #region` blocks.
 - **Expand Selection**: grows from a word to its expression, call, clause, subquery and statement.
+- **Hover**: ClickHouse's documentation of functions, settings, engines, formats, SYSTEM commands and the clauses of the statements that make and change users, roles, quotas, row policies and settings profiles.
+- **Inlay hints** (optional): the names of the parameters before the arguments of calls, such as `dateDiff(unit: 'day', ...)`.
 - **Go to definition and rename**: aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them.
+- **Workspace symbols**: the tables, views, dictionaries, functions and databases that the CREATE statements of the folder make, and go to definition and references of a table from the queries of any file.
 - **Server check** (optional): your own ClickHouse server checks the names, functions and types in your queries.
 
 ## Use it in VS Code
@@ -29,7 +33,7 @@ To build it yourself instead (needs Node.js 22 or newer):
 git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
 cd clickhouse-sql-syntax
 npm install && npm run build && npm run package:vscode
-code --install-extension packages/vscode/clickhouse-sql-0.4.0.vsix
+code --install-extension packages/vscode/clickhouse-sql-0.5.0.vsix
 ```
 
 ## Use the library

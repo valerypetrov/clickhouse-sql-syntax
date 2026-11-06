@@ -1,0 +1,2 @@
+CREATE TABLE staging.events (id UInt64) ENGINE = Memory;
+CREATE VIEW staging.recent AS SELECT * FROM analytics.events;

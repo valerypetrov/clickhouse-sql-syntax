@@ -33,7 +33,9 @@ export type NameMarkKind =
   /** Something names analysis does not follow, such as a subquery of EXPLAIN. */
   | "opaque"
   /** A list of settings; the flag tells what it belongs to, `name` is the engine of a storage. Names analysis skips it. */
-  | "settings";
+  | "settings"
+  /** The [db.]name of a table, view or dictionary. Names analysis skips it. */
+  | "object";
 
 /** A mark with the offsets of its first and last token, from where its statement begins; ranges are [start, end). */
 export interface NameMark {

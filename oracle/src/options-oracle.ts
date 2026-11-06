@@ -1,6 +1,7 @@
 // Compares checkOptions() and the option suggestions of complete() with a ClickHouse binary,
 // as `npm run oracle:options -- --help` describes.
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -63,8 +64,9 @@ function corpus(): void {
       if (!own.length) continue;
       const lineEnd = source.indexOf("\n", unit.statement!.end);
       const after = source.slice(unit.statement!.end, lineEnd < 0 ? undefined : lineEnd);
-      const expected = /\b(serverError|clientError)\b/.test(after);
       const sql = source.slice(unit.statement!.start, unit.statement!.end).replace(/;\s*$/, "");
+      // A hint inside the statement counts too, as clickhouse-client reads it there.
+      const expected = /\b(serverError|clientError)\b/.test(after) || /--\s*\{\s*(serverError|clientError)\b/.test(sql);
       flagged.push({ file, sql, diagnostics: own.map((d) => `${d.severity}: ${d.message}`), severity: own.some(isError) ? "error" : "warning", expected });
     }
   }
@@ -164,17 +166,31 @@ function values(): void {
 function codecs(): void {
   const codecNames = complete("CREATE TABLE t (x UInt64 CODEC(", 31).filter((c) => c.kind === "codec").map((c) => c.label);
   const params = ["", "(0)", "(1)", "(2)", "(3)", "(4)", "(5)", "(6)", "(8)", "(9)", "(12)", "(13)", "(15)", "(19)", "(22)", "(23)", "(28)", "(29)", "(-1)", "(1.5)", "('byte')", "('bit')", "('zz')", "(AUTO)", "(zz)", "(1, 1)", "(3, 10)", "(3, 9)", "(3, 31)", "(3, 32)", "(12, 4)", "(12, 5)", "(1, 2, 3)"];
-  const types = ["UInt64", "Float64"];
+  const types = ["UInt64", "Float64", "String", "LowCardinality(String)", "Nullable(Float32)", "Array(UInt128)", "Map(String, UInt64)", "Tuple(a Int32, b DateTime)"];
   const codec = codecNames.flatMap((name) => types.flatMap((type) => params.map((p) => `CREATE TABLE p_${id()} (x ${type} CODEC(${name}${p}, LZ4)) ENGINE = Memory`)));
   const setup = ["SET allow_suspicious_codecs = 1", ...["enable_pco_codec", "enable_alp_codec", "enable_sz3_codec", "enable_zxc_codec", "enable_gdeflate_codec", "enable_quantized_codec"].map((s) => `SET ${s} = 1`)];
-  const codecVerdict = (o: Outcome) => (o.ok ? false : /codec|Codec|Bad get|parameter/.test(o.message ?? "") && !/not applicable|is not supported for|cannot be applied/.test(o.message ?? "") ? true : undefined);
+  const codecVerdict = (o: Outcome) => (o.ok ? false : /codec|Codec|Bad get|parameter/.test(o.message ?? "") ? true : undefined);
   summarize("codecs", compare([...codec, `CREATE TABLE p_${id()} (x UInt64 CODEC(Zzz)) ENGINE = Memory`], codecVerdict, setup));
   const indexes = complete("CREATE TABLE t (x String, INDEX i x TYPE ", 41).filter((c) => c.kind === "index type").map((c) => c.label);
   const indexParams = ["", "(0)", "(1)", "(0.5)", "(2)", "(100)", "(-1)", "(3, 256, 2, 0)", "(3, 256, 2)", "(256, 2, 0)", "(0, 2, 0)", "(3, 100, 256, 2, 0)", "('a')"];
-  const index = [...indexes, "zz_type"].flatMap((name) => indexParams.map((p) => `CREATE TABLE p_${id()} (x String, INDEX i x TYPE ${name}${p} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`));
+  const textParams = ["(tokenizer = splitByNonAlpha)", "(tokenizer = zz)", "(tokenizer = ngrams(3))", "(tokenizer = 'array', posting_list_block_size = 0)", "(tokenizer = array, zz = 1)",
+    "(tokenizer = array, tokenizer = array)", "(tokenizer = array, dictionary_block_size = 'a')", "(tokenizer = array, support_phrase_search = 2)", "(preprocessor = lower(x))"];
+  const vectorParams = ["('hnsw', 'L2Distance', 3)", "('hnsw', 'L2Distance', 0)", "('hnsw', 'cosineDistance', 3, 'bf16', 16, 100)", "('hnsw', 'L2Distance', 3, 'bf16', 1, 100)",
+    "('hnsw', 'L2Distance', 3, 'bf16')", "('zz', 'L2Distance', 3)", "('hnsw', 'zz', 3)", "('hnsw', 'L2Distance', 3, 'zz', 16, 100)", "('hnsw', 'L2Distance', -1)"];
+  const index = [
+    ...[...indexes, "zz_type"].flatMap((name) => indexParams.map((p) => `CREATE TABLE p_${id()} (x String, INDEX i x TYPE ${name}${p} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`)),
+    ...textParams.map((p) => `CREATE TABLE p_${id()} (x String, INDEX i x TYPE text${p} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`),
+    ...[...indexParams, ...vectorParams].map((p) => `CREATE TABLE p_${id()} (x Array(Float32), INDEX i x TYPE vector_similarity${p} GRANULARITY 1) ENGINE = MergeTree ORDER BY tuple()`),
+  ];
   summarize("index types", compare(index, (o) => (o.ok ? false : /index|Index|argument|parameter/.test(o.message ?? "") && !/does not support|cannot be used|data type/.test(o.message ?? "") ? true : undefined)));
   const statistics = [...complete("CREATE TABLE t (x UInt64 STATISTICS(", 36).filter((c) => c.kind === "statistics type").map((c) => c.label), "zz", "TDigest"];
   summarize("statistics types", compare(statistics.map((s) => `CREATE TABLE p_${id()} (x UInt64 STATISTICS(${s})) ENGINE = MergeTree ORDER BY x`), (o) => (o.ok ? false : /Unknown statistics/.test(o.message ?? "") ? true : undefined)));
+  // The levels of INTO OUTFILE, into a file of a folder of its own.
+  const folder = mkdtempSync(join(tmpdir(), "options-oracle-"));
+  const levels = ["none", "gzip", "zstd", "lz4", "br", "xz", "bz2", "snappy", "deflate", "gz"].flatMap((m) => ["0", "1", "9", "10", "12", "13", "22", "23", "-1", "1.5", "0x05"].map((l) =>
+    `SELECT 1 INTO OUTFILE '${join(folder, "f")}' TRUNCATE COMPRESSION '${m}' LEVEL ${l}`));
+  summarize("compression levels", compare(levels, (o) => (o.ok ? false : /compression level/.test(o.message ?? "") ? true : undefined)));
+  rmSync(folder, { recursive: true, force: true });
   const formats = ["JSON", "json", "TSV", "Zzz", "Null", "CSVWithNames", "pretty"];
   summarize("formats", compare(formats.map((f) => `SELECT 1 FORMAT ${f}`), (o) => (o.ok ? false : /Unknown format/.test(o.message ?? "") ? true : undefined)));
 }
