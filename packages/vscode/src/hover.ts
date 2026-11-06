@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { checkWithRoles, type CompletionKind, complete, describe, type ParseCache, type Role } from "clickhouse-sql-syntax";
+import { parameterHover } from "./parameters.js";
 import { tooLarge } from "./size.js";
 
 /** What a word may be documented as, by the role the parser gave it. */
@@ -18,6 +19,11 @@ export function registerHover(languageId: string, cacheOf: (document: vscode.Tex
       if (!range) return undefined;
       const word = document.getText(range);
       const text = document.getText();
+      const parameter = parameterHover(text, document.offsetAt(position));
+      if (parameter) {
+        const span = new vscode.Range(document.positionAt(parameter.start), document.positionAt(parameter.end));
+        return new vscode.Hover(new vscode.MarkdownString(parameter.markdown), span);
+      }
       // What complete() offers for the whole word tells what the word is at that place.
       const lower = word.toLowerCase();
       const found = complete(text, document.offsetAt(range.end)).find((c) => c.documentation && c.label.toLowerCase() === lower);

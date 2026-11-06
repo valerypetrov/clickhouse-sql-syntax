@@ -38,6 +38,8 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       const offset = document.offsetAt(position);
       if (context.triggerCharacter === " " && !opensAfterSpace(text, offset) && !takesKind(text, offset)) return undefined;
       if (context.triggerCharacter === "," && !takesKind(text, offset)) return undefined;
+      // After the name of a query parameter, its type follows.
+      if (context.triggerCharacter === ":" && !/\{\s*\w+\s*:$/.test(text.slice(Math.max(0, offset - 100), offset))) return undefined;
       const names = await schemaWithin(schema, document, offset);
       const candidates = complete(text, offset, { schema: names === "late" ? undefined : names });
       const word = document.getWordRangeAtPosition(position);
@@ -46,7 +48,7 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       return new vscode.CompletionList(items, names === "late");
     },
   };
-  return vscode.languages.registerCompletionItemProvider(languageId, provider, ".", "(", " ", ",");
+  return vscode.languages.registerCompletionItemProvider(languageId, provider, ".", "(", " ", ",", ":");
 }
 
 /** The schema from the source, undefined when it fails, or "late" when it takes longer than SCHEMA_WAIT_MS. */

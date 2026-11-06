@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { type Connection, ConnectionError, query, QueryError } from "./client.js";
 import { Schema } from "./schema.js";
 import { namedSpan, selectQueries, type Span } from "./statements.js";
+import { parameters, parameterValuesBefore } from "../parameters.js";
 import { userSetting } from "../settings.js";
 import { tooLarge } from "../size.js";
 
@@ -9,7 +10,7 @@ const CHECK_DELAY_MS = 500;
 const RETRY_MS = 30_000;
 const CACHE_SIZE = 1000;
 const PASSWORD_KEY = "clickhouseSql.server.password";
-// READONLY and UNKNOWN_QUERY_PARAMETER: what checking read-only and without parameters causes;
+// READONLY and UNKNOWN_QUERY_PARAMETER: what checking read-only and without the parameters given elsewhere causes;
 // TOO_MANY_ROWS, TIMEOUT_EXCEEDED, TOO_SLOW, MEMORY_LIMIT_EXCEEDED, TOO_MANY_BYTES, TOO_MANY_ROWS_OR_BYTES: the limits.
 const UNCHECKABLE = new Set([164, 456, 158, 159, 160, 241, 307, 396]);
 // A check sends no new query after this long, so that a file of slow queries costs little per change.
@@ -213,19 +214,23 @@ class ServerCheck implements vscode.Disposable {
     const text = document.getText();
     const found: vscode.Diagnostic[] = [];
     const deadline = Date.now() + CHECK_BUDGET_MS;
+    const settings = text.includes("param_") ? parameters(text).settings : [];
     for (const query of selectQueries(text)) {
-      if (Date.now() > deadline && !this.results.has(query.sql)) continue;
-      const error = await this.explain(connection, query.sql, signal);
+      const values = parameterValuesBefore(settings, query.start);
+      const key = resultKey(query.sql, values);
+      if (Date.now() > deadline && !this.results.has(key)) continue;
+      const error = await this.explain(connection, query.sql, values, signal);
       if (error) found.push(toDiagnostic(document, text, query, error));
     }
     return found;
   }
 
-  private async explain(connection: Connection, sql: string, signal: AbortSignal): Promise<QueryError | null> {
-    let result = this.results.get(sql);
+  private async explain(connection: Connection, sql: string, values: Record<string, string>, signal: AbortSignal): Promise<QueryError | null> {
+    const key = resultKey(sql, values);
+    let result = this.results.get(key);
     if (result !== undefined) return result;
     try {
-      await query(connection, `EXPLAIN QUERY TREE ${sql}`, {}, signal);
+      await query(connection, `EXPLAIN QUERY TREE ${sql}`, {}, signal, values);
       result = null;
     } catch (error) {
       if (!(error instanceof QueryError)) throw error;
@@ -233,9 +238,14 @@ class ServerCheck implements vscode.Disposable {
     }
     this.status.connected();
     if (this.results.size >= CACHE_SIZE) this.results.delete(this.results.keys().next().value!);
-    this.results.set(sql, result);
+    this.results.set(key, result);
     return result;
   }
+}
+
+/** The key of a result: the query, and the values of the parameters it was checked with. */
+function resultKey(sql: string, values: Record<string, string>): string {
+  return Object.keys(values).length ? `${sql}\0${JSON.stringify(values)}` : sql;
 }
 
 function toDiagnostic(document: vscode.TextDocument, text: string, query: Span, error: QueryError): vscode.Diagnostic {
