@@ -77,11 +77,15 @@ A layer apart from `check()`, which it never changes: it looks only at the state
    `backup`, ...); names analysis skips these marks. `options/catalog.ts` gives the settings each place takes, and
    ClickHouse's message for a name it does not take.
 2. Each `name = value` is checked by name, and its literal by the conversions of `src/Core/SettingsFields.cpp`
-   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps
-   and time zones. DEFAULT, query parameters, `param_` and `custom_` names are left alone.
+   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps,
+   time zones, URIs and the version of `compatibility`; a map given to another type gets ClickHouse's message for it.
+   DEFAULT, query parameters, `param_` and `custom_` names are left alone.
 3. The roles find `CODEC(...)`, `INDEX ... TYPE`, `STATISTICS`, `FORMAT` and `COMPRESSION`. A parameter of a codec or
    index type is checked against the values that ClickHouse was asked about: a number between two probes with the same
-   verdict gets that verdict, any other is left alone.
+   verdict gets that verdict, any other is left alone. The `name = value` arguments of the `text` index are checked by
+   name. A codec is checked against the types that the column's type holds, through Nullable, LowCardinality, Array,
+   Map and Tuple, when each is a type that ClickHouse was asked about with that codec; a column without a type written
+   is left alone. The `LEVEL` of `INTO OUTFILE` is checked against the range of its compression method.
 4. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
    session can allow (`allow_suspicious_codecs`, the settings of experimental codecs) and what fails only as the
    statement runs (a compression method) is a warning. `ATTACH` is not checked, as ClickHouse does not check it again.
@@ -89,9 +93,10 @@ A layer apart from `check()`, which it never changes: it looks only at the state
 The catalog comes from ClickHouse: `scripts/generate-catalog.ts` asks `system.settings` and the enum values of each
 setting (from ClickHouse's "Must be one of" for a value no enum has), and `scripts/generate-options.ts` reads
 `system.merge_tree_settings`, `system.codecs`, `system.data_skipping_index_types`, `system.database_engines`, the
-lists of settings that the sources declare for the other engines, BACKUP and RESTORE, and the docs of EXPLAIN. It
-asks a binary, in `clickhouse local`, which names each engine takes, which values each enum, codec parameter and index
-parameter takes, and the messages for the others, so a new release updates all of it.
+lists of settings that the sources declare for the other engines, BACKUP and RESTORE, the argument names of the text
+index, and the docs of EXPLAIN. It asks a binary, in `clickhouse local`, which names each engine takes, which values
+each enum, codec parameter and index parameter takes, which data types each codec refuses, which levels each
+compression method takes, and the messages for the others, so a new release updates all of it.
 
 ## roles() and highlight()
 

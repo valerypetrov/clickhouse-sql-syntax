@@ -2,8 +2,12 @@
  * checkOptions(): what ClickHouse refuses in the options of statements that its parser takes: settings, codecs,
  * index and statistics types, formats and compression methods. It looks only at statements without syntax errors.
  */
+import { DATA_TYPES } from "../generated/data-types.js";
 import { FORMATS } from "../generated/formats.js";
-import { CODECS, type CallRule, INDEX_TYPES, type ParameterRule, STATISTICS_MESSAGE, STATISTICS_TYPES, UNKNOWN_INDEX_TYPE } from "../generated/options.js";
+import {
+  type CallRule, CODECS, COMPRESSION_LEVEL_MESSAGE, COMPRESSION_LEVELS, INDEX_TYPES, type NamedArguments, type ParameterRule, STATISTICS_MESSAGE, STATISTICS_TYPES,
+  type TypeRefusal, UNKNOWN_INDEX_TYPE,
+} from "../generated/options.js";
 import { tokenize } from "../lexer/index.js";
 import { Lines, type ParseCache, parsedStatements, quotedName, type Role, stringLiteralValue } from "../parser/index.js";
 import { type Diagnostic, isSignificant, type Severity, type Token, TokenKind as T } from "../types.js";
@@ -129,7 +133,8 @@ function checkSettingsList(s: Statement, start: number, end: number, context: Se
       }
     }
     const isDefault = valueTokens?.length === 1 && word(s, valueTokens[0]) === "default";
-    const isParameter = /^\{.*\}$/.test(valueTokens?.map((t) => textOf(s, t)).join("") ?? "");
+    // A query parameter is {name:Type}; a map starts with a string or is empty.
+    const isParameter = valueTokens?.[0]?.kind === T.OpeningCurlyBrace && valueTokens[1] !== undefined && valueTokens[1].kind !== T.StringLiteral && valueTokens[1].kind !== T.ClosingCurlyBrace;
     // SET profile = 'p' applies a profile, which no list of settings has.
     if (name.startsWith("param_") || isDefault || (name === "profile" && settingsScopeIsQuery(scopeContext))) continue;
     // Settings with the prefix that servers allow for custom settings by default.
@@ -270,10 +275,23 @@ function checkCalls(s: Statement): void {
         const method = next?.kind === T.StringLiteral ? stringLiteralValue(textOf(s, next)) : undefined;
         if (method !== undefined && !COMPRESSION_METHODS.has(method.toLowerCase()))
           report(s, next!, next!, `Unknown compression method '${method}'. Only 'auto', 'none', 'gzip', 'deflate', 'br', 'xz', 'zstd', 'lz4', 'bz2', 'snappy' are supported as compression methods.`, "warning");
+        else if (method !== undefined && isKeyword(s, tokens[i + 2], "level")) checkLevel(s, method, tokens.slice(i + 3, i + 5));
         break;
       }
     }
   }
+}
+
+/** The LEVEL of INTO OUTFILE, which the client reads as an unsigned integer in the method's range. */
+function checkLevel(s: Statement, method: string, after: Token[]): void {
+  const range = COMPRESSION_LEVELS[method.toLowerCase()];
+  const negative = after[0]?.kind === T.Minus;
+  const level = negative ? after[1] : after[0];
+  if (!range || level?.kind !== T.Number) return;
+  const text = textOf(s, level).replace(/_/g, "");
+  const value = /^(\d+|0x[0-9a-f]+|0b[01]+)$/i.test(text) ? Number(BigInt(text)) : undefined;
+  if (negative || value === undefined || value < range[0] || value > range[1])
+    report(s, after[0]!, level, COMPRESSION_LEVEL_MESSAGE.replace("{min}", String(range[0])).replace("{max}", String(range[1])));
 }
 
 function checkStatistics(s: Statement, name: Token): void {
@@ -327,9 +345,12 @@ function checkType(s: Statement, at: number): void {
     // Index types whose syntax has optional parameters past the ones asked about are only checked at the probed count.
     const syntaxCount = (/\((.*)\)/.exec(info.syntax ?? "")?.[1] ?? "").split(",").filter((p) => p.trim()).length;
     if (info.rule) checkRule(s, name, tokens[close] ?? name, args, info.rule, syntaxCount > info.rule.max, true);
+    if (info.named) checkNamed(s, name, tokens[close] ?? name, args, info.named);
     next = close + 1;
   } else if (info.rule && info.rule.min > 0 && info.rule.tooFew) {
     report(s, name, name, info.rule.tooFew);
+  } else if (info.named) {
+    checkNamed(s, name, name, [], info.named);
   }
   for (let j = next; j < tokens.length && j < next + 3; j++)
     if (isKeyword(s, tokens[j], "granularity")) {
@@ -341,6 +362,7 @@ function checkType(s: Statement, at: number): void {
 
 function checkCodecs(s: Statement, open: number): void {
   const { calls } = bracketCalls(s.tokens, open);
+  const before = s.out.length;
   const known: { name: string; info: (typeof CODECS)[number]; text: string }[] = [];
   for (const call of calls) {
     const text = nameOf(s, call.name);
@@ -360,7 +382,77 @@ function checkCodecs(s: Statement, open: number): void {
     else if (info.rule && !call.args && info.rule.min > 0 && info.rule.tooFew) report(s, call.name, call.name, info.rule.tooFew);
     known.push({ name: info.name, info, text: s.sql.slice(call.name.start, (call.close ?? call.name).end) });
   }
+  if (s.out.length === before) checkCodecTypes(s, open - 1, calls);
   codecWarnings(s, known, calls[0]!.name, calls[calls.length - 1]!.close ?? calls[calls.length - 1]!.name);
+}
+
+const typeNames = new Map(DATA_TYPES.map((t) => [t.name, t]));
+const caseInsensitiveTypes = new Map(DATA_TYPES.filter((t) => t.caseInsensitive).map((t) => [t.name.toLowerCase(), t]));
+
+/** The name a data type is known by, through its aliases, or undefined for one not known. */
+function canonicalType(name: string): string | undefined {
+  let type = typeNames.get(name) ?? caseInsensitiveTypes.get(name.toLowerCase());
+  for (let hops = 0; type?.aliasTo && hops < 5; hops++) type = typeNames.get(type.aliasTo);
+  return type?.name;
+}
+
+/** The tokens of the type of the column whose CODEC is at `at`, or undefined when it has no type written. */
+function columnType(s: Statement, at: number): Token[] | undefined {
+  const tokens = s.tokens;
+  let depth = 0;
+  let start = 0;
+  for (let j = at - 1; j >= 0; j--) {
+    const t = tokens[j]!;
+    if (t.kind === T.ClosingRoundBracket || t.kind === T.ClosingSquareBracket || t.kind === T.ClosingCurlyBrace) depth++;
+    else if (t.kind === T.OpeningRoundBracket || t.kind === T.OpeningSquareBracket || t.kind === T.OpeningCurlyBrace) {
+      if (depth-- === 0) {
+        start = j + 1;
+        break;
+      }
+    } else if (depth === 0 && (t.kind === T.Comma || isKeyword(s, t, "column") || isKeyword(s, t, "exists"))) {
+      start = j + 1;
+      break;
+    }
+  }
+  let i = start;
+  if (!tokens[i] || nameOf(s, tokens[i]!) === undefined || s.roles.get(tokens[i]!.start) === "keyword") return undefined;
+  for (i++; tokens[i]?.kind === T.Dot; i += 2);
+  if (!tokens[i] || s.roles.get(tokens[i]!.start) !== "type") return undefined;
+  const end = tokens[i + 1]?.kind === T.OpeningRoundBracket ? matching(tokens, i + 1) : i;
+  // A type of several words, as INT UNSIGNED, is not read.
+  if (end + 1 !== at && s.roles.get(tokens[end + 1]?.start ?? -1) !== "keyword") return undefined;
+  return tokens.slice(i, end + 1);
+}
+
+/** The types of the values a type holds, through Nullable, LowCardinality, Array, Map and Tuple; undefined for one not known. */
+function typeLeaves(s: Statement, tokens: Token[]): (string | undefined)[] {
+  const name = canonicalType(textOf(s, tokens[0]!));
+  if (tokens.length === 1) return [name];
+  if (tokens[1]!.kind !== T.OpeningRoundBracket || tokens[tokens.length - 1]!.kind !== T.ClosingRoundBracket) return [undefined];
+  const args = splitList(tokens.slice(2, -1));
+  const count = { Nullable: 1, LowCardinality: 1, Array: 1, Map: 2 }[name as string] as number | undefined;
+  if (count === args.length) return args.flatMap((arg) => typeLeaves(s, arg));
+  if (name === "Tuple" && args.length)
+    return args.flatMap((arg) => typeLeaves(s, arg.length > 1 && s.roles.get(arg[0]!.start) === "identifier" && s.roles.get(arg[1]!.start) === "type" ? arg.slice(1) : arg));
+  return [undefined];
+}
+
+/** The first codec that refuses a type the column holds, by the types ClickHouse refused for it. */
+function checkCodecTypes(s: Statement, at: number, calls: ReturnType<typeof bracketCalls>["calls"]): void {
+  const type = columnType(s, at);
+  if (!type) return;
+  const leaves = typeLeaves(s, type);
+  for (const call of calls) {
+    const info = codecsByName.get(nameOf(s, call.name)?.toLowerCase() ?? "");
+    const refusals: readonly TypeRefusal[] | undefined = call.args ? info?.typesWithParameters?.filter((r) => r.parameters === undefined || r.parameters === call.args!.length) : info?.types;
+    for (const leaf of leaves) {
+      const refusal = leaf && refusals?.find((r) => r.types.includes(leaf));
+      if (refusal) {
+        report(s, call.name, call.close ?? call.name, refusal.message.replace("{}", leaf));
+        return;
+      }
+    }
+  }
 }
 
 const SUSPICIOUS_NOTE = "(Note: you can enable setting 'allow_suspicious_codecs' to skip this check).";
@@ -426,20 +518,69 @@ function checkRule(s: Statement, nameToken: Token, close: Token, args: Token[][]
     if (rule.tooFew) report(s, nameToken, close, rule.tooFew);
     return;
   }
+  const gap = rule.gaps?.find(([n]) => n === args.length);
+  if (gap) {
+    report(s, nameToken, close, gap[1]);
+    return;
+  }
   // An index type was asked about one parameter of a call with all of them, so only such a call is checked.
   if (countsOnly || (fullCallsOnly && args.length !== rule.parameters.length)) return;
   args.forEach((tokens, i) => {
     const param: ParameterRule | undefined = rule.parameters[i];
-    const value = param && argument(s, tokens);
-    if (!value || !param) return;
-    let ok: boolean | undefined;
-    if (value.kind === "int") ok = numberVerdict(param.ints, value.value as number);
-    else if (value.kind === "float") ok = numberVerdict(param.floats, value.value as number);
-    else if (value.kind === "string") ok = param.strings?.includes(String(value.value).toLowerCase()) || (param.stringsRefused ? false : undefined);
-    else ok = param.words?.includes(String(value.value).toLowerCase()) || (param.wordsRefused ? false : undefined);
-    if (ok !== false) return;
-    const key = value.kind === "int" && (value.value as number) < 0 && param.messages.negative ? "negative" : value.kind;
-    const message = param.messages[key] ?? param.messages.int;
-    if (message) report(s, tokens[0]!, tokens[tokens.length - 1]!, message.replace("{}", value.text));
+    if (param) checkValue(s, tokens, param);
   });
+}
+
+/** One value against what ClickHouse took at its position. */
+function checkValue(s: Statement, tokens: Token[], param: ParameterRule): void {
+  const value = argument(s, tokens);
+  if (!value) return;
+  let ok: boolean | undefined;
+  if (value.kind === "int") ok = numberVerdict(param.ints, value.value as number);
+  else if (value.kind === "float") ok = numberVerdict(param.floats, value.value as number);
+  else if (value.kind === "string") ok = param.strings?.includes(String(value.value).toLowerCase()) || (param.stringsRefused ? false : undefined);
+  else ok = param.words?.includes(String(value.value).toLowerCase()) || (param.wordsRefused ? false : undefined);
+  if (ok !== false) return;
+  const key = value.kind === "int" && (value.value as number) < 0 && param.messages.negative ? "negative" : value.kind;
+  const message = param.messages[key] ?? param.messages.int;
+  if (message) report(s, tokens[0]!, tokens[tokens.length - 1]!, message.replace("{}", value.text));
+}
+
+/** The name = value arguments of an index type, checked in the order ClickHouse reads them. */
+function checkNamed(s: Statement, nameToken: Token, close: Token, args: Token[][], named: NamedArguments): void {
+  const values = new Map<string, Token[]>();
+  for (const arg of args) {
+    const key = arg.length > 2 && arg[1]!.kind === T.Equals ? nameOf(s, arg[0]!) : undefined;
+    if (key === undefined) {
+      if (named.positional) report(s, arg[0]!, arg[arg.length - 1]!, named.positional);
+      return;
+    }
+    if (values.has(key)) {
+      if (named.duplicate) report(s, arg[0]!, arg[0]!, named.duplicate.replace("{}", key));
+      return;
+    }
+    values.set(key, arg.slice(2));
+  }
+  const missing = named.required.find((r) => !values.has(r));
+  if (missing) {
+    if (named.missing) report(s, nameToken, close, named.missing.replace("{}", missing));
+    return;
+  }
+  const tokenizer = values.get("tokenizer");
+  if (tokenizer && named.unknownTokenizer) {
+    const first = tokenizer[0]!;
+    const word = first.kind === T.StringLiteral ? stringLiteralValue(textOf(s, first)) : nameOf(s, first);
+    const whole = tokenizer.length === 1 || (tokenizer[1]!.kind === T.OpeningRoundBracket && first.kind !== T.StringLiteral && matching(tokenizer, 1) === tokenizer.length - 1);
+    if (word !== undefined && whole && !named.tokenizers.includes(word)) {
+      report(s, first, first, named.unknownTokenizer.replace("{}", word));
+      return;
+    }
+  }
+  const before = s.out.length;
+  for (const [key, tokens] of values) {
+    const param = named.arguments[key];
+    if (param) checkValue(s, tokens, param);
+  }
+  const unknown = [...values.keys()].filter((key) => !(key in named.arguments) && !named.required.includes(key)).sort();
+  if (s.out.length === before && unknown.length && named.unknown) report(s, nameToken, close, named.unknown.replace("{}", unknown.join(", ")));
 }

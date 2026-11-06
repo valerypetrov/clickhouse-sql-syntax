@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- More values that ClickHouse refuses are marked: maps given to numbers and booleans, size suffixes and `inf` in float
+  settings, URIs, `compatibility` versions, codecs on column types they do not take, the parameters of `Quantized`
+  and `SZ3`, the arguments of the `text` and `vector_similarity` indexes, and the `LEVEL` of `INTO OUTFILE`.
+
 ## 0.4.0
 
 - Suggestions and signature help for the arguments of every documented function.

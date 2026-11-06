@@ -149,6 +149,21 @@ describe("ClickHouse SQL extension", () => {
     );
   });
 
+  it("shows a codec on a type it does not take, a map given to a number and a wrong compression level", async () => {
+    const editor = await untitled(
+      "SET max_threads = {'a':'b'};\nCREATE TABLE t (x String CODEC(Delta, LZ4)) ENGINE = MergeTree ORDER BY x;\nSELECT 1 INTO OUTFILE 'f' COMPRESSION 'zstd' LEVEL 23;\n",
+    );
+    const diagnostics = await waitForCheck(editor.document);
+    assert.deepEqual(
+      diagnostics.map((d) => [d.severity, editor.document.getText(d.range), d.message.slice(0, 40)]),
+      [
+        [vscode.DiagnosticSeverity.Error, "{'a':'b'}", "Invalid value [('a', 'b')] of the settin"],
+        [vscode.DiagnosticSeverity.Error, "Delta", "Codec Delta is not applicable for String"],
+        [vscode.DiagnosticSeverity.Error, "23", "Invalid compression level, must be posit"],
+      ],
+    );
+  });
+
   it("updates diagnostics as the text changes", async () => {
     const editor = await untitled("SELECT 1");
     assert.deepEqual(await waitForCheck(editor.document), []);
