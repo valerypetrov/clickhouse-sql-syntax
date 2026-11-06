@@ -38,6 +38,7 @@ import { engineCandidates } from "./arguments.js";
 import { engineCall } from "./engines.js";
 import { functionCall, functionCandidates, typeNames } from "./functions.js";
 import { jsonTypeArguments, typedPaths } from "./json.js";
+import { identifierType, parameterNameCandidates, parameterSettings } from "./parameters.js";
 import {
   createdTable, createdTableName, databases, type DeclaredColumn, isWord, keyNames, named, nameOf, resolve, schemaColumn,
   type SchemaTable, type TableRef, tableRefs,
@@ -412,6 +413,9 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     addDatabases(out, schemaTier, schema);
   }
 
+  if (has("substitution type (identifier)")) out.add(nameTier, identifierType());
+  if (has("substitution name (identifier)")) for (const { tier, candidate } of parameterNameCandidates(sql)) out.add(nameTier + tier, candidate);
+
   if (has("data type")) {
     for (const type of DATA_TYPES)
       out.add(nameTier, {
@@ -438,6 +442,7 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     for (const info of SETTINGS)
       if (out.matches(info.name))
         out.add(nameTier, { label: info.name, kind: "setting", detail: info.type, documentation: settingDocumentation(info) });
+    for (const candidate of parameterSettings(sql)) out.add(nameTier, candidate);
   }
 
   return out.sorted();
