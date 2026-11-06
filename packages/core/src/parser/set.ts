@@ -43,6 +43,11 @@ export function parseNameValuePair(p: P): boolean {
   return parseLiteralOrMap(p) !== null;
 }
 
+/** The settings from token `first` to the parser position belong to `context`, as "query" or "storage". */
+export function markSettings(p: P, first: number, context: string, engine?: number): void {
+  p.names?.add("settings", first, p.i - 1, engine === undefined ? { flag: context } : { flag: context, name: [engine, engine] });
+}
+
 /** name = value, ... as in named collections and dictionary SETTINGS; `after` runs after each pair. */
 export function parseNameValuePairs(p: P, after: () => void = () => {}): boolean {
   let count = 0;
@@ -89,8 +94,9 @@ export function parseSetting(p: P, shorthand: boolean): "setting" | "parameter" 
  * ParserSetQuery. With `onlyInternals` it reads the list after SETTINGS;
  * otherwise a whole SET statement, including SET TIME ZONE.
  */
-export function parseSetQuery(p: P, onlyInternals = false, shorthand = true): Ast | null {
+export function parseSetQuery(p: P, onlyInternals = false, shorthand = true, context = "query"): Ast | null {
   return base(p, "SET query", () => {
+    const begin = p.i;
     if (!onlyInternals) {
       if (!kw(p, "SET")) return null;
       // SET TRANSACTION SNAPSHOT is a transaction control query.
@@ -106,6 +112,8 @@ export function parseSetQuery(p: P, onlyInternals = false, shorthand = true): As
       if (!parseSetting(p, shorthand)) return null;
       count++;
     }
+    const flag = onlyInternals ? context : "set";
+    if (flag) markSettings(p, onlyInternals ? begin : begin + 1, flag);
     return new Ast("SetQuery");
   });
 }

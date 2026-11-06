@@ -35,6 +35,22 @@ and the inline data of `INSERT ... VALUES` and `INSERT ... FORMAT` is skipped.
 gives both in one pass. A `ParseCache` given to it keeps the statements it checked, so that a later call parses only
 the ones that changed, with the same result; an editor keeps one per document.
 
+### checkOptions(sql, cache?)
+
+What ClickHouse refuses in the options of the statements that parse, in its words: unknown settings and wrong values in
+`SET`, `SETTINGS` of queries, engines, databases, columns, profiles, `EXPLAIN`, `BACKUP` and `RESTORE`, unknown codecs,
+index types, statistics types and formats, and codec and index parameters that ClickHouse does not take.
+
+```ts
+checkOptions("SET max_threads = 'abc'");
+// [{ message: "Cannot parse input: expected 'eof' before: 'abc': while setting 'max_threads' to value 'abc'.", severity: "error", ... }]
+```
+
+An error is what ClickHouse refuses before the statement runs, whatever its server; a warning is what it refuses
+unless a setting of the server or session allows it, such as `allow_suspicious_codecs`, or refuses only when the
+statement runs, such as an unknown compression method of `INTO OUTFILE`. It never reports a statement with a syntax
+error, which `check()` reports, and takes the same `ParseCache`.
+
 ### format(sql, options?)
 
 ```ts
@@ -67,8 +83,11 @@ engine's syntax names it, such as ZooKeeper paths, columns of a type that fits, 
 `macros` of the schema; `engineArgument(sql, offset)` names the parameters that argument may be. In the brackets of a
 function, what its documentation says the argument takes comes first, such as a unit, a data type, a time zone, a
 format or a JSONPath, and the columns of a type that fits; `functionArgument(sql, offset)` names the arguments it may
-be, past optional and repeated ones. `describe()` gives the documentation of a function, setting, table engine, format, table function or
-combinator, and the syntax and arguments of a function or table engine, with the `kind` of each argument that has one:
+be, past optional and repeated ones. In a list of settings it offers those of that place, such as the MergeTree
+settings after `ENGINE = MergeTree ... SETTINGS`, and after `name =` the values of an enum or a boolean; in `CODEC(...)`,
+after `INDEX ... TYPE` and in `STATISTICS(...)` only codecs, index types or statistics types. `describe()` gives the
+documentation of a function, setting, table engine, format, table function, combinator, codec, index type, statistics
+type or database engine, and the syntax and arguments of a function or table engine, with the `kind` of each argument that has one:
 
 ```ts
 describe("toDate"); // { name: "toDate", kind: "function", syntax: "toDate(x)", arguments: [{ name: "x", ... }], documentation: "..." }

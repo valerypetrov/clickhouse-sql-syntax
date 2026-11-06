@@ -17,6 +17,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()`, `describe()`, `engineArgument()` and `functionArgument()`.
+- `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
@@ -65,6 +66,32 @@ statements of one call share 2,000,000 backtracks; where they run out, a warning
 `checkWithRoles()` takes a `ParseCache` of statements checked before, by their text from where they begin to their
 first `;`. It keeps a statement only when nothing after that `;` decided its result, so no inline data, and a hit
 costs the backtracks of the parse it stands for, so the result is the same as without the cache.
+
+## checkOptions()
+
+A layer apart from `check()`, which it never changes: it looks only at the statements that parse, through
+`parsedStatements()` and the same `ParseCache`.
+
+1. Each list of settings that parses is marked by the parser with what it belongs to (a `settings` mark: `query`,
+   `set`, `profile`, `storage` with its engine, `column`, `projection`, `alter`, `reset`, `refresh`, `explain`,
+   `backup`, ...); names analysis skips these marks. `options/catalog.ts` gives the settings each place takes, and
+   ClickHouse's message for a name it does not take.
+2. Each `name = value` is checked by name, and its literal by the conversions of `src/Core/SettingsFields.cpp`
+   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps
+   and time zones. DEFAULT, query parameters, `param_` and `custom_` names are left alone.
+3. The roles find `CODEC(...)`, `INDEX ... TYPE`, `STATISTICS`, `FORMAT` and `COMPRESSION`. A parameter of a codec or
+   index type is checked against the values that ClickHouse was asked about: a number between two probes with the same
+   verdict gets that verdict, any other is left alone.
+4. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
+   session can allow (`allow_suspicious_codecs`, the settings of experimental codecs) and what fails only as the
+   statement runs (a compression method) is a warning. `ATTACH` is not checked, as ClickHouse does not check it again.
+
+The catalog comes from ClickHouse: `scripts/generate-catalog.ts` asks `system.settings` and the enum values of each
+setting (from ClickHouse's "Must be one of" for a value no enum has), and `scripts/generate-options.ts` reads
+`system.merge_tree_settings`, `system.codecs`, `system.data_skipping_index_types`, `system.database_engines`, the
+lists of settings that the sources declare for the other engines, BACKUP and RESTORE, and the docs of EXPLAIN. It
+asks a binary, in `clickhouse local`, which names each engine takes, which values each enum, codec parameter and index
+parameter takes, and the messages for the others, so a new release updates all of it.
 
 ## roles() and highlight()
 
@@ -135,6 +162,12 @@ In the brackets of a function, the suggestions for the argument at the cursor co
    the statement makes and of the tables it reads in the schema follow, those whose type fits the documented types
    of the argument first.
 
+In a list of settings, `options/complete.ts` reads from the words before it which place it is (a query, `SET`, the
+engine of `ENGINE = Name ... SETTINGS`, a database, a column, `MODIFY SETTING`, `EXPLAIN kind`, `BACKUP`, ...) and
+offers that place's settings, its own before those of queries, and after `name =` the values of an enum or a boolean.
+In `CODEC(...)`, after `INDEX ... TYPE`, in `STATISTICS(...)` and after `CREATE DATABASE ... ENGINE =` it offers only
+codecs (and in a codec's brackets the words its parameter takes), index types, statistics types or database engines.
+
 In the brackets of `JSON(...)` in a type, `json.ts` offers its parameters and SKIP, and after `column.` of a JSON
 column, of the schema or of a CREATE TABLE in the document, the typed paths that its type declares.
 
@@ -185,7 +218,7 @@ A range that does not hold the one before it is left out, so they nest. Operator
 
 In `packages/vscode/src`:
 
-- `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
+- `extension.ts`: diagnostics from `check()` and `checkOptions()`, 300 ms after the last change. A `ParseCache` per document keeps the
   statements parsed, so that the diagnostics, the semantic tokens, hover, the outline, selections and names parse a
   statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000

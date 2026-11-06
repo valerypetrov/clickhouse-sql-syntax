@@ -23,6 +23,7 @@ import {
   parseUnsignedInteger,
 } from "./elements.js";
 import { parseExpression, parseIntervalKind, subParser } from "./expression.js";
+import { markSettings } from "./set.js";
 import { ACCESS_TYPE_KEYWORDS, NO_ACCESS_TYPES, PARAMETER_ACCESS_TYPES, SOURCE_ACCESS_TYPES, SOURCE_NAMES } from "./privileges.js";
 import { attempt, base, kw, listUtil, P, peekKw, T, tok } from "./state.js";
 
@@ -235,6 +236,7 @@ function parseProfileNameOrId(p: P, idMode: boolean): boolean {
 
 /** name [= value] [MIN [=] x] [MAX [=] y] [READONLY|CONST|WRITABLE|CHANGEABLE_IN_READONLY], with at least one of them. */
 function parseSettingNameWithValueOrConstraints(p: P): boolean {
+  const begin = p.i;
   return (
     attempt(p, () => {
       const name = parseCompoundIdentifier(p);
@@ -263,7 +265,9 @@ function parseSettingNameWithValueOrConstraints(p: P): boolean {
       }
       if (!value && !range && !writability) return false;
       // PROFILE READONLY is not a setting named PROFILE.
-      return !(name.name.toUpperCase() === "PROFILE" && !value && !range && writability === "CONST");
+      if (name.name.toUpperCase() === "PROFILE" && !value && !range && writability === "CONST") return false;
+      markSettings(p, begin, "profile");
+      return true;
     }) !== null
   );
 }

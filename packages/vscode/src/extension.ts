@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
+import { checkOptions, checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
 import { otherDialectSpans } from "./dialect.js";
 import { registerFolding } from "./folding.js";
@@ -48,9 +48,10 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
       return;
     }
     const text = document.getText();
+    const cache = cacheOf(document);
     const other = otherDialectSpans(text);
-    // clickhouse-client parses those statements in another dialect, which check() does not read.
-    const errors = checkWithRoles(text, cacheOf(document)).diagnostics.filter((e) => !other.some((s) => s.start <= e.start && e.start <= s.end));
+    // Syntax errors, then what ClickHouse refuses in the options; clickhouse-client reads other dialects, which check() does not.
+    const errors = [...checkWithRoles(text, cache).diagnostics, ...checkOptions(text, cache)].filter((e) => !other.some((s) => s.start <= e.start && e.start <= s.end));
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
     const problems = [...checkTags(text), ...checkHints(text, errors.map((e) => e.start))].sort((a, b) => a.start - b.start);
     testDiagnostics.set(document.uri, problems.map((problem) => toTestDiagnostic(document, problem)));

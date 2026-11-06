@@ -31,7 +31,7 @@ export function parseExplainQuery(p: P, selectOnly = false, allowSettingsAfterFo
     node.name = kind;
 
     const beforeSettings = p.i;
-    if (!parseSetQuery(p, true, false)) p.restore(beforeSettings);
+    if (!parseSetQuery(p, true, false, "explain")) p.restore(beforeSettings);
 
     if (kind === "AST") {
       let query = parseQuery(p, allowSettingsAfterFormat);

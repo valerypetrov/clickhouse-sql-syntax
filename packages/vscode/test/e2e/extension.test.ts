@@ -1,6 +1,6 @@
 import * as assert from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
-import { check } from "clickhouse-sql-syntax";
+import { check, checkOptions } from "clickhouse-sql-syntax";
 import * as vscode from "vscode";
 
 const LANGUAGE_ID = "clickhouse-sql";
@@ -34,13 +34,13 @@ function waitForDiagnostics(
   });
 }
 
-/** Resolves once the diagnostics of `document` are what check() reports for its current text. */
+/** Resolves once the diagnostics of `document` are what check() and checkOptions() report for its current text. */
 function waitForCheck(document: vscode.TextDocument): Promise<vscode.Diagnostic[]> {
-  const expected = check(document.getText()).map((e) => ({
+  const expected = [...check(document.getText()), ...checkOptions(document.getText())].map((e) => ({
     message: e.message,
     start: e.start,
     end: e.end,
-    severity: vscode.DiagnosticSeverity.Error,
+    severity: e.severity === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error,
     source: "ClickHouse SQL",
   }));
   return waitForDiagnostics(document.uri, (found) =>
@@ -135,6 +135,18 @@ describe("ClickHouse SQL extension", () => {
     const ours = await untitled("SELECT (");
     assert.equal((await waitForCheck(ours.document)).length, 1);
     assert.deepEqual(vscode.languages.getDiagnostics(other.document.uri), []);
+  });
+
+  it("shows what ClickHouse refuses in the options of a statement", async () => {
+    const editor = await untitled("SET max_threads = 'abc';\nCREATE TABLE t (x UInt64 CODEC(ZSTD, Delta)) ENGINE = MergeTree ORDER BY x;\n");
+    const diagnostics = await waitForCheck(editor.document);
+    assert.deepEqual(
+      diagnostics.map((d) => [d.severity, d.message.slice(0, 40)]),
+      [
+        [vscode.DiagnosticSeverity.Error, "Cannot parse input: expected 'eof' befor"],
+        [vscode.DiagnosticSeverity.Warning, "The combination of compression codecs ZS"],
+      ],
+    );
   });
 
   it("updates diagnostics as the text changes", async () => {

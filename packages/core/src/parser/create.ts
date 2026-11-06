@@ -34,7 +34,7 @@ import {
   parseTTLExpressionList,
 } from "./expression.js";
 import { parseSelectWithUnionQuery } from "./select.js";
-import { parseNameValuePairs, parseSetQuery } from "./set.js";
+import { markSettings, parseNameValuePairs, parseSetQuery } from "./set.js";
 import { base, kw, listUtil, P, peekKw, T, tok } from "./state.js";
 
 const UUID_TEXT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})$/i;
@@ -225,7 +225,7 @@ export function parseColumnDeclaration(p: P, options: ColumnOptions = {}): Ast |
           p.restore(before);
           break;
         }
-        if (!parseSetQuery(p, true, false)) return null;
+        if (!parseSetQuery(p, true, false, "column")) return null;
         if (!tok(p, T.ClosingRoundBracket)) return null;
         settings = true;
       } else {
@@ -365,7 +365,7 @@ export function parseProjectionDeclarationBody(p: P, node: Ast): boolean {
   }
   if (kw(p, "WITH SETTINGS")) {
     if (!tok(p, T.OpeningRoundBracket)) return false;
-    if (!parseSetQuery(p, true)) return false;
+    if (!parseSetQuery(p, true, true, "projection")) return false;
     if (!tok(p, T.ClosingRoundBracket)) return false;
   }
   return true;
@@ -481,9 +481,11 @@ export function parseStorage(p: P): Ast | null {
   return base(p, "storage definition", () => {
     const node = new Ast("Storage");
     let storageLike = false;
+    let engineAt: number | undefined;
     if (kw(p, "ENGINE")) {
       tok(p, T.Equals);
       const name = p.i;
+      engineAt = name;
       const engine = parseIdentifierWithOptionalParameters(p);
       if (!engine) return null;
       p.mark(name, "engine", name + 1);
@@ -508,7 +510,9 @@ export function parseStorage(p: P): Ast | null {
         }
       }
       if (kw(p, "SETTINGS")) {
-        if (!parseSetQuery(p, true)) return null;
+        const begin = p.i;
+        if (!parseSetQuery(p, true, true, "")) return null;
+        markSettings(p, begin, "storage", engineAt);
         storageLike = true;
       }
       break;
@@ -838,7 +842,7 @@ export function parseRefreshStrategy(p: P): Ast | null {
       dependencies = true;
     }
     if (!scheduled && !dependencies) return null;
-    if (kw(p, "SETTINGS") && !parseSetQuery(p, true)) return null;
+    if (kw(p, "SETTINGS") && !parseSetQuery(p, true, true, "refresh")) return null;
     if (kw(p, "APPEND")) kw(p, "INCREMENTAL");
     return new Ast("RefreshStrategy");
   });

@@ -17,6 +17,10 @@
   lines are checked.
 - Statements after `SET dialect = 'kusto'` and the other dialects get no syntax errors until
   `SET dialect = 'clickhouse'`.
+- Options: autocomplete, hover and checks of the settings of queries, engines, databases, columns, EXPLAIN, BACKUP
+  and RESTORE and of their values, of codecs and their parameters, index and statistics types, database engines,
+  formats and compression methods, with ClickHouse's own messages. What only the server's settings could allow, such
+  as a suspicious codec, is a warning.
 
 ## 0.3.0
 

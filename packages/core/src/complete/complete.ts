@@ -7,7 +7,6 @@ import { DATA_TYPES } from "../generated/data-types.js";
 import { FORMATS } from "../generated/formats.js";
 import { FUNCTIONS } from "../generated/functions.js";
 import { PRIVILEGES } from "../generated/privileges.js";
-import { SETTINGS } from "../generated/settings.js";
 import { TABLE_ENGINES } from "../generated/table-engines.js";
 import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
 import { split, type Unit } from "../format/index.js";
@@ -31,9 +30,9 @@ import {
   formatDocumentation,
   functionDocumentation,
   findFunction,
-  settingDocumentation,
   tableFunctionDocumentation,
 } from "./catalog.js";
+import { optionSuggestions } from "../options/index.js";
 import { engineCandidates } from "./arguments.js";
 import { engineCall } from "./engines.js";
 import { functionCall, functionCandidates, typeNames } from "./functions.js";
@@ -158,28 +157,6 @@ const isUpper = (text: string) => /[A-Z]/.test(text) && !/[a-z]/.test(text);
 /** A case-insensitive name in capitals after a prefix in capitals, as ClickHouse spells it otherwise. */
 function nameCase(name: string, caseInsensitive: boolean | undefined, prefix: string): string {
   return caseInsensitive && isUpper(prefix) ? name.toUpperCase() : name;
-}
-
-/**
- * Whether the tokens end inside a list of settings: after SETTINGS, or after the SET of a
- * SET query, followed by `name = value` pairs and a comma.
- */
-function inSettingsList(sql: string, before: Token[]): boolean {
-  let i = before.length - 1;
-  for (;;) {
-    if (isWord(sql, before[i], "settings")) return true;
-    if (isWord(sql, before[i], "set")) return i === 0;
-    if (before[i]?.kind !== T.Comma) return false;
-    // Back over the value, which may hold brackets, to its "=", then over the name.
-    let depth = 0;
-    for (i--; i >= 0 && (depth > 0 || before[i]!.kind !== T.Equals); i--) {
-      const kind = before[i]!.kind;
-      if (kind === T.ClosingRoundBracket || kind === T.ClosingSquareBracket || kind === T.ClosingCurlyBrace) depth++;
-      if (kind === T.OpeningRoundBracket || kind === T.OpeningSquareBracket || kind === T.OpeningCurlyBrace) depth--;
-      if (depth < 0) return false;
-    }
-    i -= 2;
-  }
 }
 
 /** The names before a dot at the end of the tokens, as `db` and `t` in `db.t.`. */
@@ -349,6 +326,11 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     return out.sorted();
   }
 
+  // Codecs, index types, settings and their values, and the other options of the statement.
+  const suggested = optionSuggestions(sql, before, prefix);
+  for (const { tier, candidate } of suggested.candidates) out.add(tier, candidate);
+  if (suggested.only) return out.sorted();
+
   const call = engineCall(sql, statement, before);
   if (call) {
     const columns = createdColumns(sql, statement, schema);
@@ -436,13 +418,6 @@ export function complete(sql: string, offset: number, options: CompleteOptions =
     for (const info of FORMATS)
       if (input ? info.input : info.output)
         out.add(nameTier, { label: info.name, kind: "format", detail: formatDetail(info), documentation: formatDocumentation(info) });
-  }
-
-  if (identifier && inSettingsList(sql, before)) {
-    for (const info of SETTINGS)
-      if (out.matches(info.name))
-        out.add(nameTier, { label: info.name, kind: "setting", detail: info.type, documentation: settingDocumentation(info) });
-    for (const candidate of parameterSettings(sql)) out.add(nameTier, candidate);
   }
 
   return out.sorted();
