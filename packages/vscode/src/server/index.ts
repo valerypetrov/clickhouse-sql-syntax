@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { type Connection, ConnectionError, query, QueryError } from "./client.js";
 import { Schema } from "./schema.js";
 import { namedSpan, selectQueries, type Span } from "./statements.js";
+import { userSetting } from "../settings.js";
 import { tooLarge } from "../size.js";
 
 const CHECK_DELAY_MS = 500;
@@ -50,16 +51,23 @@ export function registerServer(context: vscode.ExtensionContext, languageId: str
   return { schema, connection: status };
 }
 
+/** The server settings from the user's settings, and the first one whose value does not fit, if any. */
 function serverSettings() {
-  const config = vscode.workspace.getConfiguration("clickhouseSql.server");
   // The user's settings only: a workspace could otherwise send its SQL, and the user name, to another server.
-  const fromUser = <T>(key: string, fallback: T): T => config.inspect<T>(key)?.globalValue ?? fallback;
+  let invalid: ConnectionError | undefined;
+  const fromUser = <T>(name: string): T => {
+    const key = `clickhouseSql.server.${name}`;
+    const { value, problem } = userSetting<T>(key);
+    if (problem) invalid ??= new ConnectionError(problem, key);
+    return value;
+  };
   return {
-    enabled: fromUser("enabled", false),
-    url: fromUser("url", "http://localhost:8123"),
-    user: fromUser("user", "default"),
-    database: fromUser("database", ""),
-    timeoutMs: fromUser("timeoutMs", 5000),
+    enabled: fromUser<boolean>("enabled"),
+    url: fromUser<string>("url"),
+    user: fromUser<string>("user"),
+    database: fromUser<string>("database"),
+    timeoutMs: fromUser<number>("timeoutMs"),
+    invalid,
   };
 }
 
@@ -69,8 +77,9 @@ function passwordKey(url: string, user: string): string {
 }
 
 async function readConnection(secrets: vscode.SecretStorage): Promise<Connection | undefined> {
-  const { enabled, ...settings } = serverSettings();
+  const { enabled, invalid, ...settings } = serverSettings();
   if (!enabled) return undefined;
+  if (invalid) throw invalid;
   return { ...settings, password: (await secrets.get(passwordKey(settings.url, settings.user))) ?? "" };
 }
 
@@ -92,17 +101,27 @@ class ConnectionStatus implements vscode.Disposable {
   private readonly output = vscode.window.createOutputChannel("ClickHouse Server", { log: true });
   private readonly item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
 
-  failed(problem: string): void {
+  failed(error: ConnectionError): void {
+    const problem = error.message;
     if (problem === this.problem) return;
     this.problem = problem;
     this.notes++;
     this.output.warn(problem);
     this.item.text = "$(debug-disconnect) ClickHouse";
-    this.item.tooltip = `${problem}\nStatements are checked again later.`;
+    const fix = error.setting ? ` Select to open ${error.setting}.` : "";
+    this.item.tooltip = `${problem}\nStatements are checked again in ${RETRY_MS / 1000} s, and at once when a clickhouseSql.server setting changes.${fix}`;
+    // The settings editor, at the setting that would fix the problem.
+    this.item.command = error.setting ? { title: "Open the setting", command: "workbench.action.openSettings", arguments: [error.setting] } : undefined;
     this.item.show();
   }
 
   connected(): void {
+    if (this.problem !== undefined) this.output.info("The server answers again.");
+    this.clear();
+  }
+
+  /** Forgets the problem, as when the settings change. */
+  clear(): void {
     this.problem = undefined;
     this.item.hide();
   }
@@ -154,7 +173,7 @@ class ServerCheck implements vscode.Disposable {
   reset(): void {
     this.results.clear();
     this.diagnostics.clear();
-    this.status.connected();
+    this.status.clear();
     this.recheck();
   }
 
@@ -181,7 +200,7 @@ class ServerCheck implements vscode.Disposable {
     } catch (error) {
       if (abort.signal.aborted) return;
       if (!(error instanceof ConnectionError)) throw error;
-      this.status.failed(error.message);
+      this.status.failed(error);
       this.retry ??= setTimeout(() => this.recheck(), RETRY_MS);
     } finally {
       if (this.running.get(document) === abort) this.running.delete(document);
