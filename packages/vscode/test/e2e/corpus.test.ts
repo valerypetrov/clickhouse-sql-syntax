@@ -91,7 +91,8 @@ function toProblem(error: SyntaxError): Problem {
 /** The diagnostics of `document`, once they equal `expected` or WAIT_MS has passed. */
 async function published(document: vscode.TextDocument, expected: Problem[]): Promise<Problem[]> {
   const read = (): Problem[] =>
-    vscode.languages.getDiagnostics(document.uri).map((d) => ({
+    // The syntax check only, not the test hints and tags, which have their own source.
+    vscode.languages.getDiagnostics(document.uri).filter((d) => d.source === "ClickHouse SQL").map((d) => ({
       message: d.message,
       start: document.offsetAt(d.range.start),
       end: document.offsetAt(d.range.end),

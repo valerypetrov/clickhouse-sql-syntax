@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { type CompletionCandidate, type CompletionKind, type CompletionSchema, complete, describe, functionArgument } from "clickhouse-sql-syntax";
+import { type HintCompletion, hintCompletions } from "./hints.js";
 import { tooLarge } from "./size.js";
+import { tagCompletions } from "./tags.js";
 
 /** Where the databases, tables and columns to complete at `offset` come from, such as a live server; a failure means none. */
 export type SchemaSource = (document: vscode.TextDocument, offset: number) => CompletionSchema | undefined | Promise<CompletionSchema | undefined>;
@@ -36,6 +38,9 @@ export function registerCompletion(languageId: string, schema?: SchemaSource): v
       if (tooLarge(document)) return undefined;
       const text = document.getText();
       const offset = document.offsetAt(position);
+      // In the comments that clickhouse-client and clickhouse-test read: test hints and tags.
+      const inComment = hintCompletions(text, offset) ?? tagCompletions(text, offset);
+      if (inComment) return inComment.map((c) => commentItem(c));
       if (context.triggerCharacter === " " && !opensAfterSpace(text, offset) && !takesKind(text, offset)) return undefined;
       if (context.triggerCharacter === "," && !takesKind(text, offset)) return undefined;
       // After the name of a query parameter, its type follows.
@@ -72,6 +77,13 @@ function takesKind(text: string, offset: number): boolean {
   const description = argument && describe(argument.function, argument.kind ?? "function");
   const list = argument?.parameters ? description?.parameters : description?.arguments;
   return list?.some((a) => a.kind && argument!.arguments.includes(a.name)) ?? false;
+}
+
+function commentItem(completion: HintCompletion): vscode.CompletionItem {
+  const item = new vscode.CompletionItem(completion.label, vscode.CompletionItemKind.EnumMember);
+  item.detail = completion.detail;
+  if (completion.documentation) item.documentation = new vscode.MarkdownString(completion.documentation);
+  return item;
 }
 
 function toItem(candidate: CompletionCandidate, index: number, bracketFollows: boolean): vscode.CompletionItem {

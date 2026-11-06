@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 import { checkWithRoles, type CompletionKind, complete, describe, type ParseCache, type Role } from "clickhouse-sql-syntax";
+import { hintHover } from "./hints.js";
 import { parameterHover } from "./parameters.js";
 import { tooLarge } from "./size.js";
+import { tagHover } from "./tags.js";
 
 /** What a word may be documented as, by the role the parser gave it. */
 const KINDS: Partial<Record<Role, CompletionKind[]>> = {
@@ -19,7 +21,8 @@ export function registerHover(languageId: string, cacheOf: (document: vscode.Tex
       if (!range) return undefined;
       const word = document.getText(range);
       const text = document.getText();
-      const parameter = parameterHover(text, document.offsetAt(position));
+      const offset = document.offsetAt(position);
+      const parameter = hintHover(text, offset) ?? tagHover(text, offset) ?? parameterHover(text, offset);
       if (parameter) {
         const span = new vscode.Range(document.positionAt(parameter.start), document.positionAt(parameter.end));
         return new vscode.Hover(new vscode.MarkdownString(parameter.markdown), span);
