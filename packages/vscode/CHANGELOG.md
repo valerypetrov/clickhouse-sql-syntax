@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
+- Suggestions and signature help for the arguments of every documented function.
 - Every setting is documented with examples, and the settings editor and `settings.json` mark a value of the wrong
   type, out of range, not in the list or, for `clickhouseSql.server.url`, not an `http://` or `https://` URL. A wrong
   value is not used: the setting keeps its default, with a message, or for a server setting, the status bar says why.
