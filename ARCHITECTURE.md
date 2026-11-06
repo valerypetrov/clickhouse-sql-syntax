@@ -86,9 +86,26 @@ A layer apart from `check()`, which it never changes: it looks only at the state
    name. A codec is checked against the types that the column's type holds, through Nullable, LowCardinality, Array,
    Map and Tuple, when each is a type that ClickHouse was asked about with that codec; a column without a type written
    is left alone. The `LEVEL` of `INTO OUTFILE` is checked against the range of its compression method.
-4. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
+4. After `SET default_table_engine = 'None'`, a `CREATE TABLE` without `ENGINE` that does not take one from `AS`
+   another table is an error, as ClickHouse refuses it with ENGINE_REQUIRED.
+5. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
    session can allow (`allow_suspicious_codecs`, the settings of experimental codecs) and what fails only as the
    statement runs (a compression method) is a warning. `ATTACH` is not checked, as ClickHouse does not check it again.
+
+## Quick fixes
+
+A diagnostic that knows the answer carries `fixes`, each a title and the edits that apply it (`options/fixes.ts`):
+
+- The names within a few typos of an unknown setting, codec, index or statistics type, format, compression method,
+  enum value or test hint error name, found as ClickHouse's `NamePrompter` finds them, closest first. A codec or index
+  type must take the parameters written, and a setting the value written; for settings only the closest are kept.
+- The keyword of check()'s "Maybe you meant", in the case of the word, kept only when the statement then passes check().
+- A number in quotes for a setting of one character, and `ENGINE = MergeTree`, with `ORDER BY tuple()` when the
+  table has no ORDER BY or PRIMARY KEY, for ENGINE_REQUIRED.
+- `messageFixes()` reads the names of "Maybe you meant" in an error of the server for the extension's server check.
+
+The fix that is closer than all the others is the preferred one. `npm run oracle:fixes` applies every fix to
+generated statements and to the sample of the oracle and runs the results in `clickhouse local`.
 
 The catalog comes from ClickHouse: `scripts/generate-catalog.ts` asks `system.settings` and the enum values of each
 setting (from ClickHouse's "Must be one of" for a value no enum has), and `scripts/generate-options.ts` reads

@@ -24,6 +24,7 @@
     "oracle:rename": "npm run oracle:rename -w oracle --",
     "oracle:arguments": "npm run oracle:arguments -w oracle --",
     "oracle:options": "npm run oracle:options -w oracle --",
+    "oracle:fixes": "npm run oracle:fixes -w oracle --",
     "generate": "tsx scripts/generate-names.ts",
     "package:vscode": "npm run package -w packages/vscode",
     "test:vscode": "npm run test:e2e -w packages/vscode",

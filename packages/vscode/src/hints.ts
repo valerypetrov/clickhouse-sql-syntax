@@ -1,5 +1,5 @@
 // Test hints such as "-- { serverError UNKNOWN_TABLE }", read as TestHint in src/Client/TestHint.cpp of ClickHouse does.
-import { isSignificant, split, type Token, TokenKind as T, tokenize } from "clickhouse-sql-syntax";
+import { type Fix, isSignificant, nameHints, replaceFixes, split, type Token, TokenKind as T, tokenize } from "clickhouse-sql-syntax";
 import { ERROR_CODES } from "./generated/errors.js";
 
 /** A problem in the file, by offsets. */
@@ -8,6 +8,7 @@ export interface Problem {
   end: number;
   message: string;
   severity: "error" | "warning" | "information";
+  fixes?: Fix[];
 }
 
 /** A suggestion inside a hint. */
@@ -77,7 +78,10 @@ function parse(text: string, hint: Hint): Parsed {
   const result: Parsed = { serverErrors: [], clientErrors: [] };
   const tokens = hint.tokens;
   const word = (token: Token) => text.slice(token.start, token.end);
-  const fail = (token: Token, message: string): Parsed => ({ ...result, problem: { start: token.start, end: Math.max(token.end, token.start + 1), message, severity: "error" } });
+  const fail = (token: Token, message: string, fixes?: Fix[]): Parsed => ({
+    ...result,
+    problem: { start: token.start, end: Math.max(token.end, token.start + 1), message, severity: "error", ...(fixes?.length && { fixes }) },
+  });
   let retries = 0;
   let retryToken: Token | undefined;
   for (let i = 0; i < tokens.length && tokens[i]!.kind !== T.EndOfStream; i++) {
@@ -101,7 +105,7 @@ function parse(text: string, hint: Hint): Parsed {
           codes.push(Number.parseInt(word(code), 10));
         } else if (code.kind === T.BareWord) {
           const known = Object.hasOwn(ERROR_CODES, word(code)) ? ERROR_CODES[word(code)] : undefined;
-          if (known === undefined) return fail(code, `No error code with name: '${word(code)}'`);
+          if (known === undefined) return fail(code, `No error code with name: '${word(code)}'`, replaceFixes(code.start, code.end, nameHints(word(code), Object.keys(ERROR_CODES))));
           codes.push(known);
         } else return fail(code, `Could not parse error code in ${code.kind}: ${word(code)}`);
         const next = tokens[i + 1]!;

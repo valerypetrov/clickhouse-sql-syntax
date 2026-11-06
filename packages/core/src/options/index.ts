@@ -1,4 +1,5 @@
 export { checkOptions } from "./check.js";
+export { messageFixes, type NameHint, nameHints, replaceFixes } from "./fixes.js";
 export { querySetting, type SettingsContext, type SettingsScope, settingsScope } from "./catalog.js";
 export { readValue, valueError } from "./values.js";
 export { COMPRESSION_METHODS, EXPLAIN_KINDS } from "./words.js";

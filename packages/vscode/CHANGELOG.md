@@ -5,6 +5,10 @@
 - More values that ClickHouse refuses are marked: maps given to numbers and booleans, size suffixes and `inf` in float
   settings, URIs, `compatibility` versions, codecs on column types they do not take, the parameters of `Quantized`
   and `SZ3`, the arguments of the `text` and `vector_similarity` indexes, and the `LEVEL` of `INTO OUTFILE`.
+- Quick fixes for errors that know the answer: the closest setting, codec, index or statistics type, format,
+  compression method, enum value, keyword or test hint error name; the names in "Maybe you meant" of the server check;
+  a number in quotes for a setting of one character; and `ENGINE = MergeTree` after
+  `SET default_table_engine = 'None'`, which is now marked as ClickHouse refuses it.
 
 ## 0.4.0
 
