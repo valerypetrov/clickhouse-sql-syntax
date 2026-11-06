@@ -23,6 +23,7 @@
     "oracle:format": "npm run oracle:format -w oracle --",
     "oracle:rename": "npm run oracle:rename -w oracle --",
     "oracle:arguments": "npm run oracle:arguments -w oracle --",
+    "oracle:options": "npm run oracle:options -w oracle --",
     "generate": "tsx scripts/generate-names.ts",
     "package:vscode": "npm run package -w packages/vscode",
     "test:vscode": "npm run test:e2e -w packages/vscode",

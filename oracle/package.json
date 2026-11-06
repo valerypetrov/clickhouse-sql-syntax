@@ -11,6 +11,7 @@
     "oracle:format": "tsx src/format-oracle.ts",
     "oracle:rename": "tsx src/rename-oracle.ts",
     "oracle:arguments": "tsx src/arguments-oracle.ts",
+    "oracle:options": "tsx src/options-oracle.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && tsx --test \"test/**/*.test.ts\""
   },
