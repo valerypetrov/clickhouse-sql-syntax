@@ -56,6 +56,8 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 - `npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse>`: the functions, settings, table engines, formats,
   table functions, combinators and time zones that completion offers. Signatures missing from the server metadata
   are maintained in `scripts/catalog-signatures.ts`.
+- `npx tsx scripts/generate-statements.ts --docs <ClickHouse checkout>/docs/reference`: the documentation of SYSTEM commands
+  and of the clauses of the access statements that hover shows, in `packages/core/src/generated/statements.ts`.
 - `npx tsx scripts/generate-errors.ts --clickhouse <clickhouse>` in `packages/vscode`: the error codes of test hints
   in `packages/vscode/src/generated/errors.ts`.
 - `npx tsx scripts/generate-readme.ts` in `packages/vscode`: the settings and commands of its README, from its

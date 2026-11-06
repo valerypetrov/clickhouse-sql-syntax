@@ -393,3 +393,15 @@ export interface TextRange {
   start: number;
   end: number;
 }
+
+/** The documented parameter that an argument of a call is, for an inlay hint before it. */
+export interface ParameterHint {
+  /** Where the argument starts. */
+  offset: number;
+  name: string;
+}
+
+/** The documentation of a SYSTEM command or of a clause of an access statement, and the keywords it covers. */
+export interface KeywordDocumentation extends TextRange {
+  documentation: string;
+}

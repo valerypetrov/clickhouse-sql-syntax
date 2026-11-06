@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Inlay hints, off by default (`clickhouseSql.inlayHints.enabled`): the parameter names of the arguments of function,
+  table function and engine calls, and the type of a query parameter after the `param_name` that sets it.
+- Hover over SYSTEM commands and over the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and
+  `SETTINGS PROFILE` shows ClickHouse's documentation of them.
+
 ## 0.4.0
 
 - Suggestions and signature help for the arguments of every documented function.

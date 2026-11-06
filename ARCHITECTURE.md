@@ -16,7 +16,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `parser/`: `check()`, `roles()`, and the Expected set at a position, which completion uses.
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
-- `complete/`: `complete()`, `describe()`, `engineArgument()` and `functionArgument()`.
+- `complete/`: `complete()`, `describe()`, `engineArgument()`, `functionArgument()`, `parameterHints()` and `keywordDocumentation()`.
 - `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
@@ -162,6 +162,18 @@ In the brackets of a function, the suggestions for the argument at the cursor co
    the statement makes and of the tables it reads in the schema follow, those whose type fits the documented types
    of the argument first.
 
+`parameterHints()` names the argument of each call with two arguments or more, in the statements that parse and where
+the parser reads the name as a function or an engine, by the same reading as `functionArgument()` and
+`engineArgument()` at the start of the argument. An argument that is a name equal to the parameter, one that the
+syntax leaves open and the arguments of a repeated parameter get no name.
+
+`keywordDocumentation()` gives the section of ClickHouse's documentation of the SYSTEM command at an offset, by the
+longest command that the words after SYSTEM start with, and in `CREATE` and `ALTER` of a user, role, quota, row policy
+or settings profile, of the clause whose keywords are there, or the statement's syntax for another keyword.
+`scripts/generate-statements.ts` reads them from `docs/reference/statements`: the commands from the headings of
+`system.mdx` and the forms its syntax adds, the clauses from the sections named after them and the paragraphs that
+start with them.
+
 In a list of settings, `options/complete.ts` reads from the words before it which place it is (a query, `SET`, the
 engine of `ENGINE = Name ... SETTINGS`, a database, a column, `MODIFY SETTING`, `EXPLAIN kind`, `BACKUP`, ...) and
 offers that place's settings, its own before those of queries, and after `name =` the values of an enum or a boolean.
@@ -229,6 +241,8 @@ In `packages/vscode/src`:
 - `selection.ts`: Expand and Shrink Selection from `selectionRanges()`, with the `ParseCache` of the document.
 - `format.ts`: Format Document and Format Selection through `format()`, with the editor's indentation. Format Selection
   matches the units of `split()` in the text and in its formatted copy, and replaces only the ones the selection touches.
+- `inlay.ts`: inlay hints, off by default, from `parameterHints()` for the statements on the screen, and the type of
+  each `param_name` on it from the `{name:Type}` of the document.
 - `complete.ts`, `hover.ts`, `signature.ts`: completion, hover and signature help through `complete()`, `describe()`
   and, in the brackets of an engine or a function, `engineArgument()` or `functionArgument()`;
   hover takes the role of the word from the parser where completion does not tell what it is.

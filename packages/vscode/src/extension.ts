@@ -6,6 +6,7 @@ import { registerFolding } from "./folding.js";
 import { registerFormatter } from "./format.js";
 import { checkHints, type Problem } from "./hints.js";
 import { registerHover } from "./hover.js";
+import { registerInlayHints } from "./inlay.js";
 import { registerOutline } from "./outline.js";
 import { registerSelectionRanges } from "./selection.js";
 import { registerNames } from "./names.js";
@@ -71,6 +72,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerOutline(LANGUAGE_ID, cacheOf),
     registerSelectionRanges(LANGUAGE_ID, cacheOf),
     registerSignatureHelp(LANGUAGE_ID),
+    registerInlayHints(LANGUAGE_ID, cacheOf),
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
     registerNames(LANGUAGE_ID, cacheOf),
     diagnostics,

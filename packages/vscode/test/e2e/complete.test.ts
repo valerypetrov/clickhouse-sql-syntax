@@ -278,6 +278,32 @@ describe("Completion, hover and signature help", () => {
     assert.equal(await hover(text.indexOf("FROM") + 1), "");
   });
 
+  it("shows the documentation of SYSTEM commands and of the clauses of access statements on hover", async () => {
+    const { editor } = await open(
+      ["SYSTEM FLUSH LOGS query_log;", "SYSTEM DROP DNS CACHE;", "CREATE USER host HOST ANY VALID UNTIL '2030-01-01';", "ALTER QUOTA q KEYED BY user_name;|"].join("\n"),
+    );
+    const text = editor.document.getText();
+    const hover = async (word: string) => {
+      const position = editor.document.positionAt(text.indexOf(word) + 1);
+      const hovers = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", editor.document.uri, position);
+      return hovers.map((h) => ({
+        text: h.contents.map((c) => (c as vscode.MarkdownString).value).join("\n"),
+        range: h.range && editor.document.getText(h.range),
+      }));
+    };
+    const [logs] = await hover("LOGS");
+    assert.match(logs!.text, /^\*\*SYSTEM FLUSH LOGS\*\*\n\nFlushes buffered log messages to system tables/);
+    assert.equal(logs!.range, "SYSTEM FLUSH LOGS");
+    assert.match((await hover("DNS"))[0]!.text, /^\*\*SYSTEM CLEAR\|DROP DNS CACHE\*\*/);
+    assert.deepEqual(await hover("query_log"), []);
+    assert.match((await hover("HOST ANY"))[0]!.text, /User host is a host from which a connection to ClickHouse server could be established/);
+    assert.deepEqual(await hover("host"), []);
+    const [until] = await hover("UNTIL");
+    assert.match(until!.text, /^\*\*CREATE USER: VALID UNTIL Clause\*\*/);
+    assert.equal(until!.range, "VALID UNTIL");
+    assert.match((await hover("KEYED"))[0]!.text, /^\*\*ALTER QUOTA\*\*\n\nChanges quotas/);
+  });
+
   it("completes and documents the options of a statement", async () => {
     const { editor } = await open(
       "CREATE TABLE t (x UInt64 CODEC(Delta(4), ZSTD(3)), s String, INDEX i s TYPE bloom_filter(0.01) GRANULARITY 1) " +

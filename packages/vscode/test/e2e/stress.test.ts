@@ -162,6 +162,28 @@ describe("A file of 10,000 statements, about 1 MB", function () {
     assert.ok(ofScreen < TOOL_MS, `of a screen: ${ofScreen.toFixed(0)} ms`);
   });
 
+  it(`gives the inlay hints of a screen within ${TOOL_MS} ms after an edit`, async () => {
+    const enabled = vscode.workspace.getConfiguration("clickhouseSql.inlayHints");
+    await enabled.update("enabled", true, vscode.ConfigurationTarget.Global);
+    try {
+      const editor = await open(sql);
+      const middle = editor.document.positionAt(sql.length / 2);
+      const screen = new vscode.Range(middle.line - 30, 0, middle.line + 30, 0);
+      const hints = () => vscode.commands.executeCommand<vscode.InlayHint[]>("vscode.executeInlayHintProvider", editor.document.uri, screen);
+      const first = await timed(hints);
+      let afterEdit = Infinity;
+      for (let i = 0; i < 5; i++) {
+        assert.ok(await editor.edit((edit) => edit.insert(middle, " ")));
+        afterEdit = Math.min(afterEdit, await timed(hints));
+      }
+      assert.ok((await hints()).length > 0);
+      console.log(`      inlay hints of a screen: first ${first.toFixed(0)} ms, after an edit ${afterEdit.toFixed(0)} ms`);
+      assert.ok(afterEdit < TOOL_MS, `after an edit: ${afterEdit.toFixed(0)} ms`);
+    } finally {
+      await enabled.update("enabled", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   it(`completes within ${TOOL_MS} ms at its end and in its middle`, async () => {
     const half = sql.indexOf(";\n\n", sql.length / 2) + 3;
     const editor = await open(`${sql.slice(0, half)}${TYPING};\n${sql.slice(half)}${TYPING}`);
