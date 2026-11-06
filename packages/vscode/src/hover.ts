@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { checkWithRoles, type CompletionKind, complete, describe, type ParseCache, type Role } from "clickhouse-sql-syntax";
+import { checkWithRoles, type CompletionKind, complete, describe, keywordDocumentation, type ParseCache, type Role } from "clickhouse-sql-syntax";
 import { hintHover } from "./hints.js";
 import { parameterHover } from "./parameters.js";
 import { tooLarge } from "./size.js";
@@ -12,7 +12,7 @@ const KINDS: Partial<Record<Role, CompletionKind[]>> = {
   setting: ["setting"],
 };
 
-/** The documentation of the function, setting, engine, format or table function under the mouse. */
+/** The documentation of the function, setting, engine, format, table function, SYSTEM command or access clause under the mouse. */
 export function registerHover(languageId: string, cacheOf: (document: vscode.TextDocument) => ParseCache): vscode.Disposable {
   return vscode.languages.registerHoverProvider(languageId, {
     provideHover(document, position) {
@@ -26,6 +26,12 @@ export function registerHover(languageId: string, cacheOf: (document: vscode.Tex
       if (parameter) {
         const span = new vscode.Range(document.positionAt(parameter.start), document.positionAt(parameter.end));
         return new vscode.Hover(new vscode.MarkdownString(parameter.markdown), span);
+      }
+      // A SYSTEM command, or a clause of CREATE or ALTER USER, ROLE, QUOTA, ROW POLICY or SETTINGS PROFILE.
+      const keyword = keywordDocumentation(text, offset, cacheOf(document));
+      if (keyword) {
+        const span = new vscode.Range(document.positionAt(keyword.start), document.positionAt(keyword.end));
+        return new vscode.Hover(new vscode.MarkdownString(keyword.documentation), span);
       }
       // What complete() offers for the whole word tells what the word is at that place.
       const lower = word.toLowerCase();

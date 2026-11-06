@@ -16,7 +16,8 @@ Support for [ClickHouse](https://github.com/ClickHouse/ClickHouse) SQL that read
 - **Folding** of statements, subqueries and comments of several lines, and of `-- #region` ... `-- #endregion` blocks.
 - **Expand Selection** grows from the word at the cursor to its expression, call, clause, subquery and statement, and Shrink Selection goes back.
 - **Table function arguments.** Calls such as `file`, `s3` and `cluster` show their arguments and suggest formats, compression methods and names from the server. Aggregate combinators such as `sumIf` and window functions also have signature help.
-- **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, and the arguments of the function you are typing.
+- **Hover and signature help** show ClickHouse's documentation of functions, settings, engines and formats, of SYSTEM commands such as `SYSTEM FLUSH LOGS`, and of the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and `SETTINGS PROFILE`, and the arguments of the function you are typing.
+- **Inlay hints** (off by default). The names of the parameters before the arguments of calls, as in `dateDiff(unit: 'day', startdate: a, enddate: b)`, and the type of a query parameter after the `param_name` that sets it.
 - **Go to definition, references and rename** of aliases, CTEs, table aliases and lambda and query parameters, scoped as ClickHouse scopes them; a name that ClickHouse could read otherwise is left alone.
 - **Query parameters.** Autocomplete offers the types after `{name:`, only `Identifier` where a name goes, as in `FROM {table:Identifier}`, the parameters of the file after `{`, and `param_name` in `SET` and `SETTINGS`. Hover over `{name:Type}` or `param_name` says how ClickHouse reads the value and where it can come from: `SET param_name = 'value'`, `SETTINGS param_name = 'value'`, `--param_name='value'` of `clickhouse-client` and `clickhouse local`, or `param_name=value` in the URL of the HTTP interface.
 - **Test hints and tags** of ClickHouse's own tests. In `-- { serverError UNKNOWN_TABLE }` and the other hints of `clickhouse-client` (`clientError`, `error`, `echo`, `echoOn`, `echoOff`, `retry N until|while`), autocomplete offers the commands and error names, hover gives the code of each error, and a hint that would make `clickhouse-client` stop, such as an unknown error name, is marked in its words. A `serverError` hint on a statement that the client rejects is marked too. In `-- Tags:` lines, autocomplete and hover know the tags that `clickhouse-test` reads, and mark `no-stress`, which it refuses, and tags it ignores; `-- Random settings limits:` lines are checked as it reads them.
@@ -55,6 +56,12 @@ For example, `"lower"` formats `SELECT a FROM t` as `select a from t`. It can di
 - `"upper"`: `SELECT`, `FROM`, `WHERE`
 - `"lower"`: `select`, `from`, `where`
 - `"preserve"`: Keywords keep the case they are written in
+
+### `clickhouseSql.inlayHints.enabled`
+
+Default `false`; boolean; user or workspace settings, also per language.
+
+Show the name of the parameter before each argument of a function, table function or engine call with two arguments or more, as in `dateDiff(unit: 'day', startdate: a, enddate: b)`, and the type after each `param_name` that a `{name:Type}` of the file uses. An argument that is already a name equal to the parameter gets no name. VS Code shows them as `editor.inlayHints.enabled` says.
 
 ### `clickhouseSql.maxFileSize`
 

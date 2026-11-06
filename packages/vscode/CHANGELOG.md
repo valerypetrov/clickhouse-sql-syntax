@@ -9,6 +9,10 @@
   compression method, enum value, keyword or test hint error name; the names in "Maybe you meant" of the server check;
   a number in quotes for a setting of one character; and `ENGINE = MergeTree` after
   `SET default_table_engine = 'None'`, which is now marked as ClickHouse refuses it.
+- Inlay hints, off by default (`clickhouseSql.inlayHints.enabled`): the parameter names of the arguments of function,
+  table function and engine calls, and the type of a query parameter after the `param_name` that sets it.
+- Hover over SYSTEM commands and over the clauses of `CREATE` and `ALTER` `USER`, `ROLE`, `QUOTA`, `ROW POLICY` and
+  `SETTINGS PROFILE` shows ClickHouse's documentation of them.
 
 ## 0.4.0
 

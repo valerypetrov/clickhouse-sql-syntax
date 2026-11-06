@@ -136,7 +136,7 @@ export function registerSemanticTokens(languageId: string, cacheOf: (document: v
  * The text split after each ';', as offsets; the parser reads each piece alone. A ';' in inline
  * INSERT data ends a piece too, so the rest of that data is read as SQL, as the grammar reads it.
  */
-function pieces(text: string): [number, number][] {
+export function pieces(text: string): [number, number][] {
   const result: [number, number][] = [];
   let start = 0;
   for (const token of tokenize(text)) {
