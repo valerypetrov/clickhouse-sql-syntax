@@ -33,7 +33,7 @@ To build it yourself instead (needs Node.js 22 or newer):
 git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
 cd clickhouse-sql-syntax
 npm install && npm run build && npm run package:vscode
-code --install-extension packages/vscode/clickhouse-sql-0.4.0.vsix
+code --install-extension packages/vscode/clickhouse-sql-0.5.0.vsix
 ```
 
 ## Use the library

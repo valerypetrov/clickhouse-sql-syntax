@@ -17,6 +17,6 @@
     "test": "npm run typecheck && tsx --test \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "clickhouse-sql-syntax": "0.4.0"
+    "clickhouse-sql-syntax": "0.5.0"
   }
 }

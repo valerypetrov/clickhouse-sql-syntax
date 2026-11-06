@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - More values that ClickHouse refuses are marked: maps given to numbers and booleans, size suffixes and `inf` in float
   settings, URIs, `compatibility` versions, codecs on column types they do not take, the parameters of `Quantized`
