@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 
 import { argumentTypes, argumentValues } from "./function-docs.js";
 import { FUNCTION_SYNTAX, tableSyntax, withSignature } from "./catalog-signatures.js";
+import { probe } from "./probe.js";
 
 const { values: args } = parseArgs({ options: { clickhouse: { type: "string" } } });
 
@@ -180,15 +181,36 @@ interface SettingRow {
   default: string;
   description: string;
   alias_for: string;
+  is_obsolete: number;
 }
 
-const settings = rows<SettingRow>(
-  "SELECT name, type, default, description, alias_for FROM system.settings WHERE NOT is_obsolete ORDER BY name",
-).map((r) => ({ name: r.name, type: r.type, default: r.default, aliasTo: r.alias_for, description: summary(r.description, 200) }));
+const settingRows = rows<SettingRow>("SELECT name, type, default, description, alias_for, is_obsolete FROM system.settings ORDER BY name");
+
+// The values of enum settings, from ClickHouse's "Must be one of [...]" for a value no enum has.
+const PLAIN_TYPES = /^(Bool|U?Int\d*|Float|Double|String|Char|Map|Seconds|Milliseconds|NonZeroUInt64|MaxThreads|Timezone|URI|UInt64Auto|FloatAuto|DoubleAuto|BoolAuto|BoolForce)$/;
+const enumSettings = settingRows.filter((r) => !r.is_obsolete && !PLAIN_TYPES.test(r.type));
+const mustBe = (message: string | undefined) => [...(/Must be one of \[([^\]]*)\]/.exec(message ?? "")?.[1] ?? "").matchAll(/'([^']*)'/g)].map((m) => m[1]!);
+const enumOutcomes = probe(args.clickhouse, enumSettings.map((r) => `SELECT 1 SETTINGS ${r.name} = 'zz_probe_value' FORMAT Null`));
+const enums = new Map(enumSettings.map((r, i) => [r.name, mustBe(enumOutcomes[i]!.message)] as const).filter(([, v]) => v.length));
+// A multi-valued enum takes a comma-separated list of its values.
+const pairs = [...enums].filter(([, v]) => v.length >= 2);
+const pairOutcomes = probe(args.clickhouse, pairs.map(([name, v]) => `SELECT 1 SETTINGS ${name} = '${v[0]},${v[1]}' FORMAT Null`));
+const multi = new Set(pairs.filter((_, i) => pairOutcomes[i]!.ok).map(([name]) => name));
+
+const settings = settingRows.map((r) => ({
+  name: r.name,
+  type: r.type,
+  default: r.default,
+  aliasTo: r.alias_for,
+  description: r.is_obsolete ? "Obsolete; it does nothing." : summary(r.description, 200),
+  values: enums.get(r.name),
+  multi: multi.has(r.name),
+  obsolete: r.is_obsolete === 1,
+}));
 
 write(
   "settings.ts",
-  "system.settings (obsolete settings left out)",
+  "system.settings, with the values of enums from clickhouse local",
   [
     "export interface SettingInfo {",
     "  name: string;",
@@ -198,6 +220,12 @@ write(
     "  /** The setting this name is an alias of. */",
     "  aliasTo?: string;",
     "  description?: string;",
+    "  /** The values of an enum, as ClickHouse lists them. */",
+    "  values?: readonly string[];",
+    "  /** Whether it takes a comma-separated list of the values. */",
+    "  multi?: boolean;",
+    "  /** An obsolete setting, which ClickHouse still takes but ignores; completion does not offer it. */",
+    "  obsolete?: boolean;",
     "}",
   ],
   "SETTINGS",
