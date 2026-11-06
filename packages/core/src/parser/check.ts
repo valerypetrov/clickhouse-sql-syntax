@@ -22,7 +22,7 @@ const SHOW_CHARS = 160;
 const NOT_CHECKED = "Not checked: checking took too long, so this statement and the ones after it were skipped";
 
 /** Line and column of every offset, with lines ending at \n, \r\n or a lone \r. */
-class Lines {
+export class Lines {
   private readonly starts: number[] = [0];
 
   constructor(readonly text: string) {

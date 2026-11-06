@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
-import { checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
+import { checkOptions, checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
+import { otherDialectSpans } from "./dialect.js";
 import { registerFolding } from "./folding.js";
 import { registerFormatter } from "./format.js";
+import { checkHints, type Problem } from "./hints.js";
 import { registerHover } from "./hover.js";
 import { registerOutline } from "./outline.js";
 import { registerSelectionRanges } from "./selection.js";
@@ -11,6 +13,7 @@ import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
 import { tooLarge } from "./size.js";
+import { checkTags } from "./tags.js";
 
 export const LANGUAGE_ID = "clickhouse-sql";
 const CHECK_DELAY_MS = 300;
@@ -18,6 +21,8 @@ const CHECK_DELAY_MS = 300;
 /** Checks ClickHouse SQL documents shortly after they open and after each change. */
 export function activate(context: vscode.ExtensionContext): ServerApi {
   const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE_ID);
+  // The test hints and tags that clickhouse-client and clickhouse-test read from comments.
+  const testDiagnostics = vscode.languages.createDiagnosticCollection(`${LANGUAGE_ID}-test`);
   const server = registerServer(context, LANGUAGE_ID);
   const pending = new Map<vscode.TextDocument, ReturnType<typeof setTimeout>>();
   // The statements of each document parsed once, for its diagnostics, semantic tokens, hover, outline, selections and names.
@@ -39,10 +44,17 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     if (document.languageId !== LANGUAGE_ID) return;
     if (tooLarge(document)) {
       diagnostics.delete(document.uri);
+      testDiagnostics.delete(document.uri);
       return;
     }
-    const errors = checkWithRoles(document.getText(), cacheOf(document)).diagnostics;
+    const text = document.getText();
+    const cache = cacheOf(document);
+    const other = otherDialectSpans(text);
+    // Syntax errors, then what ClickHouse refuses in the options; clickhouse-client reads other dialects, which check() does not.
+    const errors = [...checkWithRoles(text, cache).diagnostics, ...checkOptions(text, cache)].filter((e) => !other.some((s) => s.start <= e.start && e.start <= s.end));
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
+    const problems = [...checkTags(text), ...checkHints(text, errors.map((e) => e.start))].sort((a, b) => a.start - b.start);
+    testDiagnostics.set(document.uri, problems.map((problem) => toTestDiagnostic(document, problem)));
   };
 
   const schedule = (document: vscode.TextDocument): void => {
@@ -62,11 +74,13 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     registerSemanticTokens(LANGUAGE_ID, cacheOf),
     registerNames(LANGUAGE_ID, cacheOf),
     diagnostics,
+    testDiagnostics,
     vscode.workspace.onDidOpenTextDocument(schedule),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
     vscode.workspace.onDidCloseTextDocument((document) => {
       cancel(document);
       diagnostics.delete(document.uri);
+      testDiagnostics.delete(document.uri);
       caches.delete(document.uri.toString());
     }),
     { dispose: () => [...pending.keys()].forEach(cancel) },
@@ -80,5 +94,18 @@ function toDiagnostic(document: vscode.TextDocument, error: SyntaxError): vscode
   const severity = error.severity === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
   const diagnostic = new vscode.Diagnostic(range, error.message, severity);
   diagnostic.source = "ClickHouse SQL";
+  return diagnostic;
+}
+
+const SEVERITIES = {
+  error: vscode.DiagnosticSeverity.Error,
+  warning: vscode.DiagnosticSeverity.Warning,
+  information: vscode.DiagnosticSeverity.Information,
+};
+
+function toTestDiagnostic(document: vscode.TextDocument, problem: Problem): vscode.Diagnostic {
+  const range = new vscode.Range(document.positionAt(problem.start), document.positionAt(problem.end));
+  const diagnostic = new vscode.Diagnostic(range, problem.message, SEVERITIES[problem.severity]);
+  diagnostic.source = "ClickHouse test";
   return diagnostic;
 }

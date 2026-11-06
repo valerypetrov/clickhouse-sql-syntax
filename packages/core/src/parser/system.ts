@@ -321,7 +321,7 @@ function parseSystemBody(p: P, type: string, node: Ast): boolean {
       return true;
     case "FLUSH DISTRIBUTED":
       if (!parseOnClusterAndMaybeTable(p, true, false)) return false;
-      return !kw(p, "SETTINGS") || parseSetQuery(p, true) !== null;
+      return !kw(p, "SETTINGS") || parseSetQuery(p, true, true, "distributed") !== null;
     case "RESTORE REPLICA":
       return parseOnClusterAndMaybeTable(p, true, false);
     case "RESTORE DATABASE REPLICA":

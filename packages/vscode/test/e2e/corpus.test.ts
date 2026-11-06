@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { check, complete, type Diagnostic as SyntaxError, format, KEYWORDS } from "clickhouse-sql-syntax";
+import { check, checkOptions, complete, type Diagnostic as SyntaxError, format, KEYWORDS } from "clickhouse-sql-syntax";
 import * as vscode from "vscode";
 import { classify, type ClickHouseInfo, type Verdict } from "../../../../oracle/src/clickhouse.js";
 import { sameVerdict, verdictText } from "../../../../oracle/src/compare.js";
@@ -91,7 +91,8 @@ function toProblem(error: SyntaxError): Problem {
 /** The diagnostics of `document`, once they equal `expected` or WAIT_MS has passed. */
 async function published(document: vscode.TextDocument, expected: Problem[]): Promise<Problem[]> {
   const read = (): Problem[] =>
-    vscode.languages.getDiagnostics(document.uri).map((d) => ({
+    // The syntax check only, not the test hints and tags, which have their own source.
+    vscode.languages.getDiagnostics(document.uri).filter((d) => d.source === "ClickHouse SQL").map((d) => ({
       message: d.message,
       start: document.offsetAt(d.range.start),
       end: document.offsetAt(d.range.end),
@@ -183,7 +184,8 @@ async function visit(file: string): Promise<Visit> {
   const text = document.getText();
   const statements = splitStatements(text);
   const errors = check(text);
-  const expected = errors.map(toProblem);
+  // The extension publishes the errors of check() and then those of checkOptions().
+  const expected = [...errors, ...checkOptions(text)].map(toProblem);
   const offsets = completionOffsets(text, statements);
   return {
     file,

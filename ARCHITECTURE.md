@@ -17,6 +17,7 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `highlight/`: `highlight()`.
 - `format/`: `format()`.
 - `complete/`: `complete()`, `describe()`, `engineArgument()` and `functionArgument()`.
+- `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
 - `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
@@ -66,6 +67,32 @@ statements of one call share 2,000,000 backtracks; where they run out, a warning
 first `;`. It keeps a statement only when nothing after that `;` decided its result, so no inline data, and a hit
 costs the backtracks of the parse it stands for, so the result is the same as without the cache.
 
+## checkOptions()
+
+A layer apart from `check()`, which it never changes: it looks only at the statements that parse, through
+`parsedStatements()` and the same `ParseCache`.
+
+1. Each list of settings that parses is marked by the parser with what it belongs to (a `settings` mark: `query`,
+   `set`, `profile`, `storage` with its engine, `column`, `projection`, `alter`, `reset`, `refresh`, `explain`,
+   `backup`, ...); names analysis skips these marks. `options/catalog.ts` gives the settings each place takes, and
+   ClickHouse's message for a name it does not take.
+2. Each `name = value` is checked by name, and its literal by the conversions of `src/Core/SettingsFields.cpp`
+   (`options/values.ts`): numbers in range, strings that parse, booleans, enums and their lists, one character, maps
+   and time zones. DEFAULT, query parameters, `param_` and `custom_` names are left alone.
+3. The roles find `CODEC(...)`, `INDEX ... TYPE`, `STATISTICS`, `FORMAT` and `COMPRESSION`. A parameter of a codec or
+   index type is checked against the values that ClickHouse was asked about: a number between two probes with the same
+   verdict gets that verdict, any other is left alone.
+4. An error is what ClickHouse refuses before the statement runs, whatever its server. What a setting of the server or
+   session can allow (`allow_suspicious_codecs`, the settings of experimental codecs) and what fails only as the
+   statement runs (a compression method) is a warning. `ATTACH` is not checked, as ClickHouse does not check it again.
+
+The catalog comes from ClickHouse: `scripts/generate-catalog.ts` asks `system.settings` and the enum values of each
+setting (from ClickHouse's "Must be one of" for a value no enum has), and `scripts/generate-options.ts` reads
+`system.merge_tree_settings`, `system.codecs`, `system.data_skipping_index_types`, `system.database_engines`, the
+lists of settings that the sources declare for the other engines, BACKUP and RESTORE, and the docs of EXPLAIN. It
+asks a binary, in `clickhouse local`, which names each engine takes, which values each enum, codec parameter and index
+parameter takes, and the messages for the others, so a new release updates all of it.
+
 ## roles() and highlight()
 
 While a statement parses, the parser marks what it read each word as: a keyword, identifier, function, type,
@@ -97,7 +124,8 @@ that no parser accepts, so the parser records everything it tries there (`expect
 expectations are offered when the parser takes them there, which it does not for all of them, as for FETCH without
 ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks and 100,000 tokens parsed);
 the other ones (an expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and
-from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions.
+from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions. Where the parser expects the name or the type of a query parameter, `parameters.ts` offers the parameters that
+the input writes and those of clickhouse-test, or `Identifier`; in SET and SETTINGS it adds `param_name` for each one.
 
 At the top level of the brackets of `ENGINE = Name(...)`, the suggestions for the engine's argument come first:
 
@@ -133,6 +161,12 @@ In the brackets of a function, the suggestions for the argument at the cursor co
    write one row for a function that is not an aggregate; and `'$.'` with the cursor inside. The columns of the table
    the statement makes and of the tables it reads in the schema follow, those whose type fits the documented types
    of the argument first.
+
+In a list of settings, `options/complete.ts` reads from the words before it which place it is (a query, `SET`, the
+engine of `ENGINE = Name ... SETTINGS`, a database, a column, `MODIFY SETTING`, `EXPLAIN kind`, `BACKUP`, ...) and
+offers that place's settings, its own before those of queries, and after `name =` the values of an enum or a boolean.
+In `CODEC(...)`, after `INDEX ... TYPE`, in `STATISTICS(...)` and after `CREATE DATABASE ... ENGINE =` it offers only
+codecs (and in a codec's brackets the words its parameter takes), index types, statistics types or database engines.
 
 In the brackets of `JSON(...)` in a type, `json.ts` offers its parameters and SKIP, and after `column.` of a JSON
 column, of the schema or of a CREATE TABLE in the document, the typed paths that its type declares.
@@ -184,7 +218,7 @@ A range that does not hold the one before it is left out, so they nest. Operator
 
 In `packages/vscode/src`:
 
-- `extension.ts`: diagnostics from `check()`, 300 ms after the last change. A `ParseCache` per document keeps the
+- `extension.ts`: diagnostics from `check()` and `checkOptions()`, 300 ms after the last change. A `ParseCache` per document keeps the
   statements parsed, so that the diagnostics, the semantic tokens, hover, the outline, selections and names parse a
   statement once, until it changes.
 - `semantic.ts`: semantic tokens from `roles()`, which colour over the TextMate grammar, on lines of up to 10,000
@@ -203,7 +237,15 @@ In `packages/vscode/src`:
   and the SELECT of `CREATE ... AS SELECT` and `INSERT ... SELECT`. `index.ts` sends each one as `EXPLAIN QUERY TREE`
   with `readonly=1`, 500 ms after a change, keeps the answers by query text, and puts an error on the name it
   mentions. `schema.ts` reads `system.databases`, `system.tables` and `system.columns` for completion, and for a statement
-  with an ENGINE `system.clusters` and `system.macros`, which are left out when the user may not read them.
+  with an ENGINE `system.clusters` and `system.macros`, which are left out when the user may not read them. Each
+  query gets the values that the `SET param_x` statements before it give, as `clickhouse-client` keeps them.
+- `manifest.ts`, `settings.ts`: every setting is read through `settings.ts`, which checks its value against the
+  schema in `package.json` and uses the default for a wrong one; a server setting's problem is the connection problem.
+- `parameters.ts`: the `{name:Type}` and `param_name` of a document, for hover and the server check.
+- `hints.ts`, `tags.ts`: the test hints that `clickhouse-client` reads from comments (`src/Client/TestHint.cpp`) and
+  the `-- Tags:` and `-- Random settings limits:` lines of `tests/clickhouse-test`, checked as those read them, with
+  their own diagnostics, completion and hover.
+- `dialect.ts`: the statements after `SET dialect = 'kusto'` and the like, whose syntax errors are left out.
 
 The TextMate grammar in `syntaxes/` is generated by `scripts/grammar.ts` from the library's keyword and type lists.
 It uses the scope names of `highlight()`, so the grammar tests compare the two on the same input.

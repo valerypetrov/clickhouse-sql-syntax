@@ -278,6 +278,31 @@ describe("Completion, hover and signature help", () => {
     assert.equal(await hover(text.indexOf("FROM") + 1), "");
   });
 
+  it("completes and documents the options of a statement", async () => {
+    const { editor } = await open(
+      "CREATE TABLE t (x UInt64 CODEC(Delta(4), ZSTD(3)), s String, INDEX i s TYPE bloom_filter(0.01) GRANULARITY 1) " +
+        "ENGINE = MergeTree ORDER BY x SETTINGS index_granularity = 8192|",
+    );
+    const text = editor.document.getText();
+    const hover = async (name: string) => {
+      const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider", editor.document.uri, editor.document.positionAt(text.indexOf(name) + 1));
+      return hovers.flatMap((h) => h.contents.map((c) => (c as vscode.MarkdownString).value)).join("\n");
+    };
+    assert.match(await hover("ZSTD"), /Good compression/);
+    assert.match(await hover("bloom_filter"), /INDEX name expr TYPE bloom_filter/);
+    assert.match(await hover("index_granularity"), /^`UInt64`, default `8192`/);
+    const items = async (sql: string) => {
+      const { editor: other, position } = await open(sql);
+      const list = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", other.document.uri, position);
+      return list.items.map((item) => ({ label: typeof item.label === "string" ? item.label : item.label.label, kind: item.kind }));
+    };
+    const codecs = await items("CREATE TABLE t (x UInt64 CODEC(|");
+    assert.ok(codecs.some((c) => c.label === "ZSTD" && c.kind === vscode.CompletionItemKind.EnumMember));
+    assert.ok(!codecs.some((c) => c.label === "toDate"));
+    assert.ok((await items("SET join_algorithm = |")).some((c) => c.label === "'grace_hash'"));
+  });
+
   it("shows the documentation of what the parser reads as a call where no expression goes", async () => {
     const { editor } = await open(
       [

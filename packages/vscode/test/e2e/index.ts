@@ -13,6 +13,7 @@ export function run(): Promise<void> {
   mocha.addFile(resolve(__dirname, "outline.test.js"));
   mocha.addFile(resolve(__dirname, "selection.test.js"));
   mocha.addFile(resolve(__dirname, "names.test.js"));
+  mocha.addFile(resolve(__dirname, "options.test.js"));
   return new Promise((done, fail) => {
     mocha.run((failures) => (failures > 0 ? fail(new Error(`${failures} test(s) failed`)) : done()));
   });

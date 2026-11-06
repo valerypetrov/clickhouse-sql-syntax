@@ -31,7 +31,9 @@ export type NameMarkKind =
   /** The INTERPOLATE list. */
   | "interpolate"
   /** Something names analysis does not follow, such as a subquery of EXPLAIN. */
-  | "opaque";
+  | "opaque"
+  /** A list of settings; the flag tells what it belongs to, `name` is the engine of a storage. Names analysis skips it. */
+  | "settings";
 
 /** A mark with the offsets of its first and last token, from where its statement begins; ranges are [start, end). */
 export interface NameMark {

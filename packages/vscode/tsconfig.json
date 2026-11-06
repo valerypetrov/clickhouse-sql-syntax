@@ -4,7 +4,8 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "types": ["node", "vscode", "mocha"],
-    "noEmit": true
+    "noEmit": true,
+    "resolveJsonModule": true
   },
   "include": ["src", "scripts", "test"]
 }

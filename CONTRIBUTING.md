@@ -35,13 +35,16 @@ npm run oracle -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests
 npm run oracle:format -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:rename -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 npm run oracle:arguments -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
+npm run oracle:options -- --clickhouse <clickhouse> --corpus <ClickHouse checkout>/tests/queries/0_stateless
 ```
 
 The second command labels every statement of the tests with that binary and compares `check()` with it. The third
 checks that ClickHouse reads each statement that `format()` changed as the same query, and formats every test file
 whole, as LF and as CRLF text. The fourth renames the names of each SELECT that runs in an empty `clickhouse local`
 and checks that the renamed query gives the same result. The fifth checks what completion offers in the arguments of
-functions against the arguments that the tests write, and runs each suggestion in a call. `npm test` fails when the sample's rates fall below
+functions against the arguments that the tests write, and runs each suggestion in a call. The sixth runs each statement of the tests that `checkOptions()` flags in
+`clickhouse local`, compares its checks of settings, codecs and index types with ClickHouse on generated values, and
+runs every option that completion offers. `npm test` fails when the sample's rates fall below
 `oracle/thresholds.json`; raise them when `check()` gets better. [oracle/README.md](oracle/README.md) describes the
 sample and how to rebuild it.
 
@@ -53,6 +56,12 @@ The lists that come from ClickHouse are generated; do not edit them by hand.
 - `npx tsx scripts/generate-catalog.ts --clickhouse <clickhouse>`: the functions, settings, table engines, formats,
   table functions, combinators and time zones that completion offers. Signatures missing from the server metadata
   are maintained in `scripts/catalog-signatures.ts`.
+- `npx tsx scripts/generate-errors.ts --clickhouse <clickhouse>` in `packages/vscode`: the error codes of test hints
+  in `packages/vscode/src/generated/errors.ts`.
+- `npx tsx scripts/generate-readme.ts` in `packages/vscode`: the settings and commands of its README, from its
+  `package.json`; a test fails when the README differs.
+- `npx tsx scripts/generate-options.ts --clickhouse <clickhouse> --src <ClickHouse checkout> --docs <docs/reference>`: the
+  MergeTree and engine settings, codecs, index and statistics types, database engines and EXPLAIN settings of `checkOptions()`.
 - `npm run generate -w packages/vscode`: the TextMate grammar in `packages/vscode/syntaxes/`. Edit
   `packages/vscode/scripts/grammar.ts` instead of the JSON, and run it after the keyword or data type lists change.
 

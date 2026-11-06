@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+- Suggestions and signature help for the arguments of every documented function.
+- Every setting is documented with examples, and the settings editor and `settings.json` mark a value of the wrong
+  type, out of range, not in the list or, for `clickhouseSql.server.url`, not an `http://` or `https://` URL. A wrong
+  value is not used: the setting keeps its default, with a message, or for a server setting, the status bar says why.
+- A connection problem names the setting that would fix it, such as `clickhouseSql.server.url` for a server that
+  does not answer or the native port 9000, whose answer it quotes; selecting the status bar item opens that setting.
+- The README documents every setting and command, generated from `package.json`.
+- Query parameters: autocomplete of the type after `{name:`, of `Identifier` where only a name goes, of the file's
+  parameters after `{` and of `param_name` in `SET` and `SETTINGS`; hover over `{name:Type}` and `param_name`; the
+  server check sends the values that `SET param_name` gives earlier in the file.
+- Test hints such as `-- { serverError UNKNOWN_TABLE }`: autocomplete and hover of their commands and error names,
+  and the problems that make `clickhouse-client` stop, in its words. `-- Tags:` lines: autocomplete and hover of the
+  tags of `clickhouse-test`, and marks for `no-stress` and for tags it does not read; `-- Random settings limits:`
+  lines are checked.
+- Statements after `SET dialect = 'kusto'` and the other dialects get no syntax errors until
+  `SET dialect = 'clickhouse'`.
+- Options: autocomplete, hover and checks of the settings of queries, engines, databases, columns, EXPLAIN, BACKUP
+  and RESTORE and of their values, of codecs and their parameters, index and statistics types, database engines,
+  formats and compression methods, with ClickHouse's own messages. What only the server's settings could allow, such
+  as a suspicious codec, is a warning.
+
 ## 0.3.0
 
 - Autocomplete for the arguments of functions, by what ClickHouse's documentation of each one says: units and other
