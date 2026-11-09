@@ -5,13 +5,10 @@ in TypeScript with no runtime dependencies.
 
 ## Install
 
-It is not on npm yet. Build it from the [repository](https://github.com/valerypetrov/clickhouse-sql-syntax) (Node.js 22 or newer)
-and install the folder in your project:
+It is not on npm. Each version is on git as the tag `core-v<version>`, built and ready to install:
 
 ```sh
-git clone https://github.com/valerypetrov/clickhouse-sql-syntax.git
-cd clickhouse-sql-syntax && npm install && npm run build -w packages/core
-cd ../your-project && npm install ../clickhouse-sql-syntax/packages/core
+npm install git+https://github.com/valerypetrov/clickhouse-sql-syntax.git#core-v0.5.0
 ```
 
 ## API
