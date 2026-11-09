@@ -1,0 +1,1 @@
+{"version":3,"file":"privileges.d.ts","sourceRoot":"","sources":["../../src/generated/privileges.ts"],"names":[],"mappings":"AAEA,MAAM,WAAW,SAAS;IACxB,IAAI,EAAE,MAAM,CAAC;IACb,wCAAwC;IACxC,OAAO,EAAE,SAAS,MAAM,EAAE,CAAC;IAC3B,yFAAyF;IACzF,KAAK,EAAE,MAAM,GAAG,IAAI,CAAC;CACtB;AAED,eAAO,MAAM,UAAU,EAAE,SAAS,SAAS,EAgQ1C,CAAC;AAEF,yGAAyG;AACzG,eAAO,MAAM,YAAY,EAAE,SAAS,MAAM,EAwCzC,CAAC"}

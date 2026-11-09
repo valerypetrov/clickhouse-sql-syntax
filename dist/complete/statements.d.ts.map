@@ -1,0 +1,1 @@
+{"version":3,"file":"statements.d.ts","sourceRoot":"","sources":["../../src/complete/statements.ts"],"names":[],"mappings":"AAMA,OAAO,EAAkB,KAAK,UAAU,EAAE,MAAM,oBAAoB,CAAC;AACrE,OAAO,EAAiB,KAAK,oBAAoB,EAA8B,MAAM,aAAa,CAAC;AA2BnG,uGAAuG;AACvG,wBAAgB,oBAAoB,CAAC,GAAG,EAAE,MAAM,EAAE,MAAM,EAAE,MAAM,EAAE,KAAK,CAAC,EAAE,UAAU,GAAG,oBAAoB,GAAG,SAAS,CA0BtH"}

@@ -1,0 +1,12 @@
+clickhouse-sql-syntax
+Copyright 2026 Valery Petrov
+
+Licensed under the Apache License 2.0 with the Commons Clause License Condition v1.0: you may use,
+modify and share this software, but you may not sell it. See LICENSE.
+
+This product includes work derived from ClickHouse (https://github.com/ClickHouse/ClickHouse),
+Copyright 2016-2026 ClickHouse, Inc., licensed under the Apache License 2.0:
+- the lexer and parser follow ClickHouse's src/Parsers;
+- the keyword, data type and privilege lists are generated from ClickHouse;
+- the test fixtures contain statements from ClickHouse's tests (tests/queries/0_stateless).
+The original ClickHouse code stays available from ClickHouse under the Apache License 2.0.

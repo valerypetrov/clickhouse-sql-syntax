@@ -1,0 +1,422 @@
+/**
+ * complete(): suggestions at a cursor. Keywords are those the parser expects there, and the
+ * other names depend on what it expects: an expression, a table, a data type, a format, ...
+ */
+import { COMBINATORS } from "../generated/combinators.js";
+import { DATA_TYPES } from "../generated/data-types.js";
+import { FORMATS } from "../generated/formats.js";
+import { FUNCTIONS } from "../generated/functions.js";
+import { PRIVILEGES } from "../generated/privileges.js";
+import { TABLE_ENGINES } from "../generated/table-engines.js";
+import { TABLE_FUNCTIONS } from "../generated/table-functions.js";
+import { split } from "../format/index.js";
+import { expectedAt, keywordFilter } from "../parser/index.js";
+import { isErrorKind, isSignificant, TokenKind as T, } from "../types.js";
+import { AGGREGATES, combinatorDocumentation, engineDocumentation, formatDetail, formatDocumentation, functionDocumentation, findFunction, tableFunctionDocumentation, } from "./catalog.js";
+import { optionSuggestions } from "../options/index.js";
+import { engineCandidates } from "./arguments.js";
+import { engineCall } from "./engines.js";
+import { functionCall, functionCandidates, typeNames } from "./functions.js";
+import { jsonTypeArguments, typedPaths } from "./json.js";
+import { identifierType, parameterNameCandidates, parameterSettings } from "./parameters.js";
+import { createdTable, createdTableName, databases, isWord, keyNames, named, nameOf, resolve, schemaColumn, tableRefs, } from "./schema.js";
+/** Expected variants that are keywords, such as FROM or ORDER BY, rather than descriptions. */
+const KEYWORD_VARIANT = /^[A-Z][A-Z0-9_]*( [A-Z][A-Z0-9_]*)*$/;
+/** Expected where a table goes after FROM or JOIN; the list of joins expects its own variant after a table too. */
+const TABLE_VARIANT = "table or subquery or table function";
+/** Words after which a table name follows. */
+const TABLE_NAME_WORDS = new Set(["table", "into", "update", "describe", "desc", "exists", "truncate"]);
+const DATABASE_WORDS = new Set(["database", "use"]);
+/** The last token that starts before the offset, or undefined at the start. */
+function tokenBefore(tokens, offset) {
+    if (!tokens.length)
+        return undefined;
+    let lo = 0;
+    let hi = tokens.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (tokens[mid].start < offset)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    const token = tokens[lo];
+    return token.start < offset ? token : undefined;
+}
+/** The last unit that starts before the offset, the one whose tokens the cursor is among. */
+function unitBefore(units, offset) {
+    let found;
+    for (const unit of units) {
+        if (unit.start >= offset)
+            break;
+        found = unit;
+    }
+    return found;
+}
+/** Whether a statement has ended before the offset, at its ";" or at the empty line after its data. */
+function endedBefore(unit, offset) {
+    const statement = unit.statement;
+    if (offset < statement.end)
+        return false;
+    return unit.data.blankLine || unit.tokens.some((token) => token.kind === T.Semicolon && token.end === statement.end);
+}
+/** The statement that a word starting at `start` goes on, or undefined when it starts one. */
+function statementAt(units, start) {
+    let i = units.length - 1;
+    while (i >= 0 && !(units[i].statement && units[i].statement.start <= start))
+        i--;
+    if (i >= 0 && !endedBefore(units[i], start))
+        return units[i];
+    for (i++; i < units.length; i++)
+        if (units[i].statement)
+            return units[i];
+    return undefined;
+}
+/** The word at the cursor, or undefined in a comment, a string, a quoted name or a number. */
+function wordAt(sql, tokens, offset) {
+    const token = tokenBefore(tokens, offset);
+    const none = { start: offset, prefix: "" };
+    if (!token)
+        return none;
+    switch (token.kind) {
+        case T.BareWord:
+            return { start: token.start, prefix: sql.slice(token.start, offset) };
+        case T.Number:
+            return undefined;
+        case T.Comment:
+            // A line comment goes on to the end of its line.
+            return token.end > offset || !sql.startsWith("/*", token.start) ? undefined : none;
+        case T.StringLiteral:
+        case T.QuotedIdentifier:
+        case T.HereDoc:
+            return token.end > offset ? undefined : none;
+        default:
+            return isErrorKind(token.kind) ? undefined : none;
+    }
+}
+/** Candidates that start with the prefix, each label once, sorted by tier and then by label. */
+class Candidates {
+    prefix;
+    items = new Map();
+    lowerPrefix;
+    constructor(prefix) {
+        this.prefix = prefix;
+        this.lowerPrefix = prefix.toLowerCase();
+    }
+    matches(label) {
+        return label.toLowerCase().startsWith(this.lowerPrefix);
+    }
+    add(tier, candidate) {
+        if (this.matches(candidate.label) && !this.items.has(candidate.label))
+            this.items.set(candidate.label, { tier, candidate });
+    }
+    sorted() {
+        return [...this.items.values()]
+            .sort((a, b) => a.tier - b.tier || compare(a.candidate.label, b.candidate.label))
+            .map((item) => item.candidate);
+    }
+}
+function compare(a, b) {
+    const x = a.toLowerCase();
+    const y = b.toLowerCase();
+    return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0;
+}
+const isLower = (text) => /[a-z]/.test(text) && !/[A-Z]/.test(text);
+const isUpper = (text) => /[A-Z]/.test(text) && !/[a-z]/.test(text);
+/** A case-insensitive name in capitals after a prefix in capitals, as ClickHouse spells it otherwise. */
+function nameCase(name, caseInsensitive, prefix) {
+    return caseInsensitive && isUpper(prefix) ? name.toUpperCase() : name;
+}
+/** The names before a dot at the end of the tokens, as `db` and `t` in `db.t.`. */
+function qualifier(sql, before) {
+    const names = [];
+    for (let i = before.length - 1; before[i]?.kind === T.Dot; i -= 2) {
+        const name = nameOf(sql, before[i - 1]);
+        if (name === undefined)
+            break;
+        names.unshift(name);
+    }
+    return names;
+}
+/** The aggregate functions with combinators that the prefix starts, like sumIf and sumIfOrNull for "sumI". */
+function addCombinators(out, tier) {
+    const prefix = out.prefix;
+    for (const aggregate of AGGREGATES) {
+        const name = aggregate.name;
+        if (prefix.length < name.length)
+            continue;
+        const head = prefix.slice(0, name.length);
+        if (aggregate.caseInsensitive ? head.toLowerCase() !== name.toLowerCase() : head !== name)
+            continue;
+        // Whole combinators already typed, then the start of the next one.
+        let applied = head;
+        let rest = prefix.slice(name.length);
+        for (let next = COMBINATORS.find((c) => rest.startsWith(c.name)); next; next = COMBINATORS.find((c) => rest.startsWith(c.name))) {
+            applied += next.name;
+            rest = rest.slice(next.name.length);
+        }
+        for (const combinator of COMBINATORS) {
+            if (!combinator.name.toLowerCase().startsWith(rest.toLowerCase()))
+                continue;
+            const info = findFunction(applied + combinator.name);
+            out.add(tier, {
+                label: applied + combinator.name,
+                kind: "combinator",
+                detail: `${name} with ${combinator.name}`,
+                documentation: info ? functionDocumentation(info) : combinatorDocumentation(combinator),
+            });
+        }
+    }
+}
+function addColumns(out, tier, tables) {
+    for (const table of tables)
+        for (const column of table.columns) {
+            const documentation = `Column of \`${table.database}.${table.name}\``;
+            out.add(tier, named({ label: column.name, kind: "column", detail: column.type, documentation }));
+        }
+}
+function addTables(out, tier, tables) {
+    for (const table of tables)
+        out.add(tier, named({ label: table.name, kind: "table", detail: table.database }));
+}
+function addDatabases(out, tier, schema) {
+    for (const database of databases(schema))
+        out.add(tier, named({ label: database, kind: "database" }));
+}
+/** The columns of the table that a CREATE statement makes, or of the table it is made AS. */
+function createdColumns(sql, statement, schema) {
+    const created = createdTable(sql, statement);
+    const source = created.source && !created.columns.length ? resolve(schema, created.source) : [];
+    return [...created.columns, ...source.flatMap((t) => t.columns.map((c) => schemaColumn(c.name, c.type)))];
+}
+/** The tables that the CREATE TABLE statements of the document make, with the columns they declare. */
+function documentTables(sql, units) {
+    const tables = [];
+    for (const unit of units) {
+        if (!unit.statement)
+            continue;
+        const toks = unit.tokens.filter((token) => isSignificant(token.kind));
+        if (!isWord(sql, toks[0], "create") && !isWord(sql, toks[0], "attach"))
+            continue;
+        const name = createdTableName(sql, toks);
+        if (!name)
+            continue;
+        const columns = createdTable(sql, toks).columns.map((c) => ({ name: c.name, type: c.type }));
+        tables.push({ database: name.database ?? "", name: name.name, columns });
+    }
+    return tables;
+}
+/**
+ * The JSON column that the names before a dot start with, from the schema or a CREATE TABLE of the document, and the
+ * part of a path after it: `j.a` is the column j of a table of the statement, `t.j.a` the column j of the table t.
+ */
+function jsonColumn(sql, units, schema, refs, names) {
+    let declared;
+    const tablesOf = (ref) => {
+        declared ??= documentTables(sql, units);
+        const own = declared.filter((t) => t.name === ref.name && (ref.database === undefined || t.database === ref.database));
+        return [...resolve(schema, ref), ...own];
+    };
+    const owner = names.length > 1 ? refs.filter((ref) => ref.alias === names[0] || (ref.alias === undefined && ref.name === names[0])) : [];
+    const from = owner.length ? 1 : 0;
+    const column = (owner.length ? owner : refs)
+        .flatMap(tablesOf)
+        .flatMap((t) => t.columns)
+        .find((c) => c.name === names[from] && /^json\b/i.test(c.type));
+    return column && { column, path: names.slice(from + 1) };
+}
+/** The typed paths of a JSON column after `column.` and the path written after it, as subcolumns to offer. */
+function addTypedPaths(out, tier, column, path, caret) {
+    const documentation = `Typed path of \`${column.name}\``;
+    const add = (segments, detail) => {
+        const label = segments.join(".");
+        const insertText = segments.map((segment) => named({ label: segment, kind: "column" }).insertText ?? segment).join(".");
+        out.add(tier, { label, kind: "column", detail, documentation, ...(insertText === label ? {} : { insertText }) });
+    };
+    for (const typed of typedPaths(column.type)) {
+        const segments = typed.path.split(".");
+        if (segments.length <= path.length || path.some((segment, i) => segments[i] !== segment))
+            continue;
+        const rest = segments.slice(path.length);
+        // `column.^prefix` reads the paths under a prefix as a JSON of their own.
+        if (caret)
+            for (let i = 1; i < rest.length; i++)
+                add(rest.slice(0, i), "JSON");
+        else
+            add(rest, typed.type);
+    }
+}
+/** Suggestions at `offset` of `sql`, best first, for the word that ends there. */
+export function complete(sql, offset, options = {}) {
+    const at = Math.max(0, Math.min(offset, sql.length));
+    // Statements end where check() ends them, inline INSERT data included.
+    const units = split(sql);
+    const around = unitBefore(units, at);
+    const word = wordAt(sql, around && at <= around.end ? around.tokens : [], at);
+    if (!word)
+        return [];
+    const unit = statementAt(units, word.start);
+    if (unit && unit.data.start >= 0 && at > unit.data.start && !endedBefore(unit, word.start))
+        return [];
+    const statement = (unit?.tokens ?? []).filter((token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream);
+    const before = statement.filter((token) => token.start < word.start);
+    const variants = expectedAt(sql, before, word.start);
+    const has = (variant) => variants.includes(variant);
+    const schema = options.schema ?? {};
+    const prefix = word.prefix;
+    const out = new Candidates(prefix);
+    // Keywords that the prefix starts come first; with no prefix, the names of the schema do.
+    const keywordTier = prefix ? 0 : 1;
+    const schemaTier = prefix ? 1 : 0;
+    const nameTier = 2;
+    const refs = tableRefs(sql, statement);
+    // In `column.^` a caret reads the paths under a prefix, and in `column.path.:` a colon reads a type.
+    const lastKind = before[before.length - 1]?.kind;
+    const subcolumn = lastKind === T.Caret || lastKind === T.Colon;
+    const names = qualifier(sql, subcolumn ? before.slice(0, -1) : before);
+    if (names.length && subcolumn) {
+        const json = jsonColumn(sql, units, schema, refs, names);
+        if (json && lastKind === T.Caret)
+            addTypedPaths(out, schemaTier, json.column, json.path, true);
+        if (json && lastKind === T.Colon)
+            for (const type of typeNames())
+                out.add(nameTier, named({ label: type, kind: "data type" }));
+        return out.sorted();
+    }
+    if (names.length) {
+        // After `x.`: the columns of the table or alias x, and the tables of the database x.
+        const last = names[names.length - 1];
+        const aliased = refs.filter((ref) => ref.alias === last || (ref.name === last && names.length === 1));
+        const tables = aliased.length
+            ? aliased.flatMap((ref) => resolve(schema, ref))
+            : resolve(schema, names.length > 1 ? { database: names[names.length - 2], name: last } : { name: last });
+        addColumns(out, schemaTier, tables);
+        if (names.length === 1)
+            addTables(out, schemaTier, (schema.tables ?? []).filter((t) => t.database === last));
+        // After a JSON column, and the part of a path written after it, the typed paths that its type declares.
+        const json = jsonColumn(sql, units, schema, refs, names);
+        if (json)
+            addTypedPaths(out, schemaTier, json.column, json.path, false);
+        return out.sorted();
+    }
+    // Codecs, index types, settings and their values, and the other options of the statement.
+    const suggested = optionSuggestions(sql, before, prefix);
+    for (const { tier, candidate } of suggested.candidates)
+        out.add(tier, candidate);
+    if (suggested.only)
+        return out.sorted();
+    const call = engineCall(sql, statement, before);
+    if (call) {
+        const columns = createdColumns(sql, statement, schema);
+        const keys = keyNames(sql, statement);
+        for (const { tier, candidate } of engineCandidates({ sql, call, columns, keys, schema, lower: isLower(prefix) }))
+            out.add(tier, candidate);
+    }
+    // In the brackets of a function, what the argument at the cursor takes, by the function's documentation.
+    const fn = call ? undefined : functionCall(sql, statement, before);
+    if (fn && (has("CAST operator") || fn.arguments.some((a) => a.afterKeyword))) {
+        const columns = [
+            ...createdColumns(sql, statement, schema).map((column) => ({ column })),
+            ...refs.flatMap((ref) => resolve(schema, ref)).flatMap((table) => table.columns.map((c) => ({ column: schemaColumn(c.name, c.type), documentation: `Column of \`${table.database}.${table.name}\`` }))),
+        ];
+        const context = { call: fn, columns, schema, columnTier: schemaTier, lower: isLower(prefix) };
+        for (const { tier, candidate } of functionCandidates(context))
+            out.add(tier, candidate);
+    }
+    if (has("JSON data type optional argument"))
+        for (const candidate of jsonTypeArguments(isLower(prefix)))
+            out.add(keywordTier, candidate);
+    const accepts = keywordFilter(sql, before, word.start);
+    for (const variant of variants)
+        if (KEYWORD_VARIANT.test(variant) && out.matches(variant) && accepts(variant))
+            out.add(keywordTier, { label: isLower(prefix) ? variant.toLowerCase() : variant, kind: "keyword" });
+    if (has("access type")) {
+        // Only names in capitals are found in any case, so addressToLine keeps its own.
+        for (const { name } of PRIVILEGES)
+            out.add(keywordTier, { label: isLower(prefix) && isUpper(name) ? name.toLowerCase() : name, kind: "keyword", detail: "privilege" });
+    }
+    const previous = before[before.length - 1];
+    const previousWord = previous?.kind === T.BareWord ? sql.slice(previous.start, previous.end).toLowerCase() : "";
+    const identifier = has("identifier");
+    // The parser of an expression operand tries CAST first, so "CAST operator" means an expression is expected.
+    if (has("CAST operator")) {
+        addColumns(out, schemaTier, refs.flatMap((ref) => resolve(schema, ref)));
+        for (const info of FUNCTIONS) {
+            if (!out.matches(info.name))
+                continue;
+            out.add(nameTier, {
+                label: nameCase(info.name, info.caseInsensitive, prefix),
+                kind: "function",
+                detail: info.aliasTo ? `alias of ${info.aliasTo}` : info.category,
+                documentation: functionDocumentation(info),
+            });
+        }
+        if (prefix)
+            addCombinators(out, nameTier + 1);
+    }
+    else if (has(TABLE_VARIANT)) {
+        addTables(out, schemaTier, schema.tables ?? []);
+        addDatabases(out, schemaTier, schema);
+        for (const info of TABLE_FUNCTIONS)
+            out.add(nameTier, { label: info.name, kind: "table function", documentation: tableFunctionDocumentation(info) });
+    }
+    else if (has("insert element")) {
+        addColumns(out, schemaTier, refs.flatMap((ref) => resolve(schema, ref)));
+    }
+    else if (identifier && TABLE_NAME_WORDS.has(previousWord)) {
+        addTables(out, schemaTier, schema.tables ?? []);
+        addDatabases(out, schemaTier, schema);
+    }
+    else if (identifier && DATABASE_WORDS.has(previousWord)) {
+        addDatabases(out, schemaTier, schema);
+    }
+    if (has("substitution type (identifier)"))
+        out.add(nameTier, identifierType());
+    if (has("substitution name (identifier)"))
+        for (const { tier, candidate } of parameterNameCandidates(sql))
+            out.add(nameTier + tier, candidate);
+    if (has("data type")) {
+        for (const type of DATA_TYPES)
+            out.add(nameTier, {
+                label: nameCase(type.name, type.caseInsensitive, prefix),
+                kind: "data type",
+                detail: type.aliasTo ? `alias of ${type.aliasTo}` : undefined,
+            });
+    }
+    const afterEngine = previousWord === "engine" || (previous?.kind === T.Equals && isWord(sql, before[before.length - 2], "engine"));
+    if (has("identifier with optional parameters") && afterEngine) {
+        for (const info of TABLE_ENGINES)
+            out.add(nameTier, { label: info.name, kind: "table engine", documentation: engineDocumentation(info) });
+    }
+    if (identifier && previousWord === "format") {
+        const input = isWord(sql, before[0], "insert");
+        for (const info of FORMATS)
+            if (input ? info.input : info.output)
+                out.add(nameTier, { label: info.name, kind: "format", detail: formatDetail(info), documentation: formatDocumentation(info) });
+    }
+    return out.sorted();
+}
+/** The significant tokens of the statement at `offset`, and those before it, or undefined in inline data. */
+function statementTokens(sql, offset) {
+    const at = Math.max(0, Math.min(offset, sql.length));
+    const unit = statementAt(split(sql), at);
+    if (!unit || (unit.data.start >= 0 && at > unit.data.start))
+        return undefined;
+    const statement = unit.tokens.filter((token) => isSignificant(token.kind) && token.kind !== T.Semicolon && token.kind !== T.EndOfStream);
+    return { statement, before: statement.filter((token) => token.start < at) };
+}
+/** The function whose brackets `offset` is in, and the documented arguments that the argument there may be. */
+export function functionArgument(sql, offset) {
+    const tokens = statementTokens(sql, offset);
+    if (!tokens || engineCall(sql, tokens.statement, tokens.before))
+        return undefined;
+    const call = functionCall(sql, tokens.statement, tokens.before);
+    return call && { function: call.target.name, parameters: call.inParameters, ...(call.tableFunction ? { kind: "table function" } : {}), arguments: call.arguments.map((a) => a.arg.name) };
+}
+/** The engine whose brackets `offset` is in, and the parameters that the argument there may be. */
+export function engineArgument(sql, offset) {
+    const tokens = statementTokens(sql, offset);
+    const call = tokens && engineCall(sql, tokens.statement, tokens.before);
+    return call && { engine: call.info.name, parameters: call.parameters.map((p) => p.name) };
+}
+//# sourceMappingURL=complete.js.map

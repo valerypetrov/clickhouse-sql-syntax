@@ -1,0 +1,20 @@
+import { check } from "./parser/index.js";
+import { checkOptions } from "./options/index.js";
+import { complete, describe, engineArgument, functionArgument, keywordDocumentation, parameterHints } from "./complete/index.js";
+import { format, split } from "./format/index.js";
+import { highlight } from "./highlight/index.js";
+import { tokenize } from "./lexer/index.js";
+import { foldingRanges, outline, selectionRanges } from "./structure/index.js";
+import { definition, objectDefinitions, objectReferences, objects, prepareRename, references, rename } from "./names/index.js";
+import type { ClickHouseSqlSyntax } from "./types.js";
+export * from "./types.js";
+export { DATA_TYPES, type DataTypeName } from "./generated/data-types.js";
+export { KEYWORDS } from "./generated/keywords.js";
+export { SYSTEM_COMMANDS } from "./highlight/index.js";
+export { messageFixes, type NameHint, nameHints, replaceFixes } from "./options/index.js";
+export { checkWithRoles, ParseCache, roles, type Role, type RoleSpan } from "./parser/index.js";
+export type { Unit } from "./format/index.js";
+export { check, checkOptions, complete, definition, describe, engineArgument, foldingRanges, format, functionArgument, highlight, keywordDocumentation, objectDefinitions, objectReferences, objects, outline, parameterHints, prepareRename, references, rename, selectionRanges, split, tokenize, };
+declare const api: ClickHouseSqlSyntax;
+export default api;
+//# sourceMappingURL=index.d.ts.map

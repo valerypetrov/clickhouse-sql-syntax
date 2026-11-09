@@ -1,0 +1,190 @@
+const SIMPLE_ESCAPES = {
+    a: "\x07",
+    b: "\b",
+    e: "\x1b",
+    f: "\f",
+    n: "\n",
+    r: "\r",
+    t: "\t",
+    v: "\v",
+    "0": "\0",
+};
+function isControl(c) {
+    const code = c.charCodeAt(0);
+    return code < 32 || code === 127;
+}
+/**
+ * Reads a quoted string with backslash escapes, and doubled quotes in SQL style, like
+ * readAnyQuotedString. Returns undefined if it does not read exactly the whole text.
+ */
+export function unquote(text, quote, sqlStyle = true) {
+    if (text[0] !== quote)
+        return undefined;
+    // Without escapes or doubled quotes the value is the text between the quotes.
+    const body = text.slice(1, -1);
+    if (text.length > 1 && text.endsWith(quote) && !body.includes(quote) && !body.includes("\\"))
+        return body;
+    // Pieces joined once, as adding one character at a time takes dozens of bytes per character.
+    const result = [];
+    let i = 1;
+    while (i < text.length) {
+        const c = text[i];
+        if (c === quote) {
+            i++;
+            if (sqlStyle && text[i] === quote) {
+                result.push(quote);
+                i++;
+                continue;
+            }
+            return i === text.length ? result.join("") : undefined;
+        }
+        if (c === "\\") {
+            i++;
+            if (i >= text.length)
+                return undefined;
+            const after = text[i];
+            if (after === "x") {
+                const hex = text.slice(i + 1, i + 3);
+                if (hex.length !== 2)
+                    return undefined;
+                result.push(String.fromCharCode(parseInt(hex, 16) || 0));
+                i += 3;
+            }
+            else if (after === "N") {
+                i++;
+            }
+            else {
+                const decoded = SIMPLE_ESCAPES[after] ?? after;
+                if (!"\\'\"`/=".includes(decoded) && !isControl(decoded))
+                    result.push("\\");
+                result.push(decoded);
+                i++;
+            }
+            continue;
+        }
+        let end = i + 1;
+        while (end < text.length && text[end] !== quote && text[end] !== "\\")
+            end++;
+        result.push(text.slice(i, end));
+        i = end;
+    }
+    return undefined;
+}
+const UNICODE_OPEN_DOUBLE = "\u201C";
+const UNICODE_OPEN_SINGLE = "\u2018";
+/** The name of a QuotedIdentifier token, or undefined if ClickHouse does not accept it. */
+export function quotedIdentifierName(text) {
+    if (text[0] === UNICODE_OPEN_DOUBLE)
+        return text.length > 2 ? text.slice(1, -1) : undefined;
+    const name = unquote(text, text[0] === "`" ? "`" : '"');
+    return name ? name : undefined;
+}
+function decodeBits(digits, wordSize, hex) {
+    const result = [];
+    for (let i = 0; i < digits.length; i += wordSize) {
+        const word = digits.slice(i, i + wordSize);
+        result.push(String.fromCharCode(parseInt(word, hex ? 16 : 2) || 0));
+    }
+    return result.join("");
+}
+/** The value of a StringLiteral token, or undefined where ParserStringLiteral fails. */
+export function stringLiteralValue(text) {
+    const first = text[0];
+    if (first === "x" || first === "X")
+        return decodeBits(text.slice(2, -1), 2, true);
+    if (first === "b" || first === "B")
+        return decodeBits(text.slice(2, -1), 8, false);
+    if (first === UNICODE_OPEN_SINGLE)
+        return text.slice(1, -1);
+    return unquote(text, "'");
+}
+/** The body of a HereDoc token. */
+export function heredocValue(text) {
+    const size = text.indexOf("$", 1) + 1;
+    return text.slice(size, text.length - size);
+}
+const DECIMAL_FLOAT = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+const HEX_FLOAT = /^0[xX](?:([0-9a-fA-F]+)\.?([0-9a-fA-F]*)|\.([0-9a-fA-F]+))(?:[pP]([+-]?\d+))?$/;
+const SPECIAL_FLOAT = /^(?:inf(?:inity)?|nan(?:\([0-9A-Za-z_]*\))?)$/i;
+/** strtod over the whole text: the value, or undefined if it does not read all of it or overflows. */
+export function readFloat(text) {
+    if (SPECIAL_FLOAT.test(text))
+        return text[0] === "n" || text[0] === "N" ? NaN : Infinity;
+    if (DECIMAL_FLOAT.test(text)) {
+        const value = Number(text);
+        return Number.isFinite(value) ? value : undefined;
+    }
+    const hex = HEX_FLOAT.exec(text);
+    if (hex) {
+        const intPart = hex[1] ?? "";
+        const fracPart = hex[2] ?? hex[3] ?? "";
+        const exponent = Number(hex[4] ?? "0");
+        const mantissa = parseInt(intPart + fracPart || "0", 16);
+        const value = mantissa * Math.pow(2, exponent - 4 * fracPart.length);
+        return Number.isFinite(value) ? value : undefined;
+    }
+    return undefined;
+}
+const DIGITS = {
+    2: /^[01]*$/,
+    10: /^\d*$/,
+    16: /^[0-9a-fA-F]*$/,
+};
+const UINT64_MAX = 2n ** 64n - 1n;
+const INT64_MIN_ABS = 2n ** 63n;
+/** strtoull over the whole text, as parseNumber in ExpressionElementParsers.cpp uses it. */
+function readUnsigned(digits, base, negative) {
+    let body = digits;
+    if (base === 16 && /^0[xX]/.test(body))
+        body = body.slice(2);
+    if (!DIGITS[base].test(body))
+        return undefined;
+    const value = body === "" ? 0n : BigInt((base === 16 ? "0x" : base === 2 ? "0b" : "") + body);
+    if (value > UINT64_MAX)
+        return undefined;
+    if (negative && value > INT64_MIN_ABS)
+        return undefined;
+    if (negative && value !== 0n)
+        return { t: "Int64", v: -Number(value) };
+    return { t: "UInt64", v: Number(value) };
+}
+const MAX_LENGTH_OF_NUMBER = 319;
+/** The value of a Number token as ParserNumber reads it, or undefined where it fails. */
+export function numberValue(text, negative) {
+    const buf = text.replaceAll("_", "");
+    if (buf.length > MAX_LENGTH_OF_NUMBER)
+        return undefined;
+    if (buf[0] === "0") {
+        const rest = buf.slice(1);
+        if (rest[0] === "b")
+            return readUnsigned(rest.slice(1), 2, negative);
+        if (rest[0] === "x" || rest[0] === "X") {
+            const result = readUnsigned(rest.slice(1), 16, negative);
+            if (result)
+                return result;
+        }
+        else {
+            const result = readUnsigned(rest.replace(/^0+/, ""), 10, negative);
+            if (result)
+                return result;
+        }
+    }
+    else {
+        const result = readUnsigned(buf, 10, negative);
+        if (result)
+            return result;
+    }
+    return floatLit(buf, negative);
+}
+/** The float reading of ParserNumber, also used for bare words such as inf and nan. */
+export function floatLit(text, negative) {
+    const value = readFloat(text);
+    if (value === undefined)
+        return undefined;
+    return { t: "Float64", v: negative ? -value : value };
+}
+/** tryReadIntText into a UInt64 over the whole text: plain decimal digits, not past UInt64. */
+export function isUnsignedIntegerText(text) {
+    return /^\+?\d+$/.test(text) && BigInt(text) <= UINT64_MAX;
+}
+//# sourceMappingURL=literals.js.map

@@ -1,0 +1,131 @@
+/**
+ * SET queries and SETTINGS clauses: a port of src/Parsers/ParserSetQuery.cpp.
+ */
+import { Ast } from "./ast.js";
+import { parseAllCollectionsOfLiterals, parseCompoundIdentifier, parseLiteral, parseStringLiteral, parseSubstitution, } from "./elements.js";
+import { parseFunction } from "./expression.js";
+import { base, kw, P, T, tok, tokQuiet } from "./state.js";
+/** ParserLiteralOrMap: a literal or {'key': 'value', ...}. */
+function parseLiteralOrMap(p) {
+    return base(p, "literal or map", () => {
+        const value = parseLiteral(p);
+        if (value)
+            return value;
+        if (!tok(p, T.OpeningCurlyBrace))
+            return null;
+        let empty = true;
+        while (!tok(p, T.ClosingCurlyBrace)) {
+            if (!empty && !tok(p, T.Comma))
+                return null;
+            if (!parseStringLiteral(p))
+                return null;
+            if (!tok(p, T.Colon))
+                return null;
+            if (!parseStringLiteral(p))
+                return null;
+            empty = false;
+        }
+        return new Ast("Literal");
+    });
+}
+/** ParserSetQuery::parseNameValuePair: name = literal, map or disk(...); it does not move back on failure. */
+export function parseNameValuePair(p) {
+    const begin = p.i;
+    if (!parseCompoundIdentifier(p))
+        return false;
+    p.mark(begin, "setting");
+    if (!tok(p, T.Equals))
+        return false;
+    const beforeFunction = p.i;
+    const fn = parseFunction(p);
+    if (fn && fn.name === "disk")
+        return true;
+    p.restore(beforeFunction);
+    return parseLiteralOrMap(p) !== null;
+}
+/** The settings from token `first` to the parser position belong to `context`, as "query" or "storage". */
+export function markSettings(p, first, context, engine) {
+    p.names?.add("settings", first, p.i - 1, engine === undefined ? { flag: context } : { flag: context, name: [engine, engine] });
+}
+/** name = value, ... as in named collections and dictionary SETTINGS; `after` runs after each pair. */
+export function parseNameValuePairs(p, after = () => { }) {
+    let count = 0;
+    for (;;) {
+        if (count && !tokQuiet(p, T.Comma))
+            return true;
+        if (!parseNameValuePair(p))
+            return false;
+        after();
+        count++;
+    }
+}
+/** parseParameterValueIntoString: an identifier, a literal or a collection of literals. */
+function parseParameterValue(p) {
+    return parseCompoundIdentifier(p) !== null || parseLiteral(p) !== null || parseAllCollectionsOfLiterals(p) !== null;
+}
+/**
+ * parseNameValuePairWithParameterOrDefault: name = value, param_name = value, name = DEFAULT,
+ * or just name when shorthand is allowed. A {name:Type} value is a "substitution".
+ */
+export function parseSetting(p, shorthand) {
+    const begin = p.i;
+    const name = parseCompoundIdentifier(p);
+    if (!name)
+        return null;
+    p.mark(begin, "setting");
+    const hasEquals = tok(p, T.Equals);
+    if (!shorthand && !hasEquals)
+        return null;
+    if (name.name.startsWith("param_")) {
+        if (!hasEquals)
+            return null;
+        if (name.name === "param_")
+            p.failOther("Parameter name cannot be empty");
+        return parseParameterValue(p) ? "parameter" : null;
+    }
+    if (!hasEquals)
+        return "setting";
+    if (kw(p, "DEFAULT"))
+        return "default";
+    const beforeFunction = p.i;
+    const fn = parseFunction(p);
+    if (fn && fn.name === "disk")
+        return "setting";
+    p.restore(beforeFunction);
+    if (parseSubstitution(p))
+        return "substitution";
+    return parseLiteralOrMap(p) ? "setting" : null;
+}
+/**
+ * ParserSetQuery. With `onlyInternals` it reads the list after SETTINGS;
+ * otherwise a whole SET statement, including SET TIME ZONE.
+ */
+export function parseSetQuery(p, onlyInternals = false, shorthand = true, context = "query") {
+    return base(p, "SET query", () => {
+        const begin = p.i;
+        if (!onlyInternals) {
+            if (!kw(p, "SET"))
+                return null;
+            // SET TRANSACTION SNAPSHOT is a transaction control query.
+            if (kw(p, "TRANSACTION"))
+                return null;
+            if (kw(p, "TIME ZONE")) {
+                tok(p, T.Equals);
+                return parseLiteralOrMap(p) ? new Ast("SetQuery") : null;
+            }
+        }
+        let count = 0;
+        for (;;) {
+            if (count && !tokQuiet(p, T.Comma))
+                break;
+            if (!parseSetting(p, shorthand))
+                return null;
+            count++;
+        }
+        const flag = onlyInternals ? context : "set";
+        if (flag)
+            markSettings(p, onlyInternals ? begin : begin + 1, flag);
+        return new Ast("SetQuery");
+    });
+}
+//# sourceMappingURL=set.js.map

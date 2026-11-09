@@ -1,0 +1,1 @@
+{"version":3,"file":"table-engines.d.ts","sourceRoot":"","sources":["../../src/generated/table-engines.ts"],"names":[],"mappings":"AAEA,MAAM,WAAW,eAAe;IAC9B,IAAI,EAAE,MAAM,CAAC;IACb,sDAAsD;IACtD,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,WAAW,CAAC,EAAE,MAAM,CAAC;CACtB;AAED,eAAO,MAAM,aAAa,EAAE,SAAS,eAAe,EAsFnD,CAAC"}
