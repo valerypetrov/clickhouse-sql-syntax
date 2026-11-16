@@ -103,6 +103,10 @@ export function mutate(sql: string, mutation: Mutation, seed: string): string | 
  * Mutates statements in turn until `count` new texts exist. The text of each statement picks its
  * mutation, so that the same statement mutates the same way in every run.
  */
+function blankLines(sql: string): number {
+  return sql.split("\n\n").length;
+}
+
 export function mutateAll(
   sources: readonly string[],
   count: number,
@@ -116,7 +120,8 @@ export function mutateAll(
     for (let k = 0; k < MUTATIONS.length; k++) {
       const mutation = MUTATIONS[(first + k) % MUTATIONS.length]!;
       const sql = mutate(source, mutation, source)?.trim();
-      if (sql && !seen.has(sql)) {
+      // A new empty line would end inline data there, so the result would be two statements.
+      if (sql && !seen.has(sql) && blankLines(sql) <= blankLines(source)) {
         seen.add(sql);
         result.push({ sql, source, mutation });
         break;
