@@ -50,8 +50,8 @@ export function keywordFilter(sql: string, before: Token[], offset: number): (ke
 }
 
 /**
- * Whether a keyword of expectedAt() can come next: the parser neither throws at it, as at FETCH
- * without ORDER BY, nor stops before its end, as at SYSTEM END. Expected lists such keywords too.
+ * Whether a keyword of expectedAt() can come next: the parser neither throws at it, as at NEXT
+ * after FETCH FIRST, nor stops before its end, as at SYSTEM END. Expected lists such keywords too.
  */
 function acceptsKeyword(sql: string, before: Token[], offset: number, keyword: string, closers: T[], budget: Budget): boolean {
   for (const opening of [[], [T.OpeningRoundBracket, T.ClosingRoundBracket]]) {

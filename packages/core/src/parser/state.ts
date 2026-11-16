@@ -31,6 +31,8 @@ export class Expected {
   pos = -1;
   variants: string[] = [];
   ids: string[] = [];
+  /** Positions of CASE and INTERVAL whose keyword reading failed, by isTableFunction; copies share it. */
+  failedKeywordReadings: [Set<number>, Set<number>] | null = null;
 
   add(pos: number, description: string, id = description): void {
     if (this.pos < 0 || pos > this.pos) {
@@ -59,6 +61,7 @@ export class Expected {
     this.pos = other.pos;
     this.variants = [...other.variants];
     this.ids = [...other.ids];
+    this.failedKeywordReadings = other.failedKeywordReadings;
   }
 }
 

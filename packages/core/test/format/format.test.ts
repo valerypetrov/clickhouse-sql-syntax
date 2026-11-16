@@ -46,6 +46,12 @@ describe("format() keeps what it does not lay out", () => {
     );
   });
 
+  test("SHUFFLE as a clause and LOCAL before JOIN", () => {
+    formats("select a from t where x shuffle limit 3", "SELECT a\nFROM t\nWHERE x\nSHUFFLE\nLIMIT 3");
+    formats("select a from t local join u using a", "SELECT a\nFROM t\nLOCAL JOIN u USING a");
+    formats("select a from t local array join x", "SELECT a\nFROM t local\nARRAY JOIN x");
+  });
+
   test("columns named like keywords", () => {
     formats("select key, value, date, type, id from t where key = 1", "SELECT\n    key,\n    value,\n    date,\n    type,\n    id\nFROM t\nWHERE key = 1");
     formats("select a from t format Null", "SELECT a\nFROM t\nFORMAT Null");

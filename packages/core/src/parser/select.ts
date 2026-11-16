@@ -309,6 +309,9 @@ export function parseSelectQuery(p: P, implicitSelect = false): Ast | null {
     if (kw(p, "ORDER BY")) {
       if (!parseOrderByClauseBody(p, node)) return null;
       hasOrderBy = true;
+    } else if (kw(p, "SHUFFLE")) {
+      // SHUFFLE is used in place of ORDER BY.
+      node.flag("shuffle");
     }
     if (!parseLimitClauses(p, node, hasOrderBy)) return null;
     if (kw(p, "SETTINGS")) {
@@ -437,7 +440,6 @@ function parseLimitClauses(p: P, node: Ast, hasOrderBy: boolean): boolean {
     }
   }
   if ((!hasOffsetClause || offsetHasRows) && kw(p, "FETCH")) {
-    if (!hasOrderBy) p.failOther("Can not use OFFSET FETCH clause without ORDER BY", p.i - 1);
     if (kw(p, "FIRST")) {
       if (kw(p, "NEXT")) p.failOther("Can not use FIRST and NEXT together", p.i - 1);
     } else if (!kw(p, "NEXT")) {

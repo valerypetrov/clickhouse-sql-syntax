@@ -37,7 +37,7 @@ import {
 } from "./literals.js";
 import { parseSelectWithUnionQuery } from "./select.js";
 import { aliasKind } from "./names.js";
-import { base, kw, listUtil, P, peekKw, peekKwQuiet, T, tok, tokSeq } from "./state.js";
+import { base, Expected, kw, listUtil, lookahead, P, peekKw, peekKwQuiet, T, tok, tokSeq } from "./state.js";
 
 /** ParserIdentifier: a bare word, a quoted name, or a {name:Identifier} parameter. */
 export function parseIdentifier(p: P, allowParam = false): Ast | null {
@@ -408,6 +408,8 @@ function startCollection(p: P, collections: Collection[], allowMap: boolean): bo
   else if (p.kind() === T.OpeningSquareBracket) collections.push({ kind: "array", values: [] });
   else return false;
   p.i++;
+  // Nested collections do not go through base(), so their depth is counted here.
+  p.increaseDepth();
   return true;
 }
 
@@ -451,18 +453,32 @@ export function parseAllCollectionsOfLiterals(p: P, allowMap = true): Ast | null
     const done: { value: Lit | null } = { value: null };
     while (collections.length) {
       if (!parseCollectionStep(p, collections, done, allowMap)) return null;
-      if (done.value) collections.pop();
+      if (done.value) {
+        collections.pop();
+        p.depth--;
+      }
     }
     return literal(done.value!);
   });
 }
 
 const RESTRICTED_ALIASES = new Set([
-  "all", "anti", "any", "array", "asof", "between", "cross", "paste", "final", "format", "from", "full",
+  "all", "anti", "any", "array", "asof", "between", "cross", "paste", "fetch", "final", "format", "from", "full",
   "global", "group", "having", "ilike", "inner", "into", "join", "left", "like", "limit", "natural", "not",
-  "offset", "on", "only", "order", "parallel", "prewhere", "right", "sample", "semi", "settings", "similar",
+  "offset", "on", "only", "order", "parallel", "prewhere", "right", "sample", "semi", "settings", "shuffle", "similar",
   "stream", "union", "using", "where", "window", "qualify", "with", "intersect", "except", "else",
 ]);
+
+const JOIN_CONTINUATIONS = ["NATURAL", "ANY", "ALL", "ASOF", "SEMI", "ANTI", "ONLY", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "PASTE", "JOIN"];
+
+/** LOCAL before a join is its locality, not an alias; LEFT or INNER may also start an ARRAY JOIN. */
+function localBeforeJoin(p: P): boolean {
+  const begin = p.i;
+  const at = (keyword: string, i = begin) => lookahead(p, () => ((p.i = i), kw(p, keyword)), new Expected());
+  const afterInner = lookahead(p, () => (kw(p, "INNER"), p.i), new Expected());
+  if (at("LEFT ARRAY JOIN") || at("ARRAY JOIN", afterInner)) return false;
+  return JOIN_CONTINUATIONS.some((keyword) => at(keyword));
+}
 
 /** ParserAlias: [AS] name, where a name without AS must not be a clause keyword. */
 export function parseAlias(p: P, allowWithoutAs: boolean): Ast | null {
@@ -475,6 +491,7 @@ export function parseAlias(p: P, allowWithoutAs: boolean): Ast | null {
     if (!hasAs && !quoted) {
       const name = node.name.toLowerCase();
       if (RESTRICTED_ALIASES.has(name)) return null;
+      if (name === "local" && localBeforeJoin(p)) return null;
       if (name === "comment") {
         // A trailing COMMENT 'text' of a view or table is not an alias.
         const begin = p.i;

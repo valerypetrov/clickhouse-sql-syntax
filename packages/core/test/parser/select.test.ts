@@ -1,6 +1,8 @@
 // Positions and messages are what ClickHouse 26.11 reports; where it gives no position, check() points at the clause.
-import { describe } from "node:test";
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 
+import { roles } from "../../src/parser/index.js";
 import { accepts, rejects } from "./helpers.js";
 
 describe("SELECT and expressions", () => {
@@ -100,4 +102,40 @@ describe("view() over a subquery", () => {
     ["SELECT * FROM obfuscate((EXPLAIN SELECT 1))", 42, "Expected one of: UNION, EXCEPT, INTERSECT, alias, AS, identifier, FINAL, SAMPLE, STREAM, table, tabl…"],
     ["SELECT * FROM view(EXPLAIN SELECT 1)", 27, "Expected one of: token, Comma"],
   ]);
+});
+
+// ClickHouse master d45f558: SHUFFLE, FETCH without ORDER BY and LOCAL before JOIN.
+describe("SHUFFLE, FETCH and LOCAL JOIN", () => {
+  accepts([
+    "SELECT a FROM t WHERE x SHUFFLE LIMIT 3",
+    "SELECT a FROM t shuffle",
+    "SELECT a FROM t AS shuffle",
+    "SELECT a FROM t FETCH FIRST 3 ROWS ONLY",
+    "SELECT a FROM t OFFSET 1 ROW FETCH NEXT 3 ROWS ONLY",
+    "SELECT a FROM t local JOIN u USING a",
+    "SELECT a FROM t local local JOIN u USING a",
+    "SELECT a FROM t local LEFT ARRAY JOIN x",
+    "SELECT a FROM t local INNER ARRAY JOIN x",
+    "SELECT a FROM t local, u",
+    "SELECT 1 local",
+  ]);
+
+  rejects([
+    ["SELECT a FROM t SHUFFLE ORDER BY a", 24, "Expected one of: LIMIT, OFFSET, FETCH, SETTINGS, UNION, EXCEPT, INTERSECT, INTO OUTFILE, FORMAT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SELECT a FROM t WHERE x y", 24, "Expected one of: token sequence, Dot, token, OR, AND, IS NOT DISTINCT FROM, IS DISTINCT FROM, IS NOT UNKNOWN, IS UNKNOWN, IS NOT FALSE, IS FALSE, IS NOT TRUE, IS TRUE, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, SIMILAR TO, NOT SIMILAR TO, AT TIME ZONE, MOD, DIV, alias, AS, GROUP BY, WITH, HAVING, WINDOW, QUALIFY, ORDER BY, SHUFFLE, LIMIT, OFFSET, FETCH, SETTINGS, UNION, EXCEPT, INTERSECT, INTO OUTFILE, FORMAT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SELECT a FROM t SHUFFLE LIMIT 3 WITH TIES", 37, "Can not use WITH TIES without ORDER BY"],
+    ["SELECT a FROM t FETCH FIRST 1 ROW WITH TIES", 39, "Can not use WITH TIES without ORDER BY"],
+    ["SELECT a fetch FROM t", 15, "Expected one of: FIRST, NEXT"],
+    ["SELECT a FROM t local x", 22, "Expected one of: FINAL, SAMPLE, STREAM, table, table function, subquery or list of joined tables, array join, LEFT ARRAY JOIN, INNER, ARRAY JOIN, GLOBAL, LOCAL, NATURAL, ANY, ALL, ASOF, SEMI, ANTI, ONLY, LEFT, RIGHT, FULL, CROSS, PASTE, JOIN, token, OpeningRoundBracket, PREWHERE, WHERE, GROUP BY, WITH, HAVING, WINDOW, QUALIFY, ORDER BY, SHUFFLE, LIMIT, OFFSET, FETCH, SETTINGS, UNION, EXCEPT, INTERSECT, INTO OUTFILE, FORMAT, ParallelWithClause, PARALLEL WITH, end of query"],
+    ["SELECT ARRAY[1; SELECT 1, 2]", 14, "Expected one of: token, DoubleColon, Comma, ClosingSquareBracket, OR, AND…"],
+  ]);
+
+  test("reads LOCAL before JOIN as a keyword, and before ARRAY JOIN as an alias", () => {
+    const roleOf = (sql: string, word: string) => roles(sql).find((span) => sql.slice(span.start, span.end) === word)?.role;
+    assert.equal(roleOf("SELECT a FROM t local JOIN u USING a", "local"), "keyword");
+    assert.equal(roleOf("SELECT a FROM t local LEFT JOIN u USING a", "local"), "keyword");
+    assert.equal(roleOf("SELECT a FROM t local LEFT ARRAY JOIN x", "local"), "identifier");
+    assert.equal(roleOf("SELECT a FROM t local INNER ARRAY JOIN x", "local"), "identifier");
+    assert.equal(roleOf("SELECT a FROM t shuffle", "shuffle"), "keyword");
+  });
 });

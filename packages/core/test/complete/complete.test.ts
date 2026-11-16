@@ -288,7 +288,7 @@ describe("complete()", () => {
 
   test("offers no keyword that the parser then rejects", () => {
     const keywords = (text: string) => at(text).filter((c) => c.kind === "keyword").map((c) => c.label);
-    assert.ok(!keywords("SELECT * FROM t WHERE x |").includes("FETCH"));
+    assert.ok(keywords("SELECT * FROM t WHERE x |").includes("FETCH"));
     assert.ok(keywords("SELECT * FROM t ORDER BY x |").includes("FETCH"));
     for (const keyword of ["SEMI", "ANTI", "ONLY"]) assert.ok(!keywords("SELECT * FROM t INNER |").includes(keyword), keyword);
     assert.ok(keywords("SELECT * FROM t LEFT |").includes("SEMI"));

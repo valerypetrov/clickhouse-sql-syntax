@@ -210,7 +210,7 @@ abstract class Layer {
   /** The AND of BETWEEN ... AND mirrors the logical AND, so unmatched BETWEENs are counted. */
   betweenCounter = 0;
   parsedAlias = false;
-  savedCheckpoint: { pos: number; checkpoint: Checkpoint } | null = null;
+  savedCheckpoint: { pos: number; depth: number; checkpoint: Checkpoint } | null = null;
   currentCheckpoint = Checkpoint.None;
   /** Where the current element begins, and the lambda in it that is not folded yet, as token indices. */
   elementStart = -1;
@@ -1207,11 +1207,14 @@ class EvalLayer extends Layer {
       this.state = 1;
       const begin = p.i;
       const savedExpected = p.e.copy();
+      // The speculation keeps its failed keyword readings to itself, as its variants may be discarded.
+      savedExpected.failedKeywordReadings = null;
       const query = p.quiet(() => {
         const node = parseSelectWithUnionQuery(p);
         return node && tok(p, T.ClosingRoundBracket) ? node : null;
       }, savedExpected);
       if (query) {
+        savedExpected.failedKeywordReadings = p.e.failedKeywordReadings;
         p.e = savedExpected;
         const subquery = new Ast("Subquery");
         subquery.children = [query];
@@ -1327,6 +1330,9 @@ function isArrayConstructorWithKeyword(p: P): boolean {
       case T.Comma:
         if (depth === 0) return true;
         break;
+      // The statement ends before the bracket is closed.
+      case T.Semicolon:
+        return false;
       default:
         break;
     }
@@ -1501,13 +1507,16 @@ function tryParseOperand(layers: Layer[], p: P): Action {
   const begin = p.i;
   const checkpoint = top.currentCheckpoint;
   top.currentCheckpoint = Checkpoint.None;
-  if (checkpoint !== Checkpoint.Interval && parseOperator(p, "INTERVAL")) {
-    top.savedCheckpoint = { pos: begin, checkpoint: Checkpoint.Interval };
+  // Skipping a failed keyword reading leaves no checkpoint, as trying it again and restoring would.
+  const readingFailed = p.e.failedKeywordReadings?.[+layers[0]!.isTableFunction].has(begin) ?? false;
+  if (readingFailed) top.savedCheckpoint = null;
+  if (checkpoint !== Checkpoint.Interval && !readingFailed && parseOperator(p, "INTERVAL")) {
+    top.savedCheckpoint = { pos: begin, depth: p.depth, checkpoint: Checkpoint.Interval };
     layers.push(new IntervalLayer());
     return Action.Operand;
   }
-  if (checkpoint !== Checkpoint.Case && parseOperator(p, "CASE")) {
-    top.savedCheckpoint = { pos: begin, checkpoint: Checkpoint.Case };
+  if (checkpoint !== Checkpoint.Case && !readingFailed && parseOperator(p, "CASE")) {
+    top.savedCheckpoint = { pos: begin, depth: p.depth, checkpoint: Checkpoint.Case };
     layers.push(new CaseLayer());
     return Action.Operand;
   }
@@ -1533,6 +1542,7 @@ function tryParseOperand(layers: Layer[], p: P): Action {
     // ClickHouse colours ARRAY as the name that an earlier attempt read it as.
     p.mark(p.i - 2, "identifier");
     layers.push(new ArrayLayer());
+    p.increaseDepth();
     return Action.Operand;
   }
 
@@ -1563,11 +1573,13 @@ function tryParseOperand(layers: Layer[], p: P): Action {
     if (out.startsValid) return Action.None;
     p.i++;
     layers.push(new RoundBracketsLayer());
+    p.increaseDepth();
     return Action.Operand;
   }
   if (p.kind() === T.OpeningSquareBracket) {
     p.i++;
     layers.push(new ArrayLayer());
+    p.increaseDepth();
     return Action.Operand;
   }
   const variable = parseMySQLGlobalVariable(p);
@@ -1775,6 +1787,8 @@ function parseLayers(p: P, start: Layer): Ast | null {
         step.next = Action.Operator;
         const result = top.getResult();
         if (!result) break;
+        // Bracket layers count towards the parse depth from push to pop.
+        if (top.constructor === ArrayLayer || top.constructor === RoundBracketsLayer) p.depth--;
         layers.pop();
         layers[layers.length - 1]!.operands.push(result);
         continue;
@@ -1790,14 +1804,23 @@ function parseLayers(p: P, start: Layer): Ast | null {
         return node;
       }
     }
-    layers.pop();
-    while (layers.length && !layers[layers.length - 1]!.savedCheckpoint) layers.pop();
+    let poppedKeywordLayer = false;
+    do {
+      const popped = layers.pop();
+      poppedKeywordLayer = popped instanceof IntervalLayer || popped instanceof CaseLayer;
+    } while (layers.length && !layers[layers.length - 1]!.savedCheckpoint);
     if (!layers.length) return null;
     step.next = Action.Operand;
     const top = layers[layers.length - 1]!;
     const saved = top.savedCheckpoint!;
     top.savedCheckpoint = null;
+    // A keyword layer reads nothing below itself, so if it failed unfinished it fails wherever this position is reached.
+    if (poppedKeywordLayer) {
+      p.e.failedKeywordReadings ??= [new Set(), new Set()];
+      p.e.failedKeywordReadings[+layers[0]!.isTableFunction].add(saved.pos);
+    }
     p.restore(saved.pos);
+    p.depth = saved.depth;
     top.currentCheckpoint = saved.checkpoint;
   }
 }
