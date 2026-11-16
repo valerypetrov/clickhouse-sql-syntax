@@ -59,7 +59,7 @@ describe("the generated documentation", () => {
     // Words after a command that its syntax takes, and the per-table forms of Managing Background Activity.
     const unknown = SYSTEM_DOCS.flatMap((d) => d.keywords).filter((k) => !commands.some((c) => c === k || c.startsWith(`${k} `)));
     assert.deepEqual(unknown, [
-      "CLEAR QUERY CACHE TAG", "INSTRUMENT ADD FUNCTION HANDLER", "INSTRUMENT ADD FUNCTION HANDLER ARGUMENTS", "INSTRUMENT REMOVE ID",
+      "CLEAR QUERY CACHE TAG", "CLEAR SCHEMA CACHE FOR", "INSTRUMENT ADD FUNCTION HANDLER", "INSTRUMENT ADD FUNCTION HANDLER ARGUMENTS", "INSTRUMENT REMOVE ID",
       "INSTRUMENT REMOVE ALL", "UNFREEZE WITH NAME", "REFRESH ALL BACKGROUND",
     ]);
     assert.ok(SYSTEM_DOCS.flatMap((d) => d.keywords).length > 100);

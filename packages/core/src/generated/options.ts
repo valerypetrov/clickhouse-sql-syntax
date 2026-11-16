@@ -103,7 +103,7 @@ export const COLUMN_SETTINGS: readonly string[] = ["max_compress_block_size","mi
 export const COLUMN_SETTING_MESSAGE = "Setting {} is unknown or not supported at column level, supported settings: max_compress_block_size, min_compress_block_size.";
 /** The levels that INTO OUTFILE takes after COMPRESSION, by method, and ClickHouse's message for others. */
 export const COMPRESSION_LEVELS: Readonly<Record<string, readonly [number, number]>> = {"none":[1,9],"gzip":[1,12],"deflate":[1,12],"br":[1,9],"xz":[1,9],"zstd":[1,22],"lz4":[1,12],"bz2":[1,9],"snappy":[1,9]};
-export const COMPRESSION_LEVEL_MESSAGE = "Invalid compression level, must be positive integer in range {min}-{max}. (BAD_ARGUMENTS) (version 26.11.1.2480 (official build)).";
+export const COMPRESSION_LEVEL_MESSAGE = "Invalid compression level, must be positive integer in range {min}-{max}.";
 
 export const CODECS: readonly CodecInfo[] = [
   {"name":"AES_128_GCM_SIV","description":"Encrypts and decrypts blocks with AES-128 in GCM-SIV mode (RFC-8452).","encryption":true,"type":"UInt64","rule":{"min":0,"max":0,"tooMany":"Codec AES_128_GCM_SIV must not have parameters, given {}.","parameters":[]}},
