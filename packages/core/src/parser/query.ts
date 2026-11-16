@@ -58,7 +58,7 @@ import {
   parseUpdateQuery,
   parseUseQuery,
 } from "./misc.js";
-import { parseSelectWithUnionQuery } from "./select.js";
+import { parseSelectQuery, parseSelectWithUnionQuery } from "./select.js";
 import { parseSetQuery } from "./set.js";
 import {
   parseDescribeCacheQuery,
@@ -140,14 +140,14 @@ export function parseQueryWithOutput(p: P, allowSettingsAfterFormat = false): As
 }
 
 /** ParserParallelWithQuery: q1 PARALLEL WITH q2 [PARALLEL WITH q3 ...]. */
-function parseParallelWith(p: P, first: Ast, allowSettingsAfterFormat: boolean): Ast {
+function parseParallelWith(p: P, first: Ast, allowSettingsAfterFormat: boolean, implicitSelect: boolean): Ast {
   const result = base(p, "ParallelWithClause", () => {
     let before = p.i;
     if (!kw(p, "PARALLEL WITH")) return first;
     const node = new Ast("ParallelWithQuery");
     node.children = [first];
     do {
-      const query = parseQueryAlternatives(p, allowSettingsAfterFormat, true, false);
+      const query = parseQueryAlternatives(p, allowSettingsAfterFormat, true, false, implicitSelect);
       if (!query) {
         p.restore(before);
         break;
@@ -165,6 +165,7 @@ function parseQueryAlternatives(
   allowSettingsAfterFormat: boolean,
   allowExecuteAs: boolean,
   allowParallelWith: boolean,
+  implicitSelect: boolean,
 ): Ast | null {
   return base(p, "Query", () => {
     let node =
@@ -203,13 +204,15 @@ function parseQueryAlternatives(
       parseUpdateQuery(p) ??
       parseCopyQuery(p);
     if (!node && allowExecuteAs)
-      node = parseExecuteAsQuery(p, () => parseQueryAlternatives(p, allowSettingsAfterFormat, false, true));
-    if (node && allowParallelWith) node = parseParallelWith(p, node, allowSettingsAfterFormat);
+      node = parseExecuteAsQuery(p, () => parseQueryAlternatives(p, allowSettingsAfterFormat, false, true, implicitSelect));
+    if (node && allowParallelWith) node = parseParallelWith(p, node, allowSettingsAfterFormat, implicitSelect);
+    // ClickHouse tries the implicit SELECT after everything else, as a bare SelectQuery.
+    if (!node && implicitSelect) node = parseSelectQuery(p, true);
     return node;
   });
 }
 
-/** ParserQuery with the settings of `clickhouse format`: no implicit SELECT. */
-export function parseQuery(p: P, allowSettingsAfterFormat = false): Ast | null {
-  return parseQueryAlternatives(p, allowSettingsAfterFormat, true, true);
+/** ParserQuery; by default with the settings of `clickhouse format`: no implicit SELECT. */
+export function parseQuery(p: P, allowSettingsAfterFormat = false, implicitSelect = false): Ast | null {
+  return parseQueryAlternatives(p, allowSettingsAfterFormat, true, true, implicitSelect);
 }

@@ -72,6 +72,14 @@ Files longer than this many characters get no syntax check, semantic highlightin
 
 For example, `20000000` lets files of up to 20 million characters in.
 
+### `clickhouseSql.maxQuerySize`
+
+Default `262144`; integer, at least 0; user or workspace settings, also per language.
+
+The `max_query_size` of your ClickHouse, in bytes: a query longer than this is a syntax error there, and it gets one here too, with no semantic highlighting or formatting. The inline data of an `INSERT` does not count. `0` means no limit.
+
+For example, `1048576` takes queries of up to 1 MiB, as `SET max_query_size = 1048576` does.
+
 ### `clickhouseSql.server.enabled`
 
 Default `false`; boolean; user settings only.

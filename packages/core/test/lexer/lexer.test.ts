@@ -118,7 +118,8 @@ describe("token kinds", () => {
 
   // A lone "." is a Number, as in ClickHouse; the Dot tests are below.
   test("every kind has an example", () => {
-    const covered = new Set<TokenKind>([...examples.map(([, kind]) => kind), TokenKind.Dot, TokenKind.EndOfStream]);
+    // Only check() makes ErrorMaxQuerySizeExceeded; see test/parser/settings.test.ts.
+    const covered = new Set<TokenKind>([...examples.map(([, kind]) => kind), TokenKind.Dot, TokenKind.EndOfStream, TokenKind.ErrorMaxQuerySizeExceeded]);
     assert.deepEqual(Object.values(TokenKind).filter((kind) => !covered.has(kind)), []);
   });
 });

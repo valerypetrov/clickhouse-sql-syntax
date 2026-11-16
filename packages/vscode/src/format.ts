@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { format, type KeywordCase, split, type Unit } from "clickhouse-sql-syntax";
-import { setting } from "./settings.js";
+import { format, type KeywordCase, type ParseSettings, split, type Unit } from "clickhouse-sql-syntax";
+import { parseSettings, setting } from "./settings.js";
 import { tooLarge } from "./size.js";
 
 /** Format Document and Format Selection for ClickHouse SQL. */
@@ -19,7 +19,7 @@ function edits(document: vscode.TextDocument, options: vscode.FormattingOptions,
   if (tooLarge(document)) return [];
   const keywordCase = setting<KeywordCase>("clickhouseSql.format.keywordCase", document);
   const text = document.getText();
-  const formatted = formatText(text, options, keywordCase);
+  const formatted = formatText(text, options, keywordCase, parseSettings(document));
   if (!range) {
     if (formatted === text) return [];
     return [vscode.TextEdit.replace(new vscode.Range(document.positionAt(0), document.positionAt(text.length)), formatted)];
@@ -39,12 +39,12 @@ function edits(document: vscode.TextDocument, options: vscode.FormattingOptions,
 }
 
 /** format() with the editor's indentation: spaces, or one tab per level. */
-function formatText(text: string, options: vscode.FormattingOptions, keywordCase: KeywordCase): string {
-  if (options.insertSpaces) return format(text, { keywordCase, indentSize: options.tabSize });
+function formatText(text: string, options: vscode.FormattingOptions, keywordCase: KeywordCase, settings: ParseSettings): string {
+  if (options.insertSpaces) return format(text, { keywordCase, indentSize: options.tabSize, settings });
   // Lines that format() indents differ between indents of one and two spaces; those get tabs.
-  const one = format(text, { keywordCase, indentSize: 1 }).split("\n");
-  const two = format(text, { keywordCase, indentSize: 2 }).split("\n");
-  if (one.length !== two.length) return format(text, { keywordCase, indentSize: options.tabSize });
+  const one = format(text, { keywordCase, indentSize: 1, settings }).split("\n");
+  const two = format(text, { keywordCase, indentSize: 2, settings }).split("\n");
+  if (one.length !== two.length) return format(text, { keywordCase, indentSize: options.tabSize, settings });
   return one
     .map((line, i) => {
       if (line === two[i]) return line;

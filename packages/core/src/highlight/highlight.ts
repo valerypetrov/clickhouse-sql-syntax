@@ -2,7 +2,7 @@ import { DATA_TYPES } from "../generated/data-types.js";
 import { KEYWORDS } from "../generated/keywords.js";
 import { tokenize } from "../lexer/index.js";
 import { type Role, roles } from "../parser/index.js";
-import { TokenKind, isErrorKind, isSignificant, type HighlightSpan, type Scope, type Token } from "../types.js";
+import { TokenKind, isErrorKind, isSignificant, type HighlightSpan, type ParseSettings, type Scope, type Token } from "../types.js";
 
 // highlight() colours words by their role in the statements that parse. In the others it colours
 // them by what is around them: bareWord() tries its rules in order, and the first that matches wins.
@@ -457,7 +457,7 @@ function tokenScope(kind: TokenKind): Scope | undefined {
 }
 
 /** Returns coloured spans for `sql`, sorted by offset. */
-export function highlight(sql: string): HighlightSpan[] {
-  const byStart = new Map(roles(sql).map((span) => [span.start, span.role]));
+export function highlight(sql: string, settings?: ParseSettings): HighlightSpan[] {
+  const byStart = new Map(roles(sql, settings).map((span) => [span.start, span.role]));
   return new Highlighter(sql, tokenize(sql), byStart).run();
 }

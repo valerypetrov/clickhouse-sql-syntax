@@ -39,6 +39,8 @@ function wideStatement(): string {
 }
 
 const INPUTS = { "10,000 statements": corpusFile(), "a 1 MB statement": wideStatement() };
+// ClickHouse takes a 1 MB query only with a larger max_query_size.
+const SETTINGS = { maxQuerySize: 0 };
 
 /** Milliseconds that `run` takes, the fastest of `times` runs. */
 function fastest(times: number, run: () => unknown): number {
@@ -55,10 +57,10 @@ for (const [name, sql] of Object.entries(INPUTS)) {
   describe(`speed on ${name}`, () => {
     const budgets: [string, number, () => unknown][] = [
       ["tokenize()", 300, () => tokenize(sql)],
-      ["check()", 3000, () => check(sql)],
-      ["roles()", 3000, () => roles(sql)],
-      ["highlight()", 4000, () => highlight(sql)],
-      ["format()", 8000, () => format(sql)],
+      ["check()", 3000, () => check(sql, SETTINGS)],
+      ["roles()", 3000, () => roles(sql, SETTINGS)],
+      ["highlight()", 4000, () => highlight(sql, SETTINGS)],
+      ["format()", 8000, () => format(sql, { settings: SETTINGS })],
     ];
     for (const [what, budget, run] of budgets) {
       test(`${what} within ${budget} ms`, (t) => {
@@ -110,7 +112,7 @@ describe("names speed", () => {
   ];
   for (const [what, sql, offset, findBudget, renameBudget] of cases) {
     test(`references() and rename() of ${what} within ${findBudget} and ${renameBudget} ms`, (t) => {
-      const cache = new ParseCache();
+      const cache = new ParseCache(undefined, SETTINGS);
       checkWithRoles(sql, cache);
       // Shifted by more spaces each time, so that the cache keeps the statements but no analysis is kept.
       let shift = 0;

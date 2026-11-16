@@ -9,6 +9,7 @@ import {
   isErrorKind,
   isSignificant,
   LEXER_ERROR_MESSAGES,
+  type ParseSettings,
   type Severity,
   type Token,
   TokenKind as T,
@@ -18,6 +19,7 @@ import { parseQuery } from "./query.js";
 import { type NameMark, NameMarks } from "./names.js";
 import { Roles, type RoleSpan } from "./roles.js";
 import { Budget, Expected, kwQuiet, MAX_PARSER_DEPTH, OutOfBudget, P, ParseError } from "./state.js";
+import { SETTINGS } from "../generated/settings.js";
 
 const SHOW_CHARS = 160;
 const NOT_CHECKED = "Not checked: checking took too long, so this statement and the ones after it were skipped";
@@ -115,12 +117,12 @@ function expectedMessage(token: Token, sql: string, expected: Expected): { messa
 let verifying = false;
 
 /** Whether the statement from `begin` to `end` passes check() with the fix, which keeps only fixes that ClickHouse parses. */
-function parsesWith(fix: Fix, sql: string, begin: number, end: number): boolean {
+function parsesWith(fix: Fix, sql: string, begin: number, end: number, settings: ParseSettings): boolean {
   if (verifying) return false;
   const edit = fix.edits[0]!;
   verifying = true;
   try {
-    return check(sql.slice(begin, edit.start) + edit.newText + sql.slice(edit.end, end)).length === 0;
+    return check(sql.slice(begin, edit.start) + edit.newText + sql.slice(edit.end, end), settings).length === 0;
   } finally {
     verifying = false;
   }
@@ -138,12 +140,16 @@ type Checked =
 
 /**
  * Statements checked before, by their text from where they begin to their first ';', for later calls
- * of checkWithRoles() to take instead of parsing them again. It keeps the `size` used last.
+ * of checkWithRoles() to take instead of parsing them again. It keeps the `size` used last, and every
+ * call through it parses with its `settings`.
  */
 export class ParseCache {
   private readonly checked = new Map<string, Checked>();
 
-  constructor(private readonly size = 20_000) {}
+  constructor(
+    readonly size = 20_000,
+    readonly settings: ParseSettings = {},
+  ) {}
 
   get(text: string): Checked | undefined {
     const found = this.checked.get(text);
@@ -166,6 +172,8 @@ interface Statement {
   begin: number;
   toks: Token[];
   start: number;
+  /** Every token of the input, whitespace and comments included. */
+  all: Token[];
 }
 
 class Checker {
@@ -185,6 +193,7 @@ class Checker {
   constructor(
     private readonly sql: string,
     private readonly withRoles = false,
+    private readonly settings: ParseSettings = {},
   ) {
     this.lines = new Lines(sql);
   }
@@ -310,7 +319,8 @@ class Checker {
 
   /** Checks one statement and returns the offset where the next one may start. */
   checkStatement(statement: Statement): number {
-    const { toks, start, begin } = statement;
+    const { start, begin } = statement;
+    let toks = statement.toks;
     const sql = this.sql;
     const endIndex = this.statementEndIndex(toks, start);
     const afterStatement = toks[endIndex]!.end;
@@ -324,14 +334,22 @@ class Checker {
       const probe = new P(toks, sql, start);
       return kwQuiet(probe, "INSERT INTO");
     })();
+    const over = this.pastMaxQuerySize(statement, endIndex);
     if (!startsWithInsert) {
-      for (let i = start; i < endIndex; i++) {
+      for (let i = start; i < endIndex && !(over && toks[i]!.end > over.start); i++) {
         const token = toks[i]!;
         if (isErrorKind(token.kind)) {
           this.reportToken(token, LEXER_ERROR_MESSAGES[token.kind]!);
           return this.statementEndAfterError(toks, i);
         }
       }
+      if (over) {
+        this.reportToken(over, LEXER_ERROR_MESSAGES[T.ErrorMaxQuerySizeExceeded]!);
+        return afterStatement;
+      }
+    } else if (over) {
+      // The parser of an INSERT reads up to its inline data, which does not count.
+      toks = toks.map((token, i) => (i < start || i >= endIndex || token.end <= over.start ? token : { ...token, kind: T.ErrorMaxQuerySizeExceeded }));
     }
 
     const p = new P(toks, sql, start, this.budget);
@@ -342,7 +360,7 @@ class Checker {
     }
     let node: Ast | null;
     try {
-      node = parseQuery(p);
+      node = parseQuery(p, this.settings.allowSettingsAfterFormatInInsert, this.settings.implicitSelect);
     } catch (error) {
       if (error instanceof ParseError) {
         this.reportToken(toks[Math.min(error.tokenIndex, endIndex)]!, error.message);
@@ -370,7 +388,7 @@ class Checker {
     if (data !== undefined) {
       // Where inline data ends depends on the text after it.
       this.keep = false;
-      return this.insertDataEnd(node!, data, toks, start);
+      return this.insertDataEnd(node!, data, statement.toks, start);
     }
 
     if (isErrorKind(last.kind)) {
@@ -388,19 +406,43 @@ class Checker {
 
     if (!node) {
       const { message, fixes } = expectedMessage(last, sql, p.e);
-      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement) ? fixes : undefined);
+      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement, this.settings) ? fixes : undefined);
+      return afterStatement;
+    }
+    if (over) {
+      this.reportToken(over, LEXER_ERROR_MESSAGES[T.ErrorMaxQuerySizeExceeded]!);
       return afterStatement;
     }
     const stop = toks[Math.min(p.i, toks.length - 1)]!;
     if (stop.kind !== T.EndOfStream && stop.kind !== T.Semicolon) {
       p.e.add(lastIndex, "end of query");
       const { message, fixes } = expectedMessage(last, sql, p.e);
-      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement) ? fixes : undefined);
+      this.reportToken(this.clamp(toks, lastIndex, endIndex), message, undefined, fixes && parsesWith(fixes[0]!, sql, begin, afterStatement, this.settings) ? fixes : undefined);
       return afterStatement;
     }
     // A query may run past a ';', like COPY to an unsupported target; the next one starts after it.
     if (p.i > endIndex) return stop.kind === T.Semicolon ? stop.end : stop.start;
     return afterStatement;
+  }
+
+  /**
+   * The first token up to the statement's ';', whitespace and comments too, that ends more than max_query_size
+   * bytes after `begin`: ClickHouse's lexer makes it ErrorMaxQuerySizeExceeded.
+   */
+  private pastMaxQuerySize({ begin, toks, all }: Statement, endIndex: number): Token | undefined {
+    const max = this.settings.maxQuerySize ?? 262_144;
+    const end = toks[endIndex]!.end;
+    // A UTF-16 code unit takes at most 3 bytes.
+    if (!max || (end - begin) * 3 <= max) return undefined;
+    let bytes = 0;
+    let cut = begin;
+    for (; cut < end; cut++) {
+      const code = this.sql.charCodeAt(cut);
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code >= 0xd800 && code < 0xdc00 ? 4 : code >= 0xdc00 && code < 0xe000 ? 0 : 3;
+      if (bytes > max) break;
+    }
+    if (cut >= end) return undefined;
+    return all.find((token) => token.end > cut);
   }
 
   /** An error past the end of the statement is shown at its ';'. */
@@ -509,14 +551,22 @@ function isAsciiWhitespace(c: string | undefined): boolean {
 }
 
 /** Returns the syntax errors of every statement in `sql`. */
-export function check(sql: string): Diagnostic[] {
-  return checkAll(sql);
+export function check(sql: string, settings?: ParseSettings): Diagnostic[] {
+  return checkAll(sql, undefined, settings && new ParseCache(0, settings));
+}
+
+/** Whether a SET leaves clickhouse-client in another dialect; the setting's name and values are case-sensitive. */
+function dialectAfter(set: string, other: boolean): boolean {
+  const value = [...set.matchAll(/\bdialect\s*=\s*(?:'(\w+)'|(DEFAULT)\b)/g)].pop();
+  if (!value) return other;
+  if (value[2] !== undefined || value[1] === "clickhouse") return false;
+  return OTHER_DIALECTS.has(value[1]!) ? true : other;
 }
 
 /** The roles of the words of every statement without syntax errors. */
-export function roles(sql: string): RoleSpan[] {
+export function roles(sql: string, settings?: ParseSettings): RoleSpan[] {
   const spans: RoleSpan[] = [];
-  checkAll(sql, spans);
+  checkAll(sql, spans, settings && new ParseCache(0, settings));
   return spans;
 }
 
@@ -541,9 +591,14 @@ export function parsedStatements(sql: string, cache?: ParseCache): ParsedStateme
   return statements;
 }
 
+/** The values of `dialect` that clickhouse-client parses with another parser than ClickHouse's. */
+const OTHER_DIALECTS = new Set(SETTINGS.find((s) => s.name === "dialect")!.values!.filter((v) => v !== "clickhouse"));
+
 function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache, statements?: ParsedStatement[]): Diagnostic[] {
-  const checker = new Checker(sql, spans !== undefined);
+  const settings = cache?.settings ?? {};
+  const checker = new Checker(sql, spans !== undefined, settings);
   const stream = new TokenStream(sql);
+  let other = OTHER_DIALECTS.has(settings.dialect ?? "clickhouse");
   let offset = 0;
   while (offset < sql.length) {
     let begin = offset;
@@ -557,10 +612,18 @@ function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache, statement
       offset = first.end;
       continue;
     }
+    const isSet = kwQuiet(new P(stream.significant, sql, start), "SET");
+    if (other && !isSet) {
+      // clickhouse-client reads it with the parser of its dialect, up to the first ';'.
+      let end = start;
+      while (stream.significant[end]!.kind !== T.Semicolon && stream.significant[end]!.kind !== T.EndOfStream) end++;
+      offset = Math.max(stream.significant[end]!.end, offset + 1);
+      continue;
+    }
     const reported = checker.diagnostics.length;
     let next: number;
     try {
-      next = checker.checkCached({ begin, toks: stream.significant, start }, cache);
+      next = checker.checkCached({ begin, toks: stream.significant, start, all: stream.all }, cache && cache.size ? cache : undefined);
     } catch (error) {
       if (!(error instanceof OutOfBudget)) throw error;
       // Better nothing than a guess: the rest gets one warning instead of errors.
@@ -570,6 +633,7 @@ function checkAll(sql: string, spans?: RoleSpan[], cache?: ParseCache, statement
     if (checker.diagnostics.length === reported) {
       if (spans) for (const span of checker.spans) spans.push(span);
       next = adjustQueryEnd(sql, stream, next);
+      if (isSet) other = dialectAfter(sql.slice(begin, next), other);
       statements?.push({ begin, end: next, spans: checker.spans, names: checker.names });
     }
     if (next <= offset) break;

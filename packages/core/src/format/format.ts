@@ -3,8 +3,8 @@
  * whitespace and the case of keywords. Invalid statements are returned as they are.
  */
 import { tokenize } from "../lexer/index.js";
-import { check, checkWithRoles, type Role } from "../parser/index.js";
-import { type FormatOptions, type KeywordCase, TokenKind as T, type Token } from "../types.js";
+import { check, checkWithRoles, ParseCache, type Role } from "../parser/index.js";
+import { type FormatOptions, type KeywordCase, type ParseSettings, TokenKind as T, type Token } from "../types.js";
 import { analyze, type Shape, type Tok } from "./analyze.js";
 import { type Note, type Piece, print } from "./print.js";
 import { lineBreaks, split, type Unit } from "./split.js";
@@ -19,14 +19,15 @@ export function format(sql: string, options: FormatOptions = {}): string {
   const unit = " ".repeat(Number.isFinite(size) && size > 0 ? Math.floor(size) : size === 0 ? 0 : DEFAULT_INDENT);
 
   const units = split(sql);
-  const parts = units.map((u) => prepare(sql, u));
+  const settings = options.settings ?? {};
+  const parts = units.map((u) => prepare(sql, u, settings));
   const eol = lineEnd(sql, units, parts);
   // A byte order mark is whitespace to the lexer, but it stays at the start.
   let out = sql.startsWith("\uFEFF") ? "\uFEFF" : "";
   units.forEach((u, k) => {
     // Inline data that ended at an empty line needs that "\n\n" to end there again.
     if (k > 0) out += units[k - 1]!.data.blankLine ? "\n\n" : eol + eol;
-    out += formatUnit(sql, u, parts[k]!, keywordCase, unit, eol);
+    out += formatUnit(sql, u, parts[k]!, keywordCase, unit, eol, settings);
   });
   // A line break after the last unit, or the "\r" that ends its last line comment, ends the output too.
   const last = units[units.length - 1]!;
@@ -48,10 +49,10 @@ interface Part {
 }
 
 /** Reads a unit; null for a statement that check() rejects. */
-function prepare(sql: string, unit: Unit): Part | null {
+function prepare(sql: string, unit: Unit, settings: ParseSettings): Part | null {
   const roles = new Map<number, Role>();
   if (unit.statement) {
-    const { diagnostics, spans } = checkWithRoles(sql.slice(unit.statement.start, unit.statement.end));
+    const { diagnostics, spans } = checkWithRoles(sql.slice(unit.statement.start, unit.statement.end), new ParseCache(0, settings));
     if (diagnostics.length > 0) return null;
     for (const span of spans) roles.set(unit.statement.start + span.start, span.role);
   }
@@ -59,7 +60,7 @@ function prepare(sql: string, unit: Unit): Part | null {
   return { roles, piece, shape: analyze(piece.sig) };
 }
 
-function formatUnit(sql: string, unit: Unit, part: Part | null, keywordCase: KeywordCase, indent: string, eol: string): string {
+function formatUnit(sql: string, unit: Unit, part: Part | null, keywordCase: KeywordCase, indent: string, eol: string, settings: ParseSettings): string {
   let original = sql.slice(unit.start, unit.end);
   // A line comment at the end keeps its "\r", which the eol written after the unit would double.
   const last = unit.tokens[unit.tokens.length - 1];
@@ -68,7 +69,7 @@ function formatUnit(sql: string, unit: Unit, part: Part | null, keywordCase: Key
   const text = print(part.piece, part.shape, keywordCase, indent, eol);
   // A last safety net: the same tokens and comments, only keywords re-cased, and still valid.
   const keywordAt = (offset: number): boolean => part.roles.get(unit.start + offset) === "keyword";
-  if (!sameTokens(original, text, keywordAt) || (unit.statement && check(text).length > 0)) return original;
+  if (!sameTokens(original, text, keywordAt) || (unit.statement && check(text, settings).length > 0)) return original;
   return text;
 }
 

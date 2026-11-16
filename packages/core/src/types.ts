@@ -87,6 +87,8 @@ export enum TokenKind {
   ErrorBackQuoteIsNotClosed = "ErrorBackQuoteIsNotClosed",
   ErrorSingleExclamationMark = "ErrorSingleExclamationMark",
   ErrorWrongNumber = "ErrorWrongNumber",
+  /** A token that ends past `maxQuerySize` bytes from the start of its query; only check() makes it. */
+  ErrorMaxQuerySizeExceeded = "ErrorMaxQuerySizeExceeded",
 }
 
 /** Messages for error tokens, worded as in ClickHouse's getErrorTokenDescription(). */
@@ -98,6 +100,7 @@ export const LEXER_ERROR_MESSAGES: Readonly<Partial<Record<TokenKind, string>>> 
   [TokenKind.ErrorBackQuoteIsNotClosed]: "Back quoted string is not closed",
   [TokenKind.ErrorSingleExclamationMark]: "Exclamation mark can only occur in !=, !~ and !~* operators",
   [TokenKind.ErrorWrongNumber]: "Wrong number",
+  [TokenKind.ErrorMaxQuerySizeExceeded]: "Max query size exceeded (can be increased with the `max_query_size` setting)",
 };
 
 /** True for every token except whitespace and comments. */
@@ -127,6 +130,18 @@ export interface Token {
 }
 
 export type Severity = "error" | "warning";
+
+/** The settings of ClickHouse that change how a query parses; each defaults to ClickHouse's default. */
+export interface ParseSettings {
+  /** `dialect`: the statements after `SET dialect = 'prql'` and the like, up to `SET dialect = 'clickhouse'`, are not checked. */
+  dialect?: string;
+  /** `implicit_select`: `1 + 2` is a query, as in clickhouse-local. */
+  implicitSelect?: boolean;
+  /** `allow_settings_after_format_in_insert`. */
+  allowSettingsAfterFormatInInsert?: boolean;
+  /** `max_query_size` in bytes; 0 for no limit. The inline data of an INSERT does not count. */
+  maxQuerySize?: number;
+}
 
 /** A problem found by check(). Offsets, line and column follow the same rules as Token. */
 export interface Diagnostic {
@@ -194,9 +209,9 @@ export interface ClickHouseSqlSyntax {
   /** Every token of the input in order, whitespace and comments included, ending with EndOfStream. */
   tokenize(sql: string): Token[];
   /** Coloured spans for the input; whitespace is not covered. */
-  highlight(sql: string): HighlightSpan[];
+  highlight(sql: string, settings?: ParseSettings): HighlightSpan[];
   /** Syntax errors of every ';'-separated statement; an empty array when the input is valid. */
-  check(sql: string): Diagnostic[];
+  check(sql: string, settings?: ParseSettings): Diagnostic[];
   /** What ClickHouse refuses in the settings, codecs, index types, formats and other options of the statements that parse. */
   checkOptions(sql: string, cache?: ParseCache): Diagnostic[];
   /** The input with ClickHouse-style layout and keyword case; meaning, names and comments are kept. */
@@ -298,6 +313,8 @@ export interface FormatOptions {
   keywordCase?: KeywordCase;
   /** Spaces per level of indentation, 4 by default. */
   indentSize?: number;
+  /** How the statements parse; a statement that check() rejects with them is left as written. */
+  settings?: ParseSettings;
 }
 
 /** What a completion candidate or a described name is. */
