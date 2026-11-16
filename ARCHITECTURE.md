@@ -20,8 +20,8 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`, and `objects()`, `objectReferences()` and `objectDefinitions()` across files.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
-- `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
-  formats, table functions, combinators and time zones that completion offers.
+- `generated/`: lists from ClickHouse: keywords, data types, privileges, profile events, and the functions, settings,
+  table engines, formats, table functions, combinators and time zones that completion offers.
 
 `types.ts` holds the public types. `index.ts` exports them and the functions by name, and the main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,

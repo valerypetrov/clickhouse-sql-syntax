@@ -29,7 +29,8 @@ const TYPES = [
   "CLEAR FORMAT SCHEMA CACHE", "CLEAR AVRO SCHEMA CACHE", "CLEAR S3 CLIENT CACHE", "CLEAR TIME SERIES CACHES",
   "STOP LISTEN", "START LISTEN", "RESTART REPLICAS", "RESTART REPLICA", "RESTORE REPLICA",
   "RESTORE DATABASE REPLICA", "WAIT LOADING PARTS", "WAIT QUERY RUNNER", "DROP REPLICA", "DROP DATABASE REPLICA",
-  "DROP CATALOG REPLICA", "JEMALLOC PURGE", "JEMALLOC ENABLE PROFILE", "JEMALLOC DISABLE PROFILE",
+  "DROP CATALOG REPLICA", "DROP AMBER NODE", "ALLOCATE AMBER VOLUME", "CREATE AMBER VOLUME", "DROP AMBER VOLUME",
+  "JEMALLOC PURGE", "JEMALLOC ENABLE PROFILE", "JEMALLOC DISABLE PROFILE",
   "JEMALLOC FLUSH PROFILE", "SYNC REPLICA", "SYNC DATABASE REPLICA", "SYNC TRANSACTION LOG", "SYNC FILE CACHE",
   "REPLICA READY", "REPLICA UNREADY", "RELOAD DICTIONARY", "RELOAD DICTIONARIES", "UNLOAD DICTIONARY",
   "UNLOAD DICTIONARIES", "RELOAD FUNCTION", "RELOAD FUNCTIONS", "RELOAD EMBEDDED DICTIONARIES", "RELOAD CONFIG",
@@ -259,6 +260,18 @@ function parseSystemBody(p: P, type: string, node: Ast): boolean {
       return parseDropReplica(p, true);
     case "DROP CATALOG REPLICA":
       return parseStringLiteral(p) !== null;
+    case "DROP AMBER NODE":
+      kw(p, "IF EXISTS");
+      return parseStringLiteral(p) !== null;
+    case "ALLOCATE AMBER VOLUME":
+      return kw(p, "IN") && kw(p, "CLUSTER") && parseUnsignedInteger(p) !== null;
+    case "CREATE AMBER VOLUME":
+      return (
+        parseUnsignedInteger(p) !== null && kw(p, "IN") && kw(p, "CLUSTER") && parseUnsignedInteger(p) !== null &&
+        kw(p, "SHARDS") && parseUnsignedInteger(p) !== null && kw(p, "SEGMENTS") && parseUnsignedInteger(p) !== null
+      );
+    case "DROP AMBER VOLUME":
+      return parseUnsignedInteger(p) !== null && kw(p, "FROM") && kw(p, "CLUSTER") && parseUnsignedInteger(p) !== null;
     case "ALLOCATE MEMORY":
       return parseUnsignedInteger(p) !== null;
     case "ENABLE FAILPOINT":
