@@ -32,6 +32,8 @@ Commands:
   release [--version <x.y.z.w>] [--dry-run]
                          for a new stable release (or the one given), regenerates everything that comes from
                          ClickHouse, runs the suite, and opens a pull request, or with --dry-run prints its text
+  master                 runs the oracle on the tests of the newest build of master, and fails when check()
+                         falls below the thresholds there
 
 Options:
   --out <dir>            where downloads and reports go (default: <temp>/clickhouse-release)`;
@@ -208,7 +210,21 @@ export async function fetchBinary(release: Release, dir: string): Promise<string
   return binary;
 }
 
-/** A shallow checkout of the tests and parser sources of a ClickHouse tag in `dir`, made or moved to that tag. */
+/** The newest build of master for this machine, downloaded into `dir`; these builds publish no checksum. */
+async function fetchMaster(dir: string): Promise<string> {
+  const names: Record<string, string> = { "linux-x64": "amd64", "linux-arm64": "aarch64", "darwin-arm64": "macos-aarch64", "darwin-x64": "macos" };
+  const name = names[`${process.platform}-${process.arch}`];
+  if (!name) throw new Error(`ClickHouse builds no master binary for ${process.platform}-${process.arch}`);
+  mkdirSync(dir, { recursive: true });
+  const binary = join(dir, "clickhouse");
+  const url = `https://builds.clickhouse.com/master/${name}/clickhouse`;
+  console.error(`Downloading ${url}`);
+  await download(url, binary);
+  chmodSync(binary, 0o755);
+  return binary;
+}
+
+/** A shallow checkout of the tests and parser sources of a ClickHouse tag or commit in `dir`, made or moved to it. */
 export function checkoutSources(tag: string, dir: string): string {
   const git = (...args: string[]): string => output("git", args, dir);
   if (!existsSync(join(dir, ".git"))) {
@@ -217,16 +233,21 @@ export function checkoutSources(tag: string, dir: string): string {
     git("remote", "add", "origin", `https://github.com/${REPOSITORY}.git`);
     git("sparse-checkout", "set", "--no-cone", ...SPARSE_PATHS);
   }
+  if (/^[0-9a-f]{40}$/.test(tag)) {
+    git("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", tag);
+    git("checkout", "-q", "--detach", "FETCH_HEAD");
+    return dir;
+  }
   if (!git("tag", "--list", tag).trim()) git("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", "tag", tag);
   git("checkout", "-q", "--detach", `refs/tags/${tag}`);
   return dir;
 }
 
-/** `git diff --stat` of src/Parsers between a tag or commit and the checked-out tag. */
-function parsersDiff(dir: string, from: string, tag: string): string {
+/** `git diff --stat` of src/Parsers between a tag or commit and `to`, such as refs/tags/<tag>. */
+function parsersDiff(dir: string, from: string, to: string): string {
   const git = (...args: string[]): string => output("git", args, dir);
   git("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", ...(/^[0-9a-f]{40}$/.test(from) ? [from] : ["tag", from]));
-  return git("diff", "--stat=100", "FETCH_HEAD", `refs/tags/${tag}`, "--", "src/Parsers").trimEnd();
+  return git("diff", "--stat=100", "FETCH_HEAD", to, "--", "src/Parsers").trimEnd();
 }
 
 // The names in each generated list, read from the files as the generators write them.
@@ -560,7 +581,7 @@ async function release(version: string | undefined, dryRun: boolean, out: string
   const next: VersionFile = { version: target.version, gitHash: build.gitHash, tag: target.tag, testTag: target.tag };
   writeFileSync(VERSION_FILE, JSON.stringify(next, null, 2) + "\n");
   bumpVersions(target.version);
-  const parsers = parsersDiff(src, previous.tag ?? previous.gitHash, target.tag);
+  const parsers = parsersDiff(src, previous.tag ?? previous.gitHash, `refs/tags/${target.tag}`);
   const reports = join(out, "reports");
   const results = await runSuite(clickhouse, corpus, reports);
   const server = process.env.GITHUB_SERVER_URL;
@@ -583,6 +604,34 @@ async function release(version: string | undefined, dryRun: boolean, out: string
     return;
   }
   openPullRequest(target, body, results.some((r) => !r.ok), out);
+}
+
+/** The oracle on the tests of the newest master build, with what check() does not take yet in the job summary. */
+async function masterDrift(out: string): Promise<boolean> {
+  const clickhouse = await fetchMaster(join(out, "bin"));
+  const build = clickhouseBuild(clickhouse);
+  const src = checkoutSources(build.gitHash, join(out, "src"));
+  const head = output("git", ["rev-parse", "HEAD"], src).trim();
+  const pin = readVersionFile();
+  const report = join(out, "oracle-master.json");
+  const corpus = join(src, "tests", "queries", "0_stateless");
+  const { ok } = await runStep(["npm", "run", "oracle", "--", "--clickhouse", clickhouse, "--corpus", corpus, "--report", report, "--check-thresholds"]);
+  const live = readJson<OracleReport>(report);
+  const m = live?.metrics ?? {};
+  const syntax = live ? newSyntax(live) : [];
+  const parsers = parsersDiff(src, pin.gitHash, head);
+  const lines = [
+    `ClickHouse master ${build.version} (\`${head.slice(0, 11)}\`); the library follows ${pin.version} (\`${pin.gitHash.slice(0, 11)}\`).`,
+    "",
+    `Oracle on ${m.statements ?? "?"} statements: agreement ${percent(m.verdictAgreement)}, valid accepted ${percent(m.validAcceptedRate)}, invalid rejected ${percent(m.invalidRejectedRate)}, error position ${percent(m.positionMatch)}, error message ${percent(m.messageMatch)}.`,
+    "",
+    syntax.length > 0 ? `Statements that master accepts and \`check()\` rejects (${live!.falsePositives.length}):\n\n${syntax.join("\n")}` : "`check()` accepts every statement of the tests that master accepts.",
+    "",
+    `Changes in \`src/Parsers\` since the library's build: ${parsers.split("\n").at(-1)?.trim() || "none"}`,
+  ];
+  console.log(lines.join("\n"));
+  summary(lines.join("\n"));
+  return ok;
 }
 
 async function main(): Promise<void> {
@@ -616,6 +665,8 @@ async function main(): Promise<void> {
     if ((await runSuite(values.clickhouse, values.corpus, out)).some((r) => !r.ok)) process.exit(1);
   } else if (command === "release") {
     await release(values.version, values["dry-run"], out);
+  } else if (command === "master") {
+    if (!(await masterDrift(out))) process.exit(1);
   } else {
     console.log(USAGE);
     process.exit(2);
