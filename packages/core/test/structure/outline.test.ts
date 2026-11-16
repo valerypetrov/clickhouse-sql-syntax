@@ -131,6 +131,9 @@ describe("outline()", () => {
     assert.deepEqual(tree("WITH a AS (SELECT 1) SELECT FROM"), [["query SELECT …", ["cte a"]]]);
     // analyze() reads this one to its end too.
     assert.deepEqual(tree("SYSTEM FROM 'x' WITH y"), ["statement SYSTEM FROM"]);
+    // A FROM after a clause that follows it is not the query's.
+    assert.deepEqual(tree("SELECT a ORDER BY b FROM t"), ["query SELECT …"]);
+    assert.deepEqual(tree("SELECT a SHUFFLE FROM t"), ["query SELECT …"]);
   });
 
   test("covers inline data with its INSERT", () => {
