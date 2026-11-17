@@ -84,8 +84,13 @@ function wouldJoin(a: string, b: string): boolean {
   return /[0-9]/.test(x) ? y === "." : x === "." && /[0-9]/.test(y);
 }
 
+// The words after LOCAL that make it the locality of a join, not a table alias.
+const JOIN_WORDS = new Set(["NATURAL", "ANY", "ALL", "ASOF", "SEMI", "ANTI", "ONLY", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "PASTE", "JOIN"]);
+
 export function print(piece: Piece, shape: Shape, keywordCase: KeywordCase, unit: string, eol: string): string {
   const { sig, notes, gap } = piece;
+  // ClickHouse before 26.11 reads this LOCAL as an alias, which its case names, so it stays as written.
+  const localBeforeJoin = (i: number): boolean => sig[i]!.up === "LOCAL" && JOIN_WORDS.has(sig[i + 1]?.up ?? "");
   const w = new Writer(unit, eol);
   const blocks: { outer: number; base: number; cont: number }[] = [];
   let base = 0;
@@ -93,7 +98,7 @@ export function print(piece: Piece, shape: Shape, keywordCase: KeywordCase, unit
   let pending = -1;
   const textOf = (i: number): string => {
     const t = sig[i]!;
-    if (!shape.keyword[i] || keywordCase === "preserve") return t.text;
+    if (!shape.keyword[i] || keywordCase === "preserve" || localBeforeJoin(i)) return t.text;
     return keywordCase === "upper" ? t.text.toUpperCase() : t.text.toLowerCase();
   };
 

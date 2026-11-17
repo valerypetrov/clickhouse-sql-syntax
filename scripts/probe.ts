@@ -20,7 +20,8 @@ export function exceptionMessage(line: string): { code: number; message: string 
   let message = match[2]!;
   for (let inner = /^Code: \d+\. DB::Exception: (.*)$/.exec(message); inner; inner = /^Code: \d+\. DB::Exception: (.*)$/.exec(message))
     message = inner[1]!;
-  for (let tail = /\.? \((?:version [^)]*|[A-Z_0-9]+)\)\.?$/; tail.test(message); ) message = message.replace(tail, "");
+  // An official build says "(version 26.11.1.2480 (official build))".
+  for (let tail = /\.? \((?:version [^()]*(?:\([^()]*\))?|[A-Z_0-9]+)\)\.?$/; tail.test(message); ) message = message.replace(tail, "");
   if (!message.endsWith(".")) message += ".";
   return { code: Number(match[1]), message };
 }

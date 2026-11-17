@@ -116,7 +116,9 @@ export function parseInsertQuery(p: P, allowSettingsAfterFormat = false): Ast | 
       p.restore(beforeValues);
       select = parseSelectWithUnionQuery(p);
       if (withList && select) {
-        for (const child of select.children) {
+        for (let child of select.children) {
+          // Look through the wrapper that a parenthesized operand with its own SETTINGS keeps.
+          while (child.kind === "SelectWithUnionQuery" && child.children.length === 1) child = child.children[0]!;
           if (child.kind !== "SelectQuery") continue;
           if (child.get("with")) p.fail("Only one WITH should be presented, either before INSERT or SELECT.");
           // ClickHouse moves the WITH of the INSERT into each SELECT.

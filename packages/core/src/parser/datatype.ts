@@ -22,10 +22,10 @@ const INTEGER_TYPE_NAMES = new Set([
   "UINT256", "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "INT1",
 ]);
 
-/** Words that a column declaration reads before the type, so they cannot be type names. */
+/** Words that a column declaration reads before the type, and bareword literals, so they cannot be type names. */
 const NOT_TYPE_NAMES = new Set([
   "NOT", "NULL", "DEFAULT", "MATERIALIZED", "EPHEMERAL", "ALIAS", "AUTO", "PRIMARY", "TTL", "COMMENT", "CODEC",
-  "SETTINGS", "STATISTICS",
+  "SETTINGS", "STATISTICS", "TRUE", "FALSE", "INF", "INFINITY", "NAN",
 ]);
 
 /** parseEnumValues: 'a' = 1, 'b' = -2 with every value explicit; false falls back to the generic parser. */

@@ -111,6 +111,14 @@ generated lists, the oracle's numbers, the statements the release accepts and `c
 - GitHub does not start the other workflows on a pull request that a workflow opened; close and reopen it to start them.
 - It needs **Allow GitHub Actions to create and approve pull requests** in Settings, Actions, General.
 
+## ClickHouse master pipeline
+
+`.github/workflows/clickhouse-master.yml` runs the oracle every day on the tests of the newest build of ClickHouse
+master, from `builds.clickhouse.com`, with the tests of the commit it was built from. It fails when `check()` falls
+below `oracle/thresholds.json` there, and its summary lists the statements that master accepts and `check()` rejects,
+the syntax to port before the next release. The same runs here with
+`npx tsx scripts/clickhouse-release.ts master --out <dir>`.
+
 ## Publishing
 
 `.github/workflows/release.yml` publishes the extension when CI passes on `main` and the version in

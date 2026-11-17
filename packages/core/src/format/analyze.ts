@@ -384,6 +384,7 @@ class Analyzer {
       case "SETTINGS":
       case "FORMAT":
       case "INTERPOLATE":
+      case "SHUFFLE":
         return [w, 1];
       case "WITH":
         if (start) return ["WITH", 1];
@@ -501,6 +502,7 @@ class Analyzer {
         return this.list(j, end, { query: true }, true);
       }
       case "MODIFIER":
+      case "SHUFFLE":
         return j;
       case "WINDOW":
         // name AS (window), ...
@@ -595,7 +597,7 @@ class Analyzer {
         if (this.word(i) === "OFFSET") i = this.expr(this.kw(i), end, { query: true });
       } else if (w === "AS") {
         i = this.name(this.kw(i));
-      } else if (this.is(i, T.QuotedIdentifier) || (this.is(i, T.BareWord) && !RESTRICTED_ALIASES.has(w) && (w !== "SELECT" || this.word(i + 1) === "ON" || this.word(i + 1) === "USING"))) {
+      } else if (this.is(i, T.QuotedIdentifier) || (this.is(i, T.BareWord) && !RESTRICTED_ALIASES.has(w) && !(w === "LOCAL" && this.sig[i]!.keyword) && (w !== "SELECT" || this.word(i + 1) === "ON" || this.word(i + 1) === "USING"))) {
         // An alias without AS.
         i++;
       } else {

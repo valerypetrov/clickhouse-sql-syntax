@@ -20,8 +20,8 @@ In `packages/core/src`, a module uses another only through its `index.ts`, never
 - `options/`: `checkOptions()`, and the settings, codecs and other options that completion offers.
 - `names/`: `definition()`, `references()`, `prepareRename()` and `rename()`, and `objects()`, `objectReferences()` and `objectDefinitions()` across files.
 - `structure/`: `outline()`, `foldingRanges()` and `selectionRanges()`.
-- `generated/`: lists from ClickHouse: keywords, data types, privileges, and the functions, settings, table engines,
-  formats, table functions, combinators and time zones that completion offers.
+- `generated/`: lists from ClickHouse: keywords, data types, privileges, profile events, and the functions, settings,
+  table engines, formats, table functions, combinators and time zones that completion offers.
 
 `types.ts` holds the public types. `index.ts` exports them and the functions by name, and the main functions as one default object.
 Offsets are UTF-16 code units of the JavaScript string; lines and columns start at 1, and a line ends at `\n`,
@@ -49,7 +49,10 @@ A port of `Lexer::nextToken()` from `src/Parsers/Lexer.cpp`. `TokenKind` names t
 3. Check each statement as `tryParseQuery()` does, in the same order:
    1. Unless the statement starts with `INSERT INTO`, its first error token is reported at once.
    2. Parse one query with the alternatives of `ParserQuery` and `ParserQueryWithOutput`, in the same order, with
-      the settings of `clickhouse format`: no implicit `SELECT`, the `clickhouse` dialect.
+      the `ParseSettings` given, by default those of `clickhouse format`: no implicit `SELECT`, the `clickhouse` dialect.
+      A token that ends more than `max_query_size` bytes after the query's start, whitespace, comments and its `;`
+      included, is the lexical error of ClickHouse's `ErrorMaxQuerySizeExceeded`; the inline data of an INSERT is not
+      lexed as part of the query.
    3. An error token where the parse stopped is a lexical error, and unmatched brackets give ClickHouse's
       "Unmatched parentheses" error.
    4. A failed parse is reported at the furthest token any alternative looked at (ClickHouse's
@@ -58,6 +61,9 @@ A port of `Lexer::nextToken()` from `src/Parsers/Lexer.cpp`. `TokenKind` names t
    5. A query that parses but is followed by more than `;` gets `Expected end of query`.
 4. A diagnostic covers the token it points at, or is zero-width at the end of the input. After an error, checking
    goes on after the next `;`, where ClickHouse would stop.
+5. After a `SET` that sets `dialect` to another value than `clickhouse`, the statements up to the next `;` are skipped
+   until a `SET` sets it back or to `DEFAULT`: `clickhouse-client` reads them with another parser, and every dialect
+   reads `SET` as ClickHouse does. The values are those of the generated settings.
 
 There is no AST of names, types or meaning: an unknown function is fine, a misplaced keyword is not. As in
 ClickHouse, nesting deeper than 1000 levels and more than 1,000,000 backtracks in one statement are errors. All the
@@ -143,8 +149,8 @@ a name before `(` is a function, a word from `KEYWORDS` is a keyword, and so on.
 
 `complete()` takes the statement around the cursor and parses its tokens before the cursor, followed by a token
 that no parser accepts, so the parser records everything it tries there (`expectedAt()`). The keywords among those
-expectations are offered when the parser takes them there, which it does not for all of them, as for FETCH without
-ORDER BY or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks and 100,000 tokens parsed);
+expectations are offered when the parser takes them there, which it does not for all of them, as for NEXT after
+FETCH FIRST or SYSTEM END (`keywordFilter()`, which tries them all within 10,000 backtracks and 100,000 tokens parsed);
 the other ones (an expression, a table, a data type, a format, a setting, ...) pick names from the generated lists and
 from the schema passed in. The parse stops after 50,000 backtracks, so a very long statement gets no suggestions. Where the parser expects the name or the type of a query parameter, `parameters.ts` offers the parameters that
 the input writes and those of clickhouse-test, or `Identifier`; in SET and SETTINGS it adds `param_name` for each one.
@@ -277,11 +283,11 @@ In `packages/vscode/src`:
   query gets the values that the `SET param_x` statements before it give, as `clickhouse-client` keeps them.
 - `manifest.ts`, `settings.ts`: every setting is read through `settings.ts`, which checks its value against the
   schema in `package.json` and uses the default for a wrong one; a server setting's problem is the connection problem.
+  `clickhouseSql.maxQuerySize` goes into the `ParseSettings` of each document's `ParseCache` and of formatting.
 - `parameters.ts`: the `{name:Type}` and `param_name` of a document, for hover and the server check.
 - `hints.ts`, `tags.ts`: the test hints that `clickhouse-client` reads from comments (`src/Client/TestHint.cpp`) and
   the `-- Tags:` and `-- Random settings limits:` lines of `tests/clickhouse-test`, checked as those read them, with
   their own diagnostics, completion and hover.
-- `dialect.ts`: the statements after `SET dialect = 'kusto'` and the like, whose syntax errors are left out.
 
 The TextMate grammar in `syntaxes/` is generated by `scripts/grammar.ts` from the library's keyword and type lists.
 It uses the scope names of `highlight()`, so the grammar tests compare the two on the same input.

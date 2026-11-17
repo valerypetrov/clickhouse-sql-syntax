@@ -533,7 +533,7 @@ function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>
       p.restore(current);
       return false;
     }
-    uuidOf(p, literal, p.i - 1);
+    if (NIL_UUID.test(uuidOf(p, literal, p.i - 1))) p.failOther(`${keyword} INNER UUID cannot use a Nil UUID`, p.i - 1);
     target.add("uuid");
     return true;
   }
@@ -558,7 +558,7 @@ function parseViewTarget(p: P, keyword: string, targets: Map<string, Set<string>
       return true;
     }
   }
-  if (!target.has("table") && parseCompoundIdentifier(p, true, true)) {
+  if (!target.has("table") && parseCompoundIdentifier(p, true)) {
     target.add("table");
     return true;
   }

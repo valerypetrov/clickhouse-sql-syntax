@@ -134,6 +134,13 @@
           "scope": "application",
           "markdownDescription": "Files longer than this many characters get no syntax check, semantic highlighting, formatting, outline, folding, Expand Selection, completion, hover, signature help, go to definition, references, rename, workspace symbols or server check, which would slow VS Code down; a message says so once per file. The TextMate highlighting still works.\n\nFor example, `20000000` lets files of up to 20 million characters in."
         },
+        "clickhouseSql.maxQuerySize": {
+          "type": "integer",
+          "default": 262144,
+          "minimum": 0,
+          "scope": "language-overridable",
+          "markdownDescription": "The `max_query_size` of your ClickHouse, in bytes: a query longer than this is a syntax error there, and it gets one here too, with no semantic highlighting or formatting. The inline data of an `INSERT` does not count. `0` means no limit.\n\nFor example, `1048576` takes queries of up to 1 MiB, as `SET max_query_size = 1048576` does."
+        },
         "clickhouseSql.server.enabled": {
           "type": "boolean",
           "default": false,

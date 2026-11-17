@@ -38,3 +38,8 @@ test("mutateAll returns new texts only, at most the count asked for", () => {
   }
   assert.deepEqual(mutateAll(sources, 2, new Set(sources)), result);
 });
+
+test("mutateAll makes no new empty line, which would end inline data there", () => {
+  const sources = Array.from({ length: 1000 }, (_, i) => `INSERT INTO t${i} FORMAT CSV\nx\n1`);
+  for (const { sql } of mutateAll(sources, 1000, new Set())) assert.ok(!sql.includes("\n\n"), sql);
+});

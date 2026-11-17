@@ -3,6 +3,7 @@
  * GRANT and REVOKE, SET ROLE, SHOW of access entities, DROP and MOVE of them, and EXECUTE AS.
  * Ports of src/Parsers/Access/*.cpp.
  */
+import { PROFILE_EVENTS } from "../generated/profile-events.js";
 import { parseStringAndSubstitution } from "./alter.js";
 import { Ast, isParam, type Lit, stringValue } from "./ast.js";
 import {
@@ -889,13 +890,24 @@ const QUOTA_TYPE_KEYWORDS = [
 ];
 const QUOTA_TYPE_NAMES = QUOTA_TYPE_KEYWORDS.map((keyword) => keyword.toLowerCase().replaceAll(" ", "_"));
 
-/** The name of the quota type read, such as execution_time. */
-function parseQuotaType(p: P): string | null {
+const PROFILE_EVENT_NAMES = new Set(PROFILE_EVENTS);
+
+/** parseLimitTarget: the quota type read, such as execution_time, or the name of a profile event. */
+function parseLimitTarget(p: P): string | null {
   return attempt(p, () => {
     const keyword = QUOTA_TYPE_KEYWORDS.findIndex((keyword) => kw(p, keyword));
     if (keyword >= 0) return QUOTA_TYPE_NAMES[keyword];
-    const name = parseIdentifier(p);
-    return name !== null && QUOTA_TYPE_NAMES.includes(name.name) ? name.name : null;
+    const identifier = parseIdentifier(p);
+    if (!identifier) return null;
+    const name = identifier.name;
+    if (QUOTA_TYPE_NAMES.includes(name) || PROFILE_EVENT_NAMES.has(name)) return name;
+    if (p.kind() === T.Equals)
+      p.fail(
+        `Quota limit cannot be set for \`${name.replace(/[\b\f\n\r\t\0\\`]/g, (c) => `\\${ESCAPES[c] ?? c}`)}\`. ` +
+          "Expected one of the predefined resource types (e.g. 'queries', 'errors', 'read_rows') or the name of a " +
+          "profile event (see the `system.events` table)",
+      );
+    return null;
   });
 }
 
@@ -976,7 +988,7 @@ function parseQuotaLimits(p: P): boolean {
   let maxPrefix = false;
   const limit = () => {
     if (kw(p, "MAX")) maxPrefix = true;
-    const type = parseQuotaType(p);
+    const type = parseLimitTarget(p);
     if (!type) return false;
     if (maxPrefix) tok(p, T.Equals);
     else if (!kw(p, "MAX")) return false;

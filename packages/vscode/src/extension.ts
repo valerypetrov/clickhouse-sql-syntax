@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { checkOptions, checkWithRoles, type Diagnostic as SyntaxError, ParseCache } from "clickhouse-sql-syntax";
 import { registerCompletion } from "./complete.js";
-import { otherDialectSpans } from "./dialect.js";
 import { registerFolding } from "./folding.js";
 import { type Fixable, registerQuickFixes } from "./fixes.js";
 import { registerFormatter } from "./format.js";
@@ -15,6 +14,7 @@ import { registerSemanticTokens } from "./semantic.js";
 import { registerServer, type ServerApi } from "./server/index.js";
 import { registerSignatureHelp } from "./signature.js";
 import { registerWorkspaceSymbols, WorkspaceObjects } from "./symbols.js";
+import { parseSettings } from "./settings.js";
 import { tooLarge } from "./size.js";
 import { checkTags } from "./tags.js";
 
@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
   const cacheOf = (document: vscode.TextDocument): ParseCache => {
     const key = document.uri.toString();
     let cache = caches.get(key);
-    if (!cache) caches.set(key, (cache = new ParseCache()));
+    if (!cache) caches.set(key, (cache = new ParseCache(undefined, parseSettings(document))));
     return cache;
   };
 
@@ -56,9 +56,8 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
     }
     const text = document.getText();
     const cache = cacheOf(document);
-    const other = otherDialectSpans(text);
-    // Syntax errors, then what ClickHouse refuses in the options; clickhouse-client reads other dialects, which check() does not.
-    const errors = [...checkWithRoles(text, cache).diagnostics, ...checkOptions(text, cache)].filter((e) => !other.some((s) => s.start <= e.start && e.start <= s.end));
+    // Syntax errors, then what ClickHouse refuses in the options.
+    const errors = [...checkWithRoles(text, cache).diagnostics, ...checkOptions(text, cache)];
     diagnostics.set(document.uri, errors.map((error) => toDiagnostic(document, error)));
     const problems = [...checkTags(text), ...checkHints(text, errors.map((e) => e.start))].sort((a, b) => a.start - b.start);
     testDiagnostics.set(document.uri, problems.map((problem) => toTestDiagnostic(document, problem)));
@@ -95,6 +94,11 @@ export function activate(context: vscode.ExtensionContext): ServerApi {
       testDiagnostics.delete(document.uri);
       caches.delete(document.uri.toString());
       fixable.delete(document.uri.toString());
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (!event.affectsConfiguration("clickhouseSql.maxQuerySize")) return;
+      caches.clear();
+      vscode.workspace.textDocuments.forEach(schedule);
     }),
     { dispose: () => [...pending.keys()].forEach(cancel) },
   );

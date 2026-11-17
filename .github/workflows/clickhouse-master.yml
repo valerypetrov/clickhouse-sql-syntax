@@ -1,0 +1,46 @@
+name: ClickHouse master
+
+# Once a day, runs the oracle on the tests of the newest build of ClickHouse master, so that syntax master adds shows
+# up before a release; the run fails when check() falls below oracle/thresholds.json there.
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clickhouse-master
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Restore the verdicts of ClickHouse
+        uses: actions/cache@v5
+        with:
+          path: oracle/.cache
+          key: verdicts-master-${{ github.run_id }}
+          restore-keys: verdicts-master-
+      - run: npm ci
+      - run: npm run build
+      - name: Run the oracle on master
+        run: npx tsx scripts/clickhouse-release.ts master --out "$RUNNER_TEMP/master"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: oracle-master
+          path: ${{ runner.temp }}/master/oracle-master.json
+          if-no-files-found: ignore

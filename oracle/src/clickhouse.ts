@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1 } from "./extract.js";
@@ -59,17 +60,26 @@ const BULK_CHUNK = 5000;
 // Code 48 means the query parsed but `clickhouse format` cannot print it, as for INSERT ... FORMAT CSV.
 const PARSED_CODES = new Set([0, 48]);
 
+/** `args` with a directory of its own for clickhouse local, as newer builds lock their default one; `done` removes it. */
+export function isolated(args: string[]): { args: string[]; done: () => void } {
+  if (args[0] !== "local") return { args, done: () => {} };
+  const dir = mkdtempSync(join(tmpdir(), "chsql-local-"));
+  return { args: ["local", "--path", dir, ...args.slice(1)], done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
 function run(command: string, args: string[], input: string): Promise<RunResult> {
+  const local = isolated(args);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, local.args, { stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) =>
-      resolve({ code: code ?? -1, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") }),
-    );
+    child.on("error", (error) => (local.done(), reject(error)));
+    child.on("close", (code) => {
+      local.done();
+      resolve({ code: code ?? -1, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
+    });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
@@ -133,6 +143,8 @@ async function classifyBulk(sqls: readonly string[], options: ClassifyOptions, v
     if (seen.size !== sqls.length) throw new Error(`clickhouse local returned ${seen.size} of ${sqls.length} rows`);
     return;
   }
+  // Another clickhouse local holds its directory: no verdict at all, so nothing goes into the cache.
+  if (result.stderr.includes("Cannot lock file")) throw new Error(`clickhouse local: ${result.stderr.trim().split("\n")[0]}`);
   if (sqls.length === 1) {
     const code = /Code: (\d+)/.exec(result.stderr)?.[1] ?? String(result.code);
     failed.set(sqls[0]!, `formatQueryOrNull failed with code ${code}`);

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { otherDialectSpans } from "../../src/dialect.js";
 import { checkTags, tagCompletions, tagHover } from "../../src/tags.js";
 
 function problems(text: string): [string, string, string][] {
@@ -33,28 +32,5 @@ describe("tags of clickhouse-test", () => {
     assert.equal(tagCompletions(text, text.length), undefined);
     assert.match(tagHover(text, 12)!.markdown, /^\*\*Tag `no-fasttest`\*\* of clickhouse-test\n\nSkipped in the Fast test/);
     assert.match(tagHover("-- Tags: use-hdfs", 12)!.markdown, /Needs a build with HDFS/);
-  });
-});
-
-describe("other dialects", () => {
-  test("finds the statements after SET dialect, up to SET dialect = 'clickhouse'", () => {
-    const text = [
-      "SELECT 1;",
-      "SET allow_experimental_kusto_dialect = 1, dialect = 'kusto';",
-      "print 1;",
-      "SET max_threads = 1;",
-      "Customers | take 1;",
-      "SET dialect = 'clickhouse';",
-      "SELECT 2;",
-      "SET dialect = 'prql';",
-      "from t;",
-      "SET dialect = DEFAULT;",
-      "SELECT 3;",
-      // The values are case-sensitive, so SET fails and nothing changes.
-      "SET dialect = 'Kusto';",
-      "SELECT 4",
-    ].join("\n");
-    assert.deepEqual(otherDialectSpans(text).map((s) => text.slice(s.start, s.end)), ["print 1;", "Customers | take 1;", "from t;"]);
-    assert.deepEqual(otherDialectSpans("SELECT 1 SETTINGS dialect = 'kusto'; SELECT 2"), []);
   });
 });

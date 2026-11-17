@@ -17,7 +17,7 @@ const AFTER_HEAD = new Set(["WHERE", "FORMAT", "SETTINGS", "LIKE", "ILIKE", "AS"
 /** In a statement that does not parse, a name follows these words, even one spelled as a keyword. */
 const NAME_AFTER = new Set(["TABLE", "VIEW", "DICTIONARY", "DATABASE", "FUNCTION", "INTO", "USE", "FROM", "UPDATE", "DESCRIBE", "DESC", "USER", "ROLE", "INDEX"]);
 /** Words after which the FROM of a query has come or will not come. */
-const AFTER_FROM = new Set(["UNION", "INTERSECT", "WHERE", "PREWHERE", "GROUP", "HAVING", "WINDOW", "QUALIFY", "ORDER", "LIMIT", "OFFSET", "SETTINGS", "FORMAT", "INTO"]);
+const AFTER_FROM = new Set(["UNION", "INTERSECT", "WHERE", "PREWHERE", "GROUP", "HAVING", "WINDOW", "QUALIFY", "ORDER", "SHUFFLE", "LIMIT", "OFFSET", "SETTINGS", "FORMAT", "INTO"]);
 /** The statements that EXPLAIN may explain. */
 const EXPLAINED = new Set(["SELECT", "WITH", "FROM", "INSERT", "CREATE", "ALTER", "DROP", "SHOW", "DESCRIBE", "DESC", "SYSTEM", "OPTIMIZE", "DELETE", "UPDATE"]);
 const MAX_NAME = 80;

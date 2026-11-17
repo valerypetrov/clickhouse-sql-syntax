@@ -9,7 +9,7 @@ import { parseArgs } from "node:util";
 
 import { type KeywordCase, KEYWORDS, TokenKind, check, format, tokenize } from "clickhouse-sql-syntax";
 
-import { classify } from "./clickhouse.js";
+import { classify, isolated } from "./clickhouse.js";
 import { type Entry, readCorpus } from "./corpus.js";
 import { extractCorpus, usesOtherDialect } from "./extract.js";
 import { CACHE_DIR, CORPUS_FILE, SOURCE_NOTE, integerOption } from "./paths.js";
@@ -108,16 +108,18 @@ function same(a: string[], b: string[]): boolean {
 }
 
 function run(command: string, args: string[], input: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  const local = isolated(args);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, local.args, { stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) =>
-      resolve({ code: code ?? -1, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") }),
-    );
+    child.on("error", (error) => (local.done(), reject(error)));
+    child.on("close", (code) => {
+      local.done();
+      resolve({ code: code ?? -1, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
+    });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
   });

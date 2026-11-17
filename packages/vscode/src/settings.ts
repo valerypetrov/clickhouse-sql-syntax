@@ -1,3 +1,4 @@
+import type { ParseSettings } from "clickhouse-sql-syntax";
 import * as vscode from "vscode";
 import { invalidValue, SETTINGS } from "./manifest.js";
 
@@ -24,6 +25,11 @@ export function userSetting<T>(key: string): { value: T; problem?: string } {
   if (value === undefined) return { value: fallback };
   const problem = invalidValue(key, value);
   return problem ? { value: fallback, problem } : { value };
+}
+
+/** The settings of ClickHouse that change how `document` parses. */
+export function parseSettings(document: vscode.TextDocument): ParseSettings {
+  return { maxQuerySize: setting<number>("clickhouseSql.maxQuerySize", document) };
 }
 
 /** The value of a setting of VS Code itself for `scope`, such as `editor.inlayHints.enabled`. */

@@ -123,7 +123,7 @@ describe("check()", () => {
   // Each statement reaches ClickHouse's limit of 1,000,000 backtracks, which takes about half a second;
   // the time limit is ten times what the test takes here, for slower machines.
   test("stops after about a second of backtracking and warns that the rest is not checked", () => {
-    const slow = `SELECT ${"INTERVAL (".repeat(18)}+${") DAY".repeat(18)}`;
+    const slow = `SELECT ${"(SELECT (".repeat(16)}+`;
     const sql = Array.from({ length: 10 }, () => slow).join(";\n");
     const start = performance.now();
     const found = check(sql);
@@ -137,6 +137,31 @@ describe("check()", () => {
       ],
     );
     assert.ok(ms < 10_000, `took ${ms.toFixed(0)} ms`);
+  });
+
+  // ClickHouse remembers where a CASE or INTERVAL reading failed, as in 05565_case_interval_keyword_reading_exponential.
+  test("does not read CASE and INTERVAL again where they failed", () => {
+    assert.deepEqual(check(`SELECT ${"case(".repeat(30)}1${")".repeat(30)}`), []);
+    assert.deepEqual(check(`SELECT ${"(interval + ".repeat(30)}1${")".repeat(30)} FROM (SELECT 1 AS \`interval\`)`), []);
+    assert.deepEqual(check(`SELECT ${"case + (SELECT ".repeat(10)}1${")".repeat(10)}`), []);
+    const [first] = check(`SELECT ${"INTERVAL (".repeat(18)}+${") DAY".repeat(18)}`);
+    assert.equal(first?.start, 188);
+    assert.ok(first.message.startsWith("Expected one of: number, NOT, INTERVAL, CASE, DATE"), first.message);
+  });
+
+  // Bracket layers and nested collections of literals count towards the depth, as in ClickHouse.
+  test("counts brackets and nested literals towards the parse depth", () => {
+    const tooDeep = "Maximum parse depth (1000) exceeded. Consider rising max_parser_depth parameter.";
+    const deep = (n: number) => `SELECT ${"ARRAY[1, ".repeat(n)}1${"]".repeat(n)}`;
+    assert.deepEqual(check(deep(986)), []);
+    assert.equal(check(deep(987))[0]?.message, tooDeep);
+    const dictionary = (n: number) =>
+      `CREATE DICTIONARY d (a UInt8) PRIMARY KEY a SOURCE(CLICKHOUSE(x ${"[".repeat(n)}1${"]".repeat(n)})) LAYOUT(FLAT()) LIFETIME(0)`;
+    assert.deepEqual(check(dictionary(987)), []);
+    assert.equal(check(dictionary(988))[0]?.message, tooDeep);
+    const calls = (n: number) => `SELECT ${"case(".repeat(n)}1${")".repeat(n)}`;
+    assert.deepEqual(check(calls(497)), []);
+    assert.equal(check(calls(498))[0]?.message, "AST is too deep. Maximum: 1000");
   });
 
   test("reports too deep nesting instead of overflowing the stack", () => {

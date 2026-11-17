@@ -16,7 +16,7 @@ npm install git+https://github.com/valerypetrov/clickhouse-sql-syntax.git#core-v
 Offsets count UTF-16 code units, as JavaScript strings do; lines and columns start at 1.
 The types are in [src/types.ts](src/types.ts), and the functions below are also on the default export.
 
-### check(sql)
+### check(sql, settings?)
 
 The syntax errors of every `;`-separated statement, worded and placed as ClickHouse does; `[]` when all of it is valid.
 
@@ -28,9 +28,19 @@ check("SELECT a FROM t GROUP a");
 Only syntax is checked, as `clickhouse format` does: unknown tables, functions or settings are fine,
 and the inline data of `INSERT ... VALUES` and `INSERT ... FORMAT` is skipped.
 
-`roles(sql)` gives what the parser reads each word of the valid statements as, and `checkWithRoles(sql, cache?)`
+`settings` are the ClickHouse settings that change how a query parses, each at ClickHouse's default when left out:
+`maxQuerySize` (`max_query_size`, 262144 bytes; 0 for no limit), `implicitSelect`, `allowSettingsAfterFormatInInsert`
+and `dialect`. The statements after `SET dialect = 'kusto'` and the like are not checked, as `clickhouse-client` parses
+them in that dialect, up to `SET dialect = 'clickhouse'`.
+
+```ts
+check("1 + 2", { implicitSelect: true }); // []
+```
+
+`roles(sql, settings?)` gives what the parser reads each word of the valid statements as, and `checkWithRoles(sql, cache?)`
 gives both in one pass. A `ParseCache` given to it keeps the statements it checked, so that a later call parses only
-the ones that changed, with the same result; an editor keeps one per document.
+the ones that changed, with the same result; an editor keeps one per document. `new ParseCache(size, settings)` parses
+with those settings.
 
 ### checkOptions(sql, cache?)
 
@@ -55,7 +65,8 @@ format("select a, count() from t group by a"); // "SELECT\n    a,\n    count()\n
 format("select a from t", { keywordCase: "lower", indentSize: 2 }); // "select a\nfrom t"
 ```
 
-`keywordCase` is `"upper"` (the default), `"lower"` or `"preserve"`, and `indentSize` is 4 by default.
+`keywordCase` is `"upper"` (the default), `"lower"` or `"preserve"`, `indentSize` is 4 by default, and `settings` are
+those of `check()`.
 Each clause starts a line, lists of several items go one item per line, and subqueries are indented.
 Only whitespace and the case of keywords change: names, strings, numbers, comments and inline data stay as written,
 and a statement with a syntax error is left as it is. A word changes case only where `roles()` reads it as a keyword.
