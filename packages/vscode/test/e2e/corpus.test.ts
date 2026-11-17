@@ -383,7 +383,10 @@ describe("ClickHouse test files in VS Code", () => {
     for (const { visit, statement, first, problem } of suspects) {
       const ref = reference.get(statement.text);
       const now = live.get(statement.text);
-      if (ref && now && !sameVerdict(ref, now) && !disagreement(ref, statement, first)) {
+      // The stored labels are of the statement alone, without its ';', so they go with check() of it alone.
+      const alone = ref && check(statement.text)[0];
+      const aloneFirst = alone ? { ...alone, start: alone.start + statement.start } : undefined;
+      if (ref && now && !sameVerdict(ref, now) && !disagreement(ref, statement, aloneFirst)) {
         const verdicts = `${clickhouse.version}: ${verdictText(now, statement.text)}; ${stored.header.clickhouse}: ${verdictText(ref, statement.text)}`;
         versionGaps.push(where(visit, statement, `version gap, ${verdicts}`));
       } else {

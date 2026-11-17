@@ -48,7 +48,9 @@ describe("format() keeps what it does not lay out", () => {
 
   test("SHUFFLE as a clause and LOCAL before JOIN", () => {
     formats("select a from t where x shuffle limit 3", "SELECT a\nFROM t\nWHERE x\nSHUFFLE\nLIMIT 3");
-    formats("select a from t local join u using a", "SELECT a\nFROM t\nLOCAL JOIN u USING a");
+    // ClickHouse 26.10 reads that LOCAL as an alias, so its case stays.
+    formats("select a from t local join u using a", "SELECT a\nFROM t\nlocal JOIN u USING a");
+    assert.equal(format("SELECT a FROM t LOCAL RIGHT JOIN u USING a", { keywordCase: "lower" }), "select a\nfrom t\nLOCAL right join u using a");
     formats("select a from t local array join x", "SELECT a\nFROM t local\nARRAY JOIN x");
   });
 
