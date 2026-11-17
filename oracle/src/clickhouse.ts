@@ -133,6 +133,8 @@ async function classifyBulk(sqls: readonly string[], options: ClassifyOptions, v
     if (seen.size !== sqls.length) throw new Error(`clickhouse local returned ${seen.size} of ${sqls.length} rows`);
     return;
   }
+  // Another clickhouse local holds its directory: no verdict at all, so nothing goes into the cache.
+  if (result.stderr.includes("Cannot lock file")) throw new Error(`clickhouse local: ${result.stderr.trim().split("\n")[0]}`);
   if (sqls.length === 1) {
     const code = /Code: (\d+)/.exec(result.stderr)?.[1] ?? String(result.code);
     failed.set(sqls[0]!, `formatQueryOrNull failed with code ${code}`);
