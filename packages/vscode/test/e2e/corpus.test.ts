@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { check, checkOptions, complete, type Diagnostic as SyntaxError, format, KEYWORDS } from "clickhouse-sql-syntax";
 import * as vscode from "vscode";
-import { classify, type ClickHouseInfo, type Verdict } from "../../../../oracle/src/clickhouse.js";
+import { classify, type ClickHouseInfo, isolated, type Verdict } from "../../../../oracle/src/clickhouse.js";
 import { sameVerdict, verdictText } from "../../../../oracle/src/compare.js";
 import { readCorpus } from "../../../../oracle/src/corpus.js";
 import { expectsSyntaxError, needsXRay, sha1, usesOtherDialect } from "../../../../oracle/src/extract.js";
@@ -232,14 +232,15 @@ function errorsByStatement(visit: Visit): { inside: SyntaxError[][]; before: Syn
 
 /** Runs a command with `input` on its stdin. */
 function run(command: string, args: string[], input: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  const local = isolated(args);
   return new Promise((done, fail) => {
-    const child = spawn(command, args);
+    const child = spawn(command, local.args);
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
-    child.on("error", fail);
-    child.on("close", (code) => done({ code: code ?? -1, stdout: Buffer.concat(out).toString(), stderr: Buffer.concat(err).toString() }));
+    child.on("error", (error) => (local.done(), fail(error)));
+    child.on("close", (code) => (local.done(), done({ code: code ?? -1, stdout: Buffer.concat(out).toString(), stderr: Buffer.concat(err).toString() })));
     child.stdin.end(input);
   });
 }
